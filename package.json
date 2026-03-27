@@ -1,0 +1,30 @@
+{
+  "name": "sigma-data-model-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for converting dbt, Snowflake Semantic Views, LookML, and Tableau data models to Sigma Computing format",
+  "type": "module",
+  "bin": {
+    "sigma-data-model-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js build/server.js",
+    "start": "node build/server.js",
+    "start:local": "node build/index.js",
+    "dev": "tsx src/server.ts",
+    "dev:local": "tsx src/index.ts"
+  },
+  "files": ["build"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.7.0"
+  }
+}
