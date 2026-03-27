@@ -201,6 +201,10 @@ export function convertSnowflakeSemanticView(
     const tname = table.name.toUpperCase();
     (table.relationships || []).forEach((rel: any) => {
       const fks = ([] as string[]).concat(rel.foreign_key || rel.foreignKey || []);
+      // Also support join_columns / relationship_columns format
+      (rel.join_columns || rel.relationship_columns || []).forEach((jc: any) => {
+        if (jc.left_column) fks.push(jc.left_column);
+      });
       if (!fkColsByTable[tname]) fkColsByTable[tname] = new Set();
       fks.filter(Boolean).forEach(fk => fkColsByTable[tname].add(fk.toUpperCase()));
     });
@@ -238,6 +242,15 @@ export function convertSnowflakeSemanticView(
 
       const fks = ([] as string[]).concat(rel.foreign_key || rel.foreignKey || []);
       const rks = ([] as string[]).concat(rel.ref_key || rel.refKey || []);
+
+      // Also support join_columns / relationship_columns format
+      const joinCols: any[] = (rel as any).join_columns || (rel as any).relationship_columns || [];
+      if (joinCols.length > 0 && fks.length === 0) {
+        joinCols.forEach((jc: any) => {
+          if (jc.left_column) fks.push(jc.left_column);
+          if (jc.right_column) rks.push(jc.right_column);
+        });
+      }
 
       const keys: { sourceColumnId: string; targetColumnId: string }[] = [];
       for (let i = 0; i < fks.length; i++) {
