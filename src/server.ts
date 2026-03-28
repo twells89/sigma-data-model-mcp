@@ -29,13 +29,14 @@ app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'sigma-data-model-mcp',
     version: '1.0.0',
-    description: 'MCP server for converting dbt, Snowflake, LookML, and Tableau data models to Sigma Computing format',
+    description: 'MCP server for converting dbt, Snowflake, LookML, Tableau, and Power BI data models to Sigma Computing format',
     endpoint: '/mcp',
     transport: 'streamable-http',
     tools: [
       'convert_dbt_to_sigma',
       'convert_snowflake_to_sigma',
       'convert_lookml_to_sigma',
+      'convert_powerbi_to_sigma',
       'convert_sql_to_sigma_formula',
       'convert_tableau_formula_to_sigma',
       'parse_lookml',

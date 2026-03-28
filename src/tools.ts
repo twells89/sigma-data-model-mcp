@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { convertDbtToSigma } from './dbt.js';
 import { convertSnowflakeSemanticView } from './snowflake.js';
 import { convertLookMLToSigma, parseLookML } from './lookml.js';
+import { convertPowerBIToSigma } from './powerbi.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 
@@ -193,6 +194,49 @@ DATETRUNC, DATEADD, DATEDIFF. LOD expressions → comment placeholder.`,
     }
   );
 
+  // ── convert_powerbi_to_sigma ────────────────────────────────────────────
+
+  server.tool(
+    'convert_powerbi_to_sigma',
+    `Convert a Power BI model to Sigma Computing data model JSON.
+
+Accepts Power BI Tabular Object Model JSON (.bim files or DataModelSchema
+extracted from .pbit). Handles tables, columns, DAX measures, calculated
+columns, relationships, display folders, and measures-only tables.
+
+DAX conversion handles: SUM, AVERAGE, COUNT, DISTINCTCOUNT, DIVIDE (with
+null-safe division), simple CALCULATE with filters, IF/SWITCH, ISBLANK,
+COALESCE, RELATED, date functions, text functions, and math functions.
+
+Complex DAX patterns (CALCULATE+ALL, iterators like SUMX, time intelligence
+like TOTALYTD, VAR/RETURN) generate warnings with Sigma community article
+links for manual conversion guidance.`,
+    {
+      model_json: z.string().describe('Power BI model JSON content (.bim file or DataModelSchema from .pbit)'),
+      connection_id: z.string().optional().describe('Sigma connection UUID (from GET /v2/connections)'),
+      database: z.string().optional().describe('Override database name (e.g. ANALYTICS)'),
+      schema: z.string().optional().describe('Override schema name (e.g. PUBLIC)'),
+    },
+    async ({ model_json, connection_id, database, schema }) => {
+      try {
+        const parsed = JSON.parse(model_json);
+        const result = convertPowerBIToSigma(parsed, {
+          connectionId: connection_id,
+          database,
+          schema,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── parse_lookml ─────────────────────────────────────────────────────────
 
   server.tool(
@@ -242,7 +286,10 @@ Shows element types, columns, metrics, relationships, controls, and more.`,
 4. Relationships go on the SOURCE (fact/many-side) element pointing to TARGET (dim/one-side)
 5. Element order matters: dimension elements BEFORE fact elements (that reference them)
 6. Duplicate source.path values cause "cycle in dependency order" errors — deduplicate
-7. Sigma API endpoints:
+7. Linked columns: [TABLE/FK_COL - link/Display Name] for related dimension columns
+   ⚠ API limitation: linked column formulas may not round-trip correctly on PUT
+8. Conditional aggregates: SumIf(field, condition), CountIf(condition) — argument order matters
+9. Sigma API endpoints:
    - POST /v2/dataModels/spec — create new
    - PUT /v2/dataModels/{id}/spec — update existing
    - GET /v2/dataModels/{id}/spec — get current spec
@@ -323,6 +370,31 @@ Steps:
 3. Specify which explore to convert (or auto-detect if only one)
 4. Choose join strategy: "relationships" | "joins" | "auto"
 5. Review warnings, then save to Sigma via the API`,
+        },
+      }],
+    })
+  );
+
+  server.prompt(
+    'convert_powerbi_model',
+    'Guide for converting a Power BI model to Sigma',
+    () => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `I need to convert a Power BI model to a Sigma data model.
+
+Steps:
+1. Get the .bim file from your Power BI project, or extract DataModelSchema from a .pbit file
+2. Pass the JSON content to convert_powerbi_to_sigma
+3. Provide a Sigma connection_id if available (from GET /v2/connections)
+4. Optionally override database/schema names
+5. Review warnings — complex DAX patterns (CALCULATE+ALL, SUMX, TOTALYTD, VAR/RETURN) need manual conversion
+6. Save to Sigma via POST /v2/dataModels/spec
+
+Note: Linked column formulas (referencing related dimension columns) may need to be re-added
+manually in the Sigma UI due to a known API round-trip limitation.`,
         },
       }],
     })

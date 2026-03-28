@@ -1,6 +1,6 @@
 # Sigma Data Model MCP Server
 
-An MCP server that converts data models from **dbt**, **Snowflake Semantic Views**, **LookML** (Looker), and **Tableau** into [Sigma Computing](https://sigmacomputing.com) data model JSON format.
+An MCP server that converts data models from **dbt**, **Snowflake Semantic Views**, **LookML** (Looker), **Tableau**, and **Power BI** into [Sigma Computing](https://sigmacomputing.com) data model JSON format.
 
 Works with **Claude Code**, **Claude Desktop**, **Claude.ai**, **Cursor**, and any MCP-compatible client.
 
@@ -43,6 +43,7 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_dbt_to_sigma` | dbt semantic model YAML → Sigma data model JSON |
 | `convert_snowflake_to_sigma` | Snowflake Cortex Analyst semantic view YAML → Sigma JSON |
 | `convert_lookml_to_sigma` | LookML project files (views + explores) → Sigma JSON |
+| `convert_powerbi_to_sigma` | Power BI model JSON (.bim / DataModelSchema) → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
@@ -51,7 +52,7 @@ That's it — no cloning, no building. Just connect and start converting.
 
 ## How It Works
 
-1. **You provide** a dbt YAML, Snowflake semantic view YAML, or LookML files
+1. **You provide** a dbt YAML, Snowflake semantic view YAML, LookML files, or Power BI model JSON
 2. **The server converts** entities → columns, measures → metrics, joins → relationships
 3. **You get back** Sigma data model JSON ready to POST to the Sigma API
 
@@ -88,6 +89,21 @@ Converts a full LookML project into a Sigma data model. Includes a complete Look
 - `connection_id` — Sigma connection UUID
 - `explore_name` — Which explore to convert (auto-detected if only one)
 - `join_strategy` — `"relationships"` | `"joins"` | `"auto"`
+
+### convert_powerbi_to_sigma
+Converts a Power BI Tabular Object Model JSON (.bim files or DataModelSchema from .pbit) to Sigma data model JSON. Handles tables, columns, DAX measures, calculated columns, relationships, display folders, and measures-only tables.
+
+**DAX conversion tiers:**
+- **Tier 1** — Direct: SUM→Sum, DISTINCTCOUNT→CountDistinct, DIVIDE→null-safe division, IF/SWITCH, RELATED (stripped), date/text/math functions, `'Table'[Col]` → `[Col]`
+- **Tier 2** — Simple CALCULATE(SUM([Col]), [Dim]="Value") → SumIf/CountIf with correct argument order
+- **Tier 3** — Complex CALCULATE+ALL, iterators (SUMX), time intelligence (TOTALYTD) → warnings with community links
+- **Tier 4** — VAR/RETURN → warnings
+
+**Parameters:**
+- `model_json` (required) — Power BI model JSON content
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
 
 ### convert_sql_to_sigma_formula
 Converts SQL expressions to Sigma formula syntax:

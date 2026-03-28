@@ -81,6 +81,18 @@ Columns: { "id": "inode-xxx/COL", "formula": "[TABLE/Display Name]" }
 Calculated columns: { "id": "shortId", "formula": "[Price] - [Cost]", "name": "Profit" }
 Metrics: { "id": "shortId", "formula": "Sum([Revenue])", "name": "Total Revenue" }
 Relationships: { "id": "shortId", "targetElementId": "...", "keys": [{ "sourceColumnId": "...", "targetColumnId": "..." }] }
+
+Linked column reference (accessing related dimension columns via relationships):
+  Formula syntax: [SOURCE_TABLE/FK_COLUMN - link/Column Display Name]
+  Example: DateDiff("day", [ORDER_FACT/PROMO_KEY - link/Start Date], [ORDER_FACT/PROMO_KEY - link/End Date])
+  Example: Year([ORDER_FACT/ORDER_DATE_KEY - link/Full Date])
+  The FK_COLUMN is the PHYSICAL name (ALL_CAPS) of the foreign key on the source element.
+  ⚠ Known Sigma API limitation: linked column formulas may not round-trip correctly on PUT.
+
+Sigma conditional aggregate syntax (argument order matters):
+  CountIf(condition) — condition only, NO field argument
+  SumIf(field, condition) — FIELD FIRST, condition second
+  AvgIf/MaxIf/MinIf/CountDistinctIf — all FIELD FIRST
 `.trim();
 
 /** Common column/element interfaces */
