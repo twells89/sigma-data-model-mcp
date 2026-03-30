@@ -37,6 +37,7 @@ app.get('/', (_req: Request, res: Response) => {
       'convert_snowflake_to_sigma',
       'convert_lookml_to_sigma',
       'convert_powerbi_to_sigma',
+      'convert_tableau_to_sigma',
       'convert_sql_to_sigma_formula',
       'convert_tableau_formula_to_sigma',
       'parse_lookml',

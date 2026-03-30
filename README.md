@@ -43,7 +43,8 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_dbt_to_sigma` | dbt semantic model YAML → Sigma data model JSON |
 | `convert_snowflake_to_sigma` | Snowflake Cortex Analyst semantic view YAML → Sigma JSON |
 | `convert_lookml_to_sigma` | LookML project files (views + explores) → Sigma JSON |
-| `convert_powerbi_to_sigma` | Power BI model JSON (.bim / DataModelSchema) → Sigma JSON |
+| `convert_powerbi_to_sigma` | Power BI model (.bim / TOM JSON) → Sigma JSON |
+| `convert_tableau_to_sigma` | Tableau workbook/data source (.twb/.tds XML) → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
@@ -52,7 +53,7 @@ That's it — no cloning, no building. Just connect and start converting.
 
 ## How It Works
 
-1. **You provide** a dbt YAML, Snowflake semantic view YAML, LookML files, or Power BI model JSON
+1. **You provide** a dbt YAML, Snowflake semantic view YAML, or LookML files
 2. **The server converts** entities → columns, measures → metrics, joins → relationships
 3. **You get back** Sigma data model JSON ready to POST to the Sigma API
 
@@ -91,19 +92,30 @@ Converts a full LookML project into a Sigma data model. Includes a complete Look
 - `join_strategy` — `"relationships"` | `"joins"` | `"auto"`
 
 ### convert_powerbi_to_sigma
-Converts a Power BI Tabular Object Model JSON (.bim files or DataModelSchema from .pbit) to Sigma data model JSON. Handles tables, columns, DAX measures, calculated columns, relationships, display folders, and measures-only tables.
+Converts Power BI models (.bim / TOM JSON / DataModelSchema from .pbit) to Sigma JSON. Handles tables, DAX measures, calculated columns, relationships, display folders, measures-only tables, and M expression path extraction.
 
-**DAX conversion tiers:**
-- **Tier 1** — Direct: SUM→Sum, DISTINCTCOUNT→CountDistinct, DIVIDE→null-safe division, IF/SWITCH, RELATED (stripped), date/text/math functions, `'Table'[Col]` → `[Col]`
-- **Tier 2** — Simple CALCULATE(SUM([Col]), [Dim]="Value") → SumIf/CountIf with correct argument order
-- **Tier 3** — Complex CALCULATE+ALL, iterators (SUMX), time intelligence (TOTALYTD) → warnings with community links
-- **Tier 4** — VAR/RETURN → warnings
+DAX conversion tiers:
+- **Tier 1** — Direct mappings: SUM, AVERAGE, DIVIDE (nested-paren-aware), IF, SWITCH, date functions, text functions
+- **Tier 2** — Simple CALCULATE with filter → SumIf/CountIf with correct argument order
+- **Tier 3** — Complex patterns (CALCULATE+ALL, iterators, time intelligence, VAR/RETURN) → warnings with community links
 
 **Parameters:**
 - `model_json` (required) — Power BI model JSON content
 - `connection_id` — Sigma connection UUID
 - `database` — Override database name
 - `schema` — Override schema name
+
+### convert_tableau_to_sigma
+Converts Tableau workbooks (.twb) and data sources (.tds) to Sigma JSON. Parses data sources, joins/relationships, calculated fields with formula conversion, LOD FIXED expressions → child elements with groupings, parameters → controls.
+
+Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD → CountDistinct, DATEPART/DATETRUNC/DATEADD/DATEDIFF, LOD FIXED → child elements with groupings. LOD INCLUDE/EXCLUDE and table calculations generate warnings.
+
+**Parameters:**
+- `xml_content` (required) — Tableau XML content (.twb or .tds)
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+- `datasource_index` — Which data source to convert (0-indexed, default: 0)
 
 ### convert_sql_to_sigma_formula
 Converts SQL expressions to Sigma formula syntax:

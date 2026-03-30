@@ -82,17 +82,20 @@ Calculated columns: { "id": "shortId", "formula": "[Price] - [Cost]", "name": "P
 Metrics: { "id": "shortId", "formula": "Sum([Revenue])", "name": "Total Revenue" }
 Relationships: { "id": "shortId", "targetElementId": "...", "keys": [{ "sourceColumnId": "...", "targetColumnId": "..." }] }
 
-Linked column reference (accessing related dimension columns via relationships):
-  Formula syntax: [SOURCE_TABLE/FK_COLUMN - link/Column Display Name]
+Linked Column Reference (accessing related dimension columns via relationships):
+  [SOURCE_TABLE/FK_COLUMN - link/Column Display Name]
   Example: DateDiff("day", [ORDER_FACT/PROMO_KEY - link/Start Date], [ORDER_FACT/PROMO_KEY - link/End Date])
-  Example: Year([ORDER_FACT/ORDER_DATE_KEY - link/Full Date])
-  The FK_COLUMN is the PHYSICAL name (ALL_CAPS) of the foreign key on the source element.
-  ⚠ Known Sigma API limitation: linked column formulas may not round-trip correctly on PUT.
+  ⚠ Known API limitation: Sigma API may not round-trip linked columns on PUT. Users may need to re-add in UI.
 
-Sigma conditional aggregate syntax (argument order matters):
+Conditional Aggregate Syntax:
   CountIf(condition) — condition only, NO field argument
   SumIf(field, condition) — FIELD FIRST, condition second
   AvgIf/MaxIf/MinIf/CountDistinctIf — all FIELD FIRST
+  For booleans: always use [Column] = True, never bare [Column]
+
+Groupings (for LOD / different aggregation levels):
+  "groupings": [{ "id": "gId", "groupBy": ["colId1"], "calculations": ["calcId1"] }]
+  Array order = nesting hierarchy. Use child elements for LOD patterns.
 `.trim();
 
 /** Common column/element interfaces */

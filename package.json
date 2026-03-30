@@ -17,6 +17,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "express": "^4.21.0",
+    "fast-xml-parser": "^4.5.0",
     "js-yaml": "^4.1.0",
     "zod": "^3.25.0"
   },

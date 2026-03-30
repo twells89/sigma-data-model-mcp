@@ -1,17 +1,19 @@
 /**
- * Power BI Model JSON → Sigma Data Model JSON converter.
- * Handles .bim and DataModelSchema JSON (from .pbit extraction).
+ * Power BI Model (.bim / TOM JSON) → Sigma Data Model JSON converter.
  *
- * DAX conversion tiers:
- *   Tier 1: Direct mappings (SUM→Sum, DIVIDE→safe division, etc.)
- *   Tier 2: Simple CALCULATE(AGG, filter) → SumIf/CountIf
- *   Tier 3: Complex CALCULATE+ALL, iterators, time intelligence → warnings
- *   Tier 4: VAR/RETURN → warnings
+ * Handles:
+ * - Tables → Sigma elements with warehouse paths (extracted from M expressions)
+ * - DAX measures → Sigma metrics with formula conversion
+ * - DAX calculated columns → Sigma calculated columns
+ * - Relationships (fromTable=many → toTable=one) → Sigma relationships
+ * - Measures-only tables → measures moved to fact element
+ * - Display folders → Sigma folders
+ * - Cross-element column references → auto-rewrite with - link/ syntax
  */
 
 import {
   resetIds, sigmaShortId, sigmaDisplayName,
-  type SigmaElement, type ConversionResult,
+  type SigmaElement, type SigmaColumn, type ConversionResult,
 } from './sigma-ids.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
@@ -25,42 +27,39 @@ const PBI_COMMUNITY_LINKS = {
   pop: 'community.sigmacomputing.com/t/which-logic-to-use-for-period-over-period-comparisons/3206',
 };
 
-// ── DAX → Sigma formula converter ─────────────────────────────────────────────
+// ── DAX → Sigma Formula Converter ─────────────────────────────────────────────
 
 export function pbiDaxToSigma(
   dax: string,
-  warnings: string[],
+  warnings: string[] | null,
   measureName: string
 ): string | null {
   if (!dax || !dax.trim()) return null;
   let f = dax.trim();
 
-  // ── Tier 3/4: Structural patterns → warnings only ──────────────────────
-  // CALCULATE with ALL/ALLEXCEPT/REMOVEFILTERS → grouping pattern
+  // ── Tier 4: Structural patterns → warnings only ──
+  // CALCULATE with ALL/ALLEXCEPT/REMOVEFILTERS
   if (/\bCALCULATE\s*\(/i.test(f) && /\b(ALL|ALLEXCEPT|REMOVEFILTERS|ALLSELECTED)\s*\(/i.test(f)) {
-    warnings.push(`⚠ "${measureName}": uses CALCULATE with filter context manipulation. In Sigma, use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
+    if (warnings) warnings.push(`⚠ "${measureName}": uses CALCULATE with filter context manipulation. In Sigma, use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
     return null;
   }
   // Iterator functions
   if (/\b(SUMX|AVERAGEX|MINX|MAXX|COUNTAX|CONCATENATEX)\s*\(/i.test(f)) {
     const fn = f.match(/\b(SUMX|AVERAGEX|MINX|MAXX|COUNTAX|CONCATENATEX)/i)![1];
-    warnings.push(`⚠ "${measureName}": uses DAX iterator (${fn}). Use groupings or calculated columns. See: ${PBI_COMMUNITY_LINKS.groupings}`);
+    if (warnings) warnings.push(`⚠ "${measureName}": uses DAX iterator (${fn}). Use groupings or calculated columns. See: ${PBI_COMMUNITY_LINKS.groupings}`);
     return null;
   }
   // Time intelligence
   if (/\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DATEADD|DATESYTD|PARALLELPERIOD|PREVIOUSMONTH|PREVIOUSQUARTER|PREVIOUSYEAR)\s*\(/i.test(f)) {
     const fn = f.match(/\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DATEADD|DATESYTD|PARALLELPERIOD|PREVIOUSMONTH|PREVIOUSQUARTER|PREVIOUSYEAR)/i)![1];
-    warnings.push(`⚠ "${measureName}": uses DAX time intelligence (${fn}). Use Period over Period feature. See: ${PBI_COMMUNITY_LINKS.pop}`);
+    if (warnings) warnings.push(`⚠ "${measureName}": uses DAX time intelligence (${fn}). Use Period over Period feature. See: ${PBI_COMMUNITY_LINKS.pop}`);
     return null;
   }
-  // CALCULATE without ALL (simple filter) — try Tier 2 conversion
+  // CALCULATE without ALL (simple filter)
   if (/\bCALCULATE\s*\(/i.test(f)) {
     const simpleCalc = f.match(/\bCALCULATE\s*\(\s*(SUM|COUNT|COUNTROWS|AVERAGE|MIN|MAX|DISTINCTCOUNT)\s*\(\s*(\[[^\]]+\])\s*\)\s*,\s*(\[[^\]]+\])\s*=\s*"([^"]+)"\s*\)/i);
     if (simpleCalc) {
-      const aggMap: Record<string, string> = {
-        SUM: 'SumIf', AVERAGE: 'AvgIf', COUNT: 'CountIf',
-        MIN: 'MinIf', MAX: 'MaxIf', DISTINCTCOUNT: 'CountDistinctIf'
-      };
+      const aggMap: Record<string, string> = { 'SUM': 'SumIf', 'AVERAGE': 'AvgIf', 'COUNT': 'CountIf', 'MIN': 'MinIf', 'MAX': 'MaxIf', 'DISTINCTCOUNT': 'CountDistinctIf' };
       const sigmaFn = aggMap[simpleCalc[1].toUpperCase()] || 'SumIf';
       const col = simpleCalc[2];
       const dimCol = simpleCalc[3];
@@ -68,16 +67,16 @@ export function pbiDaxToSigma(
       if (sigmaFn === 'CountIf') return `CountIf(${dimCol} = "${val}")`;
       return `${sigmaFn}(${col}, ${dimCol} = "${val}")`;
     }
-    warnings.push(`⚠ "${measureName}": complex CALCULATE expression. Use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
+    if (warnings) warnings.push(`⚠ "${measureName}": complex CALCULATE expression. Use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
     return null;
   }
   // VAR/RETURN blocks
   if (/\bVAR\b/i.test(f) && /\bRETURN\b/i.test(f)) {
-    warnings.push(`⚠ "${measureName}": uses DAX VAR/RETURN. Break into multiple calculated columns. See: ${PBI_COMMUNITY_LINKS.biDiffs}`);
+    if (warnings) warnings.push(`⚠ "${measureName}": uses DAX VAR/RETURN. Break into multiple calculated columns. See: ${PBI_COMMUNITY_LINKS.biDiffs}`);
     return null;
   }
 
-  // ── Tier 1: Direct mappings ────────────────────────────────────────────
+  // ── Tier 1: Direct mappings ──
 
   // DIVIDE(a, b, alt) — nested-paren-aware parser
   const divideMatch = f.match(/\bDIVIDE\s*\(/i);
@@ -87,27 +86,21 @@ export function pbiDaxToSigma(
     let depth = 1, argStart = startIdx;
     for (let i = startIdx; i < f.length && depth > 0; i++) {
       if (f[i] === '(') depth++;
-      else if (f[i] === ')') {
-        depth--;
-        if (depth === 0) { divArgs.push(f.slice(argStart, i).trim()); break; }
-      }
-      else if (f[i] === ',' && depth === 1) {
-        divArgs.push(f.slice(argStart, i).trim());
-        argStart = i + 1;
-      }
+      else if (f[i] === ')') { depth--; if (depth === 0) { divArgs.push(f.slice(argStart, i).trim()); break; } }
+      else if (f[i] === ',' && depth === 1) { divArgs.push(f.slice(argStart, i).trim()); argStart = i + 1; }
     }
     if (divArgs.length >= 2) {
       const num = divArgs[0], den = divArgs[1], alt = divArgs[2];
+      let d2 = 1, endPos = startIdx;
+      for (; endPos < f.length && d2 > 0; endPos++) {
+        if (f[endPos] === '(') d2++;
+        else if (f[endPos] === ')') d2--;
+      }
       let replacement: string;
       if (alt && alt.trim()) {
         replacement = `If(${den} = 0, ${alt.trim()}, ${num} / ${den})`;
       } else {
         replacement = `${num} / ${den}`;
-      }
-      let d2 = 1, endPos = startIdx;
-      for (; endPos < f.length && d2 > 0; endPos++) {
-        if (f[endPos] === '(') d2++;
-        else if (f[endPos] === ')') d2--;
       }
       f = f.slice(0, divideMatch.index!) + replacement + f.slice(endPos);
     }
@@ -122,11 +115,9 @@ export function pbiDaxToSigma(
   f = f.replace(/\bMIN\s*\(/gi, 'Min(');
   f = f.replace(/\bMAX\s*\(/gi, 'Max(');
   f = f.replace(/\bCOUNT\s*\(/gi, 'Count(');
-
   // RELATED([Col]) → just [Col]
   f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
   f = f.replace(/\bRELATEDTABLE\s*\([^)]*\)/gi, '/* RELATEDTABLE - use relationship */');
-
   // Logical
   f = f.replace(/\bIF\s*\(/gi, 'If(');
   f = f.replace(/\bSWITCH\s*\(\s*TRUE\s*\(\s*\)\s*,/gi, 'If(');
@@ -139,7 +130,6 @@ export function pbiDaxToSigma(
   f = f.replace(/\bFALSE\s*\(\s*\)/gi, 'False');
   f = f.replace(/&&/g, ' and ');
   f = f.replace(/\|\|/g, ' or ');
-
   // Text
   f = f.replace(/\bCONCATENATE\s*\(/gi, 'Concat(');
   f = f.replace(/\bLEN\s*\(/gi, 'Len(');
@@ -151,14 +141,12 @@ export function pbiDaxToSigma(
   f = f.replace(/\bMID\s*\(/gi, 'Mid(');
   f = f.replace(/\bSUBSTITUTE\s*\(/gi, 'Replace(');
   f = f.replace(/\bFORMAT\s*\(/gi, 'DateFormat(');
-
   // Math
   f = f.replace(/\bABS\s*\(/gi, 'Abs(');
   f = f.replace(/\bROUND\s*\(/gi, 'Round(');
   f = f.replace(/\bINT\s*\(/gi, 'Int(');
   f = f.replace(/\bSQRT\s*\(/gi, 'Sqrt(');
   f = f.replace(/\bPOWER\s*\(/gi, 'Power(');
-
   // Date
   f = f.replace(/\bYEAR\s*\(/gi, 'Year(');
   f = f.replace(/\bMONTH\s*\(/gi, 'Month(');
@@ -171,7 +159,7 @@ export function pbiDaxToSigma(
   f = f.replace(/\bDATE\s*\(/gi, 'MakeDate(');
   f = f.replace(/\bDATEDIFF\s*\(/gi, 'DateDiff(');
 
-  // Clean up 'table'[column] → [column] (quoted DAX table qualifier)
+  // Clean up 'table'[column] → [column] (quoted table qualifier)
   f = f.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]');
   // Also handle unquoted: Table[Column] → [Column]
   f = f.replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
@@ -212,21 +200,21 @@ export function convertPowerBIToSigma(
   resetIds();
 
   const { connectionId = '', database = '', schema = '' } = options;
-  const dbOverride = (database || '').toUpperCase();
-  const schOverride = (schema || '').toUpperCase();
-
   const model = modelJson.model || modelJson;
+
   if (!model.tables || !Array.isArray(model.tables)) {
     throw new Error('Invalid model — no "tables" array found');
   }
 
+  const dbOverride = (database || '').toUpperCase();
+  const schOverride = (schema || '').toUpperCase();
   const warnings: string[] = [];
   const elements: SigmaElement[] = [];
   const tableIdMap: Record<string, string> = {};
   const tableColMap: Record<string, Record<string, string>> = {};
   const allPbiToSigmaNames: Record<string, string> = {};
 
-  // ── Detect "measures only" tables ─────────────────────────────────────────
+  // Detect "measures only" tables
   const measureOnlyTables = new Set<string>();
   for (const t of model.tables) {
     const dataCols = (t.columns || []).filter((c: any) => c.type !== 'rowNumber' && !c.isGenerated);
@@ -235,7 +223,7 @@ export function convertPowerBIToSigma(
     }
   }
 
-  // ── Convert tables to Sigma elements ──────────────────────────────────────
+  // ── Convert tables to Sigma elements ────────────────────────────────────────
   for (const t of model.tables) {
     if (measureOnlyTables.has(t.name)) continue;
     if (t.name.startsWith('LocalDateTable_') || t.name.startsWith('DateTableTemplate_')) continue;
@@ -245,7 +233,7 @@ export function convertPowerBIToSigma(
     tableIdMap[tableName] = elementId;
     tableColMap[tableName] = {};
 
-    // Determine source path from M expression
+    // Determine source path
     let path: string[] | null = null;
     const partition = (t.partitions || [])[0];
     if (partition?.source) {
@@ -257,17 +245,12 @@ export function convertPowerBIToSigma(
         );
       }
       if (!path && partition.source.query) {
-        const tblMatch = partition.source.query.match(
-          /FROM\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?\.\[?(\w+)\]?/i
-        );
+        const tblMatch = partition.source.query.match(/FROM\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?\.\[?(\w+)\]?/i);
         if (tblMatch) {
-          path = [tblMatch[1] || '', tblMatch[2], tblMatch[3]]
-            .filter(Boolean)
-            .map((s: string) => s.toUpperCase());
+          path = [tblMatch[1] || '', tblMatch[2], tblMatch[3]].filter(Boolean).map((s: string) => s.toUpperCase());
         }
       }
     }
-
     // Apply overrides
     if (path) {
       if (dbOverride && path.length >= 3) path[0] = dbOverride;
@@ -275,11 +258,11 @@ export function convertPowerBIToSigma(
       else if (schOverride && path.length === 2) path[0] = schOverride;
     } else {
       path = [dbOverride || 'DATABASE', schOverride || 'SCHEMA', tableName.toUpperCase()];
-      warnings.push(`⚠ Table "${tableName}": could not extract source path — using default. Update manually.`);
+      warnings.push(`⚠ Table "${tableName}": could not extract source path from M expression — using default.`);
     }
 
     // Columns
-    const columns: any[] = [];
+    const columns: SigmaColumn[] = [];
     const order: string[] = [];
     const pbiToSigmaName: Record<string, string> = {};
 
@@ -292,8 +275,8 @@ export function convertPowerBIToSigma(
       pbiToSigmaName[c.name] = displayName;
       allPbiToSigmaNames[c.name] = displayName;
 
-      const col: any = { id: colId, formula: `[${tableName.toUpperCase()}/${displayName}]` };
-      if (c.isHidden) col.hidden = true;
+      const col: SigmaColumn = { id: colId, formula: `[${tableName.toUpperCase()}/${displayName}]` };
+      if (c.isHidden) (col as any).hidden = true;
       if (c.description) col.description = c.description;
       columns.push(col);
       order.push(colId);
@@ -301,12 +284,12 @@ export function convertPowerBIToSigma(
 
     // Calculated columns
     for (const c of (t.columns || [])) {
-      if (c.type !== 'calculated' || !c.expression) continue;
+      if (c.type !== 'calculated') continue;
       let sigmaFormula = pbiDaxToSigma(c.expression, warnings, c.name);
       if (sigmaFormula) {
         // Rewrite PBI column names → Sigma display names
-        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (m: string, colName: string) => {
-          return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : m;
+        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) => {
+          return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
         });
         const colId = sigmaShortId();
         tableColMap[tableName][c.name] = colId;
@@ -314,7 +297,7 @@ export function convertPowerBIToSigma(
         columns.push({ id: colId, formula: sigmaFormula, name: c.name });
         order.push(colId);
         warnings.push(`ℹ "${c.name}" → calculated column. Review: ${sigmaFormula.slice(0, 60)}`);
-      } else if (!warnings.some((w: string) => w.includes(c.name))) {
+      } else if (!warnings.some(w => w.includes(c.name))) {
         warnings.push(`⛔ "${c.name}": DAX expression could not be converted. Add manually.`);
       }
     }
@@ -324,13 +307,13 @@ export function convertPowerBIToSigma(
     for (const m of (t.measures || [])) {
       let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
       if (sigmaFormula) {
-        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (m2: string, colName: string) => {
-          return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : m2;
+        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
+          return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
         });
         const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
         if (m.description) metric.description = m.description;
         metrics.push(metric);
-      } else if (!warnings.some((w: string) => w.includes(`"${m.name}"`))) {
+      } else if (!warnings.some(w => w.includes(`"${m.name}"`))) {
         warnings.push(`⛔ "${m.name}": DAX measure could not be auto-converted. Add manually.`);
       }
     }
@@ -351,21 +334,21 @@ export function convertPowerBIToSigma(
       if (folder.items.length > 0) folders.push(folder);
     }
 
-    const element: any = {
+    const element: SigmaElement = {
       id: elementId, kind: 'table',
       source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path },
       columns, order
     };
-    if (metrics.length > 0) element.metrics = metrics;
-    if (folders.length > 0) element.folders = folders;
-    if (t.isHidden) element.visibleAsSource = false;
+    if (metrics.length > 0) (element as any).metrics = metrics;
+    if (folders.length > 0) (element as any).folders = folders;
+    if (t.isHidden) (element as any).visibleAsSource = false;
     elements.push(element);
   }
 
   // ── Move measures from "measures only" tables to fact element ──────────────
   if (measureOnlyTables.size > 0) {
     const factEl = elements.reduce((best, e) =>
-      (e.columns?.length || 0) > (best.columns?.length || 0) ? e : best, elements[0]);
+      (e.columns || []).length > (best.columns || []).length ? e : best, elements[0]);
     if (factEl) {
       for (const tName of measureOnlyTables) {
         const t = model.tables.find((tb: any) => tb.name === tName);
@@ -373,13 +356,13 @@ export function convertPowerBIToSigma(
         for (const m of (t.measures || [])) {
           let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
           if (sigmaFormula) {
-            sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (m2: string, colName: string) => {
-              return allPbiToSigmaNames[colName] ? `[${allPbiToSigmaNames[colName]}]` : m2;
+            sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
+              return allPbiToSigmaNames[colName] ? `[${allPbiToSigmaNames[colName]}]` : `[${colName}]`;
             });
-            if (!factEl.metrics) factEl.metrics = [];
+            if (!(factEl as any).metrics) (factEl as any).metrics = [];
             const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
             if (m.description) metric.description = m.description;
-            factEl.metrics.push(metric);
+            (factEl as any).metrics.push(metric);
           }
         }
         warnings.push(`ℹ Measures table "${tName}" → measures moved to "${factEl.source?.path?.[factEl.source.path.length - 1]}"`);
@@ -387,20 +370,24 @@ export function convertPowerBIToSigma(
     }
   }
 
-  // ── Relationships ─────────────────────────────────────────────────────────
+  // ── Relationships ──────────────────────────────────────────────────────────
   for (const rel of (model.relationships || [])) {
-    const fromElId = tableIdMap[rel.fromTable];
-    const toElId = tableIdMap[rel.toTable];
+    const fromTable = rel.fromTable;
+    const toTable = rel.toTable;
+    const fromCol = rel.fromColumn;
+    const toCol = rel.toColumn;
+
+    const fromElId = tableIdMap[fromTable];
+    const toElId = tableIdMap[toTable];
     if (!fromElId || !toElId) continue;
 
-    const fromColId = tableColMap[rel.fromTable]?.[rel.fromColumn];
-    const toColId = tableColMap[rel.toTable]?.[rel.toColumn];
+    const fromColId = tableColMap[fromTable]?.[fromCol];
+    const toColId = tableColMap[toTable]?.[toCol];
     if (!fromColId || !toColId) {
-      warnings.push(`⚠ Relationship ${rel.fromTable}[${rel.fromColumn}] → ${rel.toTable}[${rel.toColumn}]: columns not found`);
+      warnings.push(`⚠ Relationship ${fromTable}[${fromCol}] → ${toTable}[${toCol}]: columns not found`);
       continue;
     }
 
-    // In PBI, fromTable is "many" side, toTable is "one" side
     const fromElement = elements.find(e => e.id === fromElId);
     if (fromElement) {
       if (!fromElement.relationships) fromElement.relationships = [];
@@ -408,7 +395,7 @@ export function convertPowerBIToSigma(
         id: sigmaShortId(),
         targetElementId: toElId,
         keys: [{ sourceColumnId: fromColId, targetColumnId: toColId }],
-        name: rel.toTable
+        name: toTable
       });
     }
   }
@@ -431,7 +418,7 @@ export function convertPowerBIToSigma(
     const relFkLookup: Record<string, string> = {};
     const elTbl = el.source?.path?.[el.source.path.length - 1] || 'UNKNOWN';
     for (const rel of (el.relationships || [])) {
-      const fkCol = (el.columns || []).find((c: any) => c.id === rel.keys[0]?.sourceColumnId);
+      const fkCol = (el.columns || []).find(c => c.id === rel.keys[0]?.sourceColumnId);
       if (fkCol) {
         const fkM = fkCol.formula.match(/\/([^\]]+)\]$/);
         if (fkM) relFkLookup[rel.targetElementId] = fkM[1].replace(/\s+/g, '_').toUpperCase();
@@ -452,13 +439,13 @@ export function convertPowerBIToSigma(
           fixedFormula = fixedFormula.replace(ref, `[${elTbl}/${relFkLookup[ge.elId]} - link/${ge.displayName}]`);
           wasFixed = true;
         } else {
-          warnings.push(`⚠ "${c.name}" references [${rn}] — no matching relationship found. Fix manually.`);
+          warnings.push(`⚠ "${c.name}" references [${rn}] — no matching relationship found. Fix manually in Sigma UI.`);
         }
       }
       if (wasFixed) {
         c.formula = fixedFormula;
         warnings.push(`✅ "${c.name}" → linked column: ${fixedFormula.slice(0, 100)}`);
-        warnings.push(`   ⚠ Note: Sigma API may not round-trip linked columns correctly yet.`);
+        warnings.push(`   ⚠ Note: Sigma API may not round-trip linked columns correctly yet. Re-add manually in UI if needed.`);
       }
     }
   }
@@ -472,20 +459,19 @@ export function convertPowerBIToSigma(
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements }]
   };
 
-  const totalCols = elements.reduce((s, e) => s + (e.columns?.length || 0), 0);
-  const totalMetrics = elements.reduce((s, e) => s + (e.metrics?.length || 0), 0);
-  const totalRels = elements.reduce((s, e) => s + (e.relationships?.length || 0), 0);
+  const ec = elements.length;
+  const mc = elements.reduce((n, e) => n + ((e as any).metrics?.length || 0), 0);
+  const rc = elements.reduce((n, e) => n + (e.relationships?.length || 0), 0);
 
   return {
     model: sigmaModel,
     warnings,
     stats: {
       tables: model.tables.length,
-      elements: elements.length,
-      columns: totalCols,
-      metrics: totalMetrics,
-      relationships: totalRels,
-      measureOnlyTables: measureOnlyTables.size
+      elements: ec,
+      columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
+      metrics: mc,
+      relationships: rc,
     }
   };
 }

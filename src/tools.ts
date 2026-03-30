@@ -10,6 +10,7 @@ import { convertDbtToSigma } from './dbt.js';
 import { convertSnowflakeSemanticView } from './snowflake.js';
 import { convertLookMLToSigma, parseLookML } from './lookml.js';
 import { convertPowerBIToSigma } from './powerbi.js';
+import { convertTableauToSigma } from './tableau.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 
@@ -137,6 +138,89 @@ Pass files as an array of {name, content} objects.`,
     }
   );
 
+  // ── convert_powerbi_to_sigma ───────────────────────────────────────────
+
+  server.tool(
+    'convert_powerbi_to_sigma',
+    `Convert a Power BI model (TOM JSON / .bim) to Sigma Computing data model JSON.
+
+Accepts the JSON content of a Power BI model — either a .bim file, a
+DataModelSchema from a .pbit, or TOM JSON from SSAS/Power BI Service.
+
+Handles tables, columns, DAX measures → Sigma metrics, DAX calculated
+columns, relationships, display folders, measures-only tables, and
+M expression path extraction for warehouse table sources.
+
+Complex DAX patterns (CALCULATE+ALL, iterators, time intelligence, VAR/RETURN)
+generate warnings with links to equivalent Sigma patterns.`,
+    {
+      model_json: z.string().describe('Power BI model JSON content (.bim file, DataModelSchema, or TOM JSON)'),
+      connection_id: z.string().optional().describe('Sigma connection UUID (from GET /v2/connections)'),
+      database: z.string().optional().describe('Override database name'),
+      schema: z.string().optional().describe('Override schema name'),
+    },
+    async ({ model_json, connection_id, database, schema }) => {
+      try {
+        const parsed = JSON.parse(model_json);
+        const result = convertPowerBIToSigma(parsed, {
+          connectionId: connection_id,
+          database,
+          schema,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_tableau_to_sigma ──────────────────────────────────────────
+
+  server.tool(
+    'convert_tableau_to_sigma',
+    `Convert a Tableau workbook or data source to Sigma Computing data model JSON.
+
+Accepts raw XML content from .twb (workbook), .tds (data source), or the
+extracted XML from .twbx/.tdsx packaged files.
+
+Parses data sources, joins/relationships, calculated fields with formula
+conversion, LOD FIXED expressions → child elements with groupings,
+parameters → controls, and cross-element column reference auto-fixing.
+
+Complex patterns (LOD INCLUDE/EXCLUDE, table calculations, RUNNING_SUM, RANK)
+generate warnings with community article links.`,
+    {
+      xml_content: z.string().describe('Tableau XML content (.twb or .tds file content)'),
+      connection_id: z.string().optional().describe('Sigma connection UUID'),
+      database: z.string().optional().describe('Override database name'),
+      schema: z.string().optional().describe('Override schema name'),
+      datasource_index: z.number().optional().describe('Which data source to convert (0-indexed, default: 0)'),
+    },
+    async ({ xml_content, connection_id, database, schema, datasource_index }) => {
+      try {
+        const result = convertTableauToSigma(xml_content, {
+          connectionId: connection_id,
+          database,
+          schema,
+          datasourceIndex: datasource_index ?? 0,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── convert_sql_to_sigma_formula ─────────────────────────────────────────
 
   server.tool(
@@ -194,49 +278,6 @@ DATETRUNC, DATEADD, DATEDIFF. LOD expressions → comment placeholder.`,
     }
   );
 
-  // ── convert_powerbi_to_sigma ────────────────────────────────────────────
-
-  server.tool(
-    'convert_powerbi_to_sigma',
-    `Convert a Power BI model to Sigma Computing data model JSON.
-
-Accepts Power BI Tabular Object Model JSON (.bim files or DataModelSchema
-extracted from .pbit). Handles tables, columns, DAX measures, calculated
-columns, relationships, display folders, and measures-only tables.
-
-DAX conversion handles: SUM, AVERAGE, COUNT, DISTINCTCOUNT, DIVIDE (with
-null-safe division), simple CALCULATE with filters, IF/SWITCH, ISBLANK,
-COALESCE, RELATED, date functions, text functions, and math functions.
-
-Complex DAX patterns (CALCULATE+ALL, iterators like SUMX, time intelligence
-like TOTALYTD, VAR/RETURN) generate warnings with Sigma community article
-links for manual conversion guidance.`,
-    {
-      model_json: z.string().describe('Power BI model JSON content (.bim file or DataModelSchema from .pbit)'),
-      connection_id: z.string().optional().describe('Sigma connection UUID (from GET /v2/connections)'),
-      database: z.string().optional().describe('Override database name (e.g. ANALYTICS)'),
-      schema: z.string().optional().describe('Override schema name (e.g. PUBLIC)'),
-    },
-    async ({ model_json, connection_id, database, schema }) => {
-      try {
-        const parsed = JSON.parse(model_json);
-        const result = convertPowerBIToSigma(parsed, {
-          connectionId: connection_id,
-          database,
-          schema,
-        });
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
-          }],
-        };
-      } catch (e: any) {
-        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
-      }
-    }
-  );
-
   // ── parse_lookml ─────────────────────────────────────────────────────────
 
   server.tool(
@@ -286,10 +327,7 @@ Shows element types, columns, metrics, relationships, controls, and more.`,
 4. Relationships go on the SOURCE (fact/many-side) element pointing to TARGET (dim/one-side)
 5. Element order matters: dimension elements BEFORE fact elements (that reference them)
 6. Duplicate source.path values cause "cycle in dependency order" errors — deduplicate
-7. Linked columns: [TABLE/FK_COL - link/Display Name] for related dimension columns
-   ⚠ API limitation: linked column formulas may not round-trip correctly on PUT
-8. Conditional aggregates: SumIf(field, condition), CountIf(condition) — argument order matters
-9. Sigma API endpoints:
+7. Sigma API endpoints:
    - POST /v2/dataModels/spec — create new
    - PUT /v2/dataModels/{id}/spec — update existing
    - GET /v2/dataModels/{id}/spec — get current spec
@@ -386,15 +424,40 @@ Steps:
           text: `I need to convert a Power BI model to a Sigma data model.
 
 Steps:
-1. Get the .bim file from your Power BI project, or extract DataModelSchema from a .pbit file
+1. Read the .bim file or DataModelSchema JSON from a .pbit
 2. Pass the JSON content to convert_powerbi_to_sigma
-3. Provide a Sigma connection_id if available (from GET /v2/connections)
+3. Include a Sigma connection ID if available
 4. Optionally override database/schema names
-5. Review warnings — complex DAX patterns (CALCULATE+ALL, SUMX, TOTALYTD, VAR/RETURN) need manual conversion
-6. Save to Sigma via POST /v2/dataModels/spec
+5. Review warnings — complex DAX patterns may need manual conversion
+6. Linked columns referencing related dimensions may need to be re-added in the Sigma UI
+7. Save to Sigma via POST /v2/dataModels/spec with folderId`,
+        },
+      }],
+    })
+  );
 
-Note: Linked column formulas (referencing related dimension columns) may need to be re-added
-manually in the Sigma UI due to a known API round-trip limitation.`,
+  server.prompt(
+    'convert_tableau_workbook',
+    'Guide for converting a Tableau workbook or data source to Sigma',
+    () => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `I need to convert a Tableau workbook or data source to a Sigma data model.
+
+Steps:
+1. Read the .twb or .tds XML file (or extract from .twbx/.tdsx ZIP)
+2. Pass the XML content to convert_tableau_to_sigma
+3. Provide a Sigma connection_id if available
+4. Optionally override database/schema names
+5. If the file has multiple data sources, specify datasource_index (0-indexed)
+6. Review warnings:
+   - LOD FIXED → auto-converted to child elements with groupings
+   - LOD INCLUDE/EXCLUDE → manual conversion needed
+   - Table calculations (RUNNING_SUM, RANK, WINDOW_*) → manual conversion
+   - Linked columns may need re-adding in Sigma UI
+7. Save to Sigma via POST /v2/dataModels/spec with folderId`,
         },
       }],
     })
