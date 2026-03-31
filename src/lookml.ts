@@ -44,7 +44,7 @@ export function parseLookML(text: string): LookMLParseResult {
   });
 
   const tokens: string[] = [];
-  const re = /;;;?|\$\{[^}]*\}|[{}]|"(?:[^"\\]|\\.)*"|[^\s{}:;,"]+|:/g;
+  const re = /;;;?|\$\{[^}]*\}|[\[\]{}]|"(?:[^"\\]|\\.)*"|[^\s\[\]{}:;,"]+|:/g;
   let m;
   while ((m = re.exec(text)) !== null) tokens.push(m[0]);
 
@@ -110,6 +110,28 @@ export function parseLookML(text: string): LookMLParseResult {
 
       } else if (a0 === ';;' || a0 === ';;;') {
         consume(); obj[key] = '';
+
+      } else if (a0 === '[') {
+        // Bracket array: [key: "val", ...] or ["val1", "val2"]
+        consume(); // eat '['
+        const items: any[] = [];
+        while (pos < tokens.length && peek() !== ']') {
+          const t1 = consume();
+          if (t1 === undefined) break;
+          if (peek() === ':') {
+            consume(); // eat ':'
+            let val = consume() || '';
+            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+            items.push({ field: t1.replace(/"/g, ''), value: val });
+          } else {
+            let val = t1;
+            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+            items.push(val);
+          }
+        }
+        if (peek() === ']') consume();
+        if (peek() === ';;' || peek() === ';;;') consume();
+        obj[key] = items;
 
       } else {
         let val = consume() || '';
@@ -241,7 +263,9 @@ function lookConvertView(
         }
         const calcId = sigmaShortId();
         colIdMap[colName] = calcId;
-        element.columns.push({ id: calcId, formula: `[${colLabel(physicalCol)}] = ${val}`, name: d.label || sigmaDisplayName(d._name) });
+        const baseName = d.label || sigmaDisplayName(d._name);
+        const displayName = baseName + ' (T/F)';
+        element.columns.push({ id: calcId, formula: `[${colLabel(physicalCol)}] = ${val}`, name: displayName });
         element.order.push(calcId);
         continue;
       }
@@ -263,6 +287,13 @@ function lookConvertView(
 
     const sqlCol = lookStripSql(d.sql) || colName;
     const physicalCol = sqlCol.split('.').pop()!.toUpperCase();
+
+    // Dedup: if physical column already exists, just map the dimension name
+    if (colIdMap[physicalCol]) {
+      colIdMap[colName] = colIdMap[physicalCol];
+      continue;
+    }
+
     const colId = sigmaShortId();
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
@@ -290,7 +321,7 @@ function lookConvertView(
 
   // Measures → metrics
   const measures = view.measure ? (Array.isArray(view.measure) ? view.measure : [view.measure]) : [];
-  const UNSUPPORTED_MEASURE_TYPES = new Set(['running_total', 'percent_of_total']);
+  const CALC_COL_MEASURE_TYPES = new Set(['running_total', 'percent_of_total']);
 
   measures.forEach((ms: any) => {
     if (!ms._name) return;
@@ -300,13 +331,69 @@ function lookConvertView(
     const msType = (ms.type || 'count').toLowerCase();
     const msLabel = ms.label || sigmaDisplayName(msName);
 
-    if (UNSUPPORTED_MEASURE_TYPES.has(msType)) {
-      warnings.push(`⚠ Measure "${ms._name}" (${msType}) cannot be converted.`);
+    // running_total / percent_of_total → calculated columns
+    if (CALC_COL_MEASURE_TYPES.has(msType)) {
+      if (!colIdMap[physicalCol]) {
+        const colId = sigmaShortId();
+        colIdMap[physicalCol] = colId;
+        element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
+        element.order.push(colId);
+      }
+      const dn = colLabel(physicalCol);
+      const calcId = sigmaShortId();
+      if (msType === 'running_total') {
+        element.columns.push({ id: calcId, formula: `CumulativeSum([${dn}])`, name: msLabel });
+        warnings.push(`✅ "${ms._name}" (running_total) → CumulativeSum([${dn}])`);
+      } else {
+        element.columns.push({ id: calcId, formula: `Sum([${dn}]) / GrandTotal(Sum([${dn}]))`, name: msLabel });
+        warnings.push(`✅ "${ms._name}" (percent_of_total) → Sum/GrandTotal`);
+      }
+      element.order.push(calcId);
       return;
     }
 
-    if (ms.filters && ms.filters.length) {
-      warnings.push(`⚠ Measure "${ms._name}": filters: block not converted.`);
+    // Filtered measures → conditional aggregates
+    if (ms.filters && (Array.isArray(ms.filters) ? ms.filters.length : false)) {
+      const filters = Array.isArray(ms.filters) ? ms.filters : [];
+      const conditions: string[] = [];
+      for (const f of filters) {
+        if (typeof f !== 'object' || !f) continue;
+        const fField = f.field || f._name;
+        const fVal = f.value;
+        if (fField && fVal) {
+          const cleanField = fField.replace(/^.*\./, '').toUpperCase();
+          const dn = colLabel(cleanField);
+          if (!colIdMap[cleanField]) {
+            const colId = sigmaShortId();
+            colIdMap[cleanField] = colId;
+            element.columns.push({ id: colId, formula: `[${tableName}/${dn}]` });
+            element.order.push(colId);
+          }
+          if (fVal === 'yes' || fVal === 'true') conditions.push(`[${dn}] = True`);
+          else if (fVal === 'no' || fVal === 'false') conditions.push(`[${dn}] = False`);
+          else conditions.push(`[${dn}] = "${fVal}"`);
+        }
+      }
+      if (conditions.length > 0) {
+        const condition = conditions.length === 1 ? conditions[0] : conditions.map(c => `(${c})`).join(' And ');
+        if (!colIdMap[physicalCol]) {
+          const colId = sigmaShortId();
+          colIdMap[physicalCol] = colId;
+          element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
+          element.order.push(colId);
+        }
+        const dn = colLabel(physicalCol);
+        const condAggMap: Record<string, string> = {
+          sum: `SumIf([${dn}], ${condition})`, count: `CountIf(${condition})`,
+          count_distinct: `CountDistinctIf([${dn}], ${condition})`, average: `AvgIf([${dn}], ${condition})`,
+          max: `MaxIf([${dn}], ${condition})`, min: `MinIf([${dn}], ${condition})`,
+        };
+        const formula = condAggMap[msType] || `SumIf([${dn}], ${condition})`;
+        element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel });
+        warnings.push(`✅ Filtered "${ms._name}" → ${formula.slice(0, 60)}`);
+        return;
+      }
+      warnings.push(`⚠ "${ms._name}": filters not parsed — metric created without filter`);
     }
 
     if (msType === 'count') {

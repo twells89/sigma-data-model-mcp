@@ -210,8 +210,43 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     if (warnings) warnings.push('⚠ LOD expression not converted: ' + f.slice(0, 60));
     return '/* LOD: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
-  // Table calcs
+  // Table calcs — convert common patterns to Sigma window functions
   if (/^(WINDOW_|RUNNING_|FIRST\(|LAST\(|INDEX\(|RANK\b|RANK_|LOOKUP\(|PREVIOUS_VALUE\()/i.test(f)) {
+    // RUNNING_SUM(SUM([x])) or RUNNING_SUM([x]) → CumulativeSum([x])
+    let tcMatch = f.match(/^RUNNING_SUM\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'CumulativeSum(' + tcMatch[1] + ')';
+
+    // RUNNING_AVG(SUM([x])) → CumulativeAvg([x])
+    tcMatch = f.match(/^RUNNING_AVG\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'CumulativeAvg(' + tcMatch[1] + ')';
+
+    // RUNNING_MIN/MAX
+    tcMatch = f.match(/^RUNNING_(MIN|MAX)\s*\(\s*(?:(?:SUM|MIN|MAX)\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'Cumulative' + tcMatch[1].charAt(0) + tcMatch[1].slice(1).toLowerCase() + '(' + tcMatch[2] + ')';
+
+    // RANK(SUM([x])) or RANK([x]) → Rank([x])
+    tcMatch = f.match(/^RANK\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'Rank(' + tcMatch[1] + ')';
+
+    // RANK_DENSE → DenseRank
+    tcMatch = f.match(/^RANK_DENSE\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'DenseRank(' + tcMatch[1] + ')';
+
+    // RANK_UNIQUE → Rank
+    tcMatch = f.match(/^RANK_UNIQUE\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
+    if (tcMatch) return 'Rank(' + tcMatch[1] + ')';
+
+    // INDEX() → RowNumber()
+    if (/^INDEX\s*\(\s*\)/i.test(f)) return 'RowNumber()';
+
+    // WINDOW_SUM(SUM([x])) → GrandTotal(Sum([x]))
+    tcMatch = f.match(/^WINDOW_SUM\s*\(\s*(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\[[^\]]+\])\s*\)\s*\)/i);
+    if (tcMatch) {
+      const aggMap: Record<string, string> = { SUM: 'Sum', COUNT: 'Count', AVG: 'Avg', MIN: 'Min', MAX: 'Max' };
+      return 'GrandTotal(' + (aggMap[tcMatch[1].toUpperCase()] || tcMatch[1]) + '(' + tcMatch[2] + '))';
+    }
+
+    // Couldn't parse — fall back to comment
     if (warnings) warnings.push('⚠ Table calculation not converted: ' + f.slice(0, 60));
     return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
