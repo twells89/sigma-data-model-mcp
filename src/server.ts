@@ -54,14 +54,13 @@ app.get('/', (_req: Request, res: Response) => {
 // This is ideal because all our tools are pure functions: YAML in → JSON out.
 // No user state, no auth, no side effects.
 
-app.post('/mcp', async (req: Request, res: Response) => {
+async function handleMcp(req: Request, res: Response): Promise<void> {
   try {
     const server = createSigmaServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless — no sessions
     });
 
-    // Clean up when the request closes
     res.on('close', () => {
       transport.close();
       server.close();
@@ -79,25 +78,11 @@ app.post('/mcp', async (req: Request, res: Response) => {
       });
     }
   }
-});
+}
 
-// GET /mcp — not used in stateless mode
-app.get('/mcp', (_req: Request, res: Response) => {
-  res.writeHead(405).end(JSON.stringify({
-    jsonrpc: '2.0',
-    error: { code: -32000, message: 'Method not allowed — use POST for stateless mode' },
-    id: null,
-  }));
-});
-
-// DELETE /mcp — not used in stateless mode
-app.delete('/mcp', (_req: Request, res: Response) => {
-  res.writeHead(405).end(JSON.stringify({
-    jsonrpc: '2.0',
-    error: { code: -32000, message: 'Session termination not applicable in stateless mode' },
-    id: null,
-  }));
-});
+app.post('/mcp', handleMcp);
+app.get('/mcp', handleMcp);
+app.delete('/mcp', handleMcp);
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
