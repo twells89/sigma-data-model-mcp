@@ -240,6 +240,8 @@ function lookConvertView(
   const colIdMap: Record<string, string> = {};
   const isCustomSql = (tableName === 'Custom SQL');
   const colLabel = (physCol: string) => isCustomSql ? physCol : sigmaDisplayName(physCol);
+  // Warehouse columns get deterministic inode- IDs; calculated/SQL columns get short random IDs
+  const makeColId = (physCol: string) => isCustomSql ? sigmaShortId() : sigmaInodeId(physCol);
 
   // Dimensions
   const dims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
@@ -256,7 +258,7 @@ function lookConvertView(
         const val = boolMatch[2];
         let physColId = colIdMap[physicalCol];
         if (!physColId) {
-          physColId = sigmaShortId();
+          physColId = makeColId(physicalCol);
           colIdMap[physicalCol] = physColId;
           element.columns.push({ id: physColId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
           element.order.push(physColId);
@@ -299,7 +301,7 @@ function lookConvertView(
       continue;
     }
 
-    const colId = sigmaShortId();
+    const colId = makeColId(physicalCol);
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
     element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
@@ -317,7 +319,7 @@ function lookConvertView(
     }
     const sqlCol = lookStripSql(dg.sql) || colName;
     const physicalCol = sqlCol.split('.').pop()!.toUpperCase();
-    const colId = sigmaShortId();
+    const colId = makeColId(physicalCol);
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
     element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
@@ -339,7 +341,7 @@ function lookConvertView(
     // running_total / percent_of_total → calculated columns
     if (CALC_COL_MEASURE_TYPES.has(msType)) {
       if (!colIdMap[physicalCol]) {
-        const colId = sigmaShortId();
+        const colId = makeColId(physicalCol);
         colIdMap[physicalCol] = colId;
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
         element.order.push(colId);
@@ -369,7 +371,7 @@ function lookConvertView(
           const cleanField = fField.replace(/^.*\./, '').toUpperCase();
           const dn = colLabel(cleanField);
           if (!colIdMap[cleanField]) {
-            const colId = sigmaShortId();
+            const colId = makeColId(cleanField);
             colIdMap[cleanField] = colId;
             element.columns.push({ id: colId, formula: `[${tableName}/${dn}]` });
             element.order.push(colId);
@@ -382,7 +384,7 @@ function lookConvertView(
       if (conditions.length > 0) {
         const condition = conditions.length === 1 ? conditions[0] : conditions.map(c => `(${c})`).join(' And ');
         if (!colIdMap[physicalCol]) {
-          const colId = sigmaShortId();
+          const colId = makeColId(physicalCol);
           colIdMap[physicalCol] = colId;
           element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
           element.order.push(colId);
@@ -406,7 +408,7 @@ function lookConvertView(
     } else if (msType === 'count_distinct') {
       const cdCol = physicalCol && physicalCol !== msName ? physicalCol : msName;
       if (!colIdMap[cdCol]) {
-        const colId = sigmaShortId();
+        const colId = makeColId(cdCol);
         colIdMap[cdCol] = colId;
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(cdCol)}]` });
         element.order.push(colId);
@@ -414,7 +416,7 @@ function lookConvertView(
       element.metrics!.push({ id: sigmaShortId(), formula: `CountDistinct([${colLabel(cdCol)}])`, name: msLabel });
     } else {
       if (!colIdMap[physicalCol]) {
-        const colId = sigmaShortId();
+        const colId = makeColId(physicalCol);
         colIdMap[physicalCol] = colId;
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
         element.order.push(colId);

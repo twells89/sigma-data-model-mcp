@@ -11,6 +11,7 @@ import { convertSnowflakeSemanticView } from './snowflake.js';
 import { convertLookMLToSigma, parseLookML } from './lookml.js';
 import { convertPowerBIToSigma } from './powerbi.js';
 import { convertTableauToSigma } from './tableau.js';
+import { convertOmniToSigma } from './omni.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 
@@ -208,6 +209,54 @@ generate warnings with community article links.`,
           database,
           schema,
           datasourceIndex: datasource_index ?? 0,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_omni_to_sigma ────────────────────────────────────────────────
+
+  server.tool(
+    'convert_omni_to_sigma',
+    `Convert Omni Analytics model files to Sigma Computing data model JSON.
+
+Accepts .view.yaml files (dimensions + measures) and .model.yaml files
+(explores + joins). Pass multiple files together — views and explores are
+merged and resolved automatically.
+
+Converts:
+  - Views → Sigma elements with warehouse table paths
+  - Dimensions → Sigma columns; \${TABLE}.col and \${field} refs translated
+  - type: time dimensions → expanded per timeframe using DateTrunc()
+  - Measures → Sigma metrics (sum, avg, min, max, count_distinct, count)
+  - Explores/joins (sql_on + foreign_key) → Sigma relationships with FK/PK keys
+  - CASE WHEN, IN (...), SQL functions → Sigma formula syntax
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      files: z.array(z.object({
+        name:    z.string().describe('Filename (e.g. "orders.view.yaml" or "retail_analytics.model.yaml")'),
+        content: z.string().describe('Full file content'),
+      })).describe('Array of Omni YAML files (.view.yaml and/or .model.yaml)'),
+      connection_id: z.string().optional().describe('Sigma connection UUID (from GET /v2/connections)'),
+      database: z.string().optional().describe('Override database name (used when sql_table_name is incomplete, e.g. "ANALYTICS")'),
+      schema:   z.string().optional().describe('Override schema name (e.g. "PUBLIC")'),
+    },
+    async ({ files, connection_id, database, schema }) => {
+      try {
+        const result = convertOmniToSigma(files, {
+          connectionId: connection_id,
+          database,
+          schema,
         });
         return {
           content: [{
@@ -458,6 +507,38 @@ Steps:
    - Table calculations (RUNNING_SUM, RANK, WINDOW_*) → manual conversion
    - Linked columns may need re-adding in Sigma UI
 7. Save to Sigma via POST /v2/dataModels/spec with folderId`,
+        },
+      }],
+    })
+  );
+
+  server.prompt(
+    'convert_omni_model',
+    'Guide for converting an Omni Analytics model to Sigma',
+    () => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `I need to convert an Omni Analytics model to a Sigma data model.
+
+Steps:
+1. Read all .view.yaml files (one per view — dimensions & measures)
+   and the .model.yaml file (explores & joins)
+2. Pass them all to convert_omni_to_sigma as [{name, content}, ...]
+   — views and explores are merged automatically
+3. Provide a Sigma connection_id if available
+4. If sql_table_name values are just table names (no db/schema), use the
+   database and schema override parameters to complete the paths
+5. Review warnings:
+   - derived_table views need their source paths filled in manually
+   - Complex SQL expressions that couldn't be auto-translated
+   - Joins where FK/PK columns couldn't be resolved
+6. Save to Sigma via POST /v2/dataModels/spec with folderId
+
+How to get Omni files:
+- Git sync: connect your Omni model to GitHub (Omni Settings → Git Sync)
+- Omni IDE: copy YAML directly from the model editor`,
         },
       }],
     })

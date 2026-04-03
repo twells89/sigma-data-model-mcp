@@ -12,7 +12,7 @@
  */
 
 import {
-  resetIds, sigmaShortId, sigmaDisplayName,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   type SigmaElement, type SigmaColumn, type ConversionResult,
 } from './sigma-ids.js';
 
@@ -171,17 +171,44 @@ export function pbiDaxToSigma(
 
 function pbiExtractPathFromM(mExpr: string): string[] | null {
   if (!mExpr) return null;
-  const dbMatch = mExpr.match(/Sql\.Database\s*\(\s*"[^"]*"\s*,\s*"([^"]+)"/i)
-    || mExpr.match(/Snowflake\.Databases\s*\(\s*"[^"]*"\s*,\s*"([^"]+)"/i);
+
+  // Pattern 1: explicit SQL Server / Azure connector with db arg
+  // Sql.Database("server", "DATABASE")
+  const sqlDbMatch = mExpr.match(/Sql\.Database\s*\(\s*"[^"]*"\s*,\s*"([^"]+)"/i);
   const schemaMatch = mExpr.match(/\{[^}]*\[Schema\s*=\s*"([^"]+)"\]/i)
-    || mExpr.match(/\{[^}]*\[Name\s*=\s*"([^"]+)"\s*,\s*\[Kind\s*=\s*"Schema"\]/i);
-  const tableMatch = mExpr.match(/\{[^}]*\[Name\s*=\s*"([^"]+)"\s*,\s*\[Kind\s*=\s*"Table"\]/i)
-    || mExpr.match(/\{[^}]*\[Name\s*=\s*"([^"]+)"\]\s*\}\s*\[\s*Data\s*\]/i);
-  const db = dbMatch ? dbMatch[1] : null;
-  const schema = schemaMatch ? schemaMatch[1] : null;
-  const table = tableMatch ? tableMatch[1] : null;
-  if (db && schema && table) return [db.toUpperCase(), schema.toUpperCase(), table.toUpperCase()];
-  if (schema && table) return [schema.toUpperCase(), table.toUpperCase()];
+    || mExpr.match(/\{[^}]*\[Name\s*=\s*"([^"]+)"\s*,\s*Kind\s*=\s*"Schema"\]/i);
+  const tableKindMatch = mExpr.match(/\{[^}]*\[Name\s*=\s*"([^"]+)"\s*,\s*Kind\s*=\s*"Table"\]/i);
+
+  if (sqlDbMatch && tableKindMatch) {
+    const db = sqlDbMatch[1];
+    const table = tableKindMatch[1];
+    const schema = schemaMatch ? schemaMatch[1] : null;
+    if (schema) return [db.toUpperCase(), schema.toUpperCase(), table.toUpperCase()];
+    return [db.toUpperCase(), table.toUpperCase()];
+  }
+
+  // Pattern 2: navigation by {[Name="X"]}[Data] — common for Snowflake, Databricks, BigQuery
+  // let DB     = Source{[Name="ANALYTICS"]}[Data]
+  // let Schema = DB{[Name="PROD"]}[Data]
+  // let Table  = Schema{[Name="SALES"]}[Data]
+  const nameNavMatches = [...mExpr.matchAll(/\{\s*\[Name\s*=\s*"([^"]+)"\s*\]\s*\}\s*\[\s*Data\s*\]/gi)];
+  if (nameNavMatches.length >= 3) {
+    return [
+      nameNavMatches[0][1].toUpperCase(),
+      nameNavMatches[1][1].toUpperCase(),
+      nameNavMatches[2][1].toUpperCase(),
+    ];
+  }
+  if (nameNavMatches.length === 2) {
+    return [nameNavMatches[0][1].toUpperCase(), nameNavMatches[1][1].toUpperCase()];
+  }
+
+  // Pattern 3: SQL query fallback
+  const tblMatch = mExpr.match(/FROM\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?\.\[?(\w+)\]?/i);
+  if (tblMatch) {
+    return [tblMatch[1] || '', tblMatch[2], tblMatch[3]].filter(Boolean).map((s: string) => s.toUpperCase());
+  }
+
   return null;
 }
 
@@ -270,7 +297,7 @@ export function convertPowerBIToSigma(
       if (c.type === 'rowNumber' || c.isGenerated) continue;
       const sourceCol = c.sourceColumn || c.name;
       const displayName = sigmaDisplayName(sourceCol);
-      const colId = sigmaShortId();
+      const colId = sigmaInodeId(sourceCol.toUpperCase().replace(/\s+/g, '_'));
       tableColMap[tableName][c.name] = colId;
       pbiToSigmaName[c.name] = displayName;
       allPbiToSigmaNames[c.name] = displayName;

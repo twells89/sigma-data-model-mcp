@@ -21,8 +21,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createSigmaServer } from './tools.js';
 
 const app = express();
-// Increase body size limit to 10 MB — Tableau .tds/.twb files can exceed the 100 KB default
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 
 // ── Health check (for Render, load balancers, uptime monitors) ───────────────
 
@@ -30,7 +29,7 @@ app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'sigma-data-model-mcp',
     version: '1.0.0',
-    description: 'MCP server for converting dbt, Snowflake, LookML, Tableau, and Power BI data models to Sigma Computing format',
+    description: 'MCP server for converting dbt, Snowflake, LookML, Tableau, Power BI, and Omni Analytics data models to Sigma Computing format',
     endpoint: '/mcp',
     transport: 'streamable-http',
     tools: [
@@ -39,6 +38,7 @@ app.get('/', (_req: Request, res: Response) => {
       'convert_lookml_to_sigma',
       'convert_powerbi_to_sigma',
       'convert_tableau_to_sigma',
+      'convert_omni_to_sigma',
       'convert_sql_to_sigma_formula',
       'convert_tableau_formula_to_sigma',
       'parse_lookml',
@@ -48,19 +48,6 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
-// ── Request logging (helps diagnose MCP tool call issues) ────────────────────
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const bodySize = req.headers['content-length'] ? `${req.headers['content-length']}b` : '?';
-  res.on('finish', () => {
-    const ms = Date.now() - start;
-    // Log method, path, request body size, response status, response time
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} | body=${bodySize} → ${res.statusCode} (${ms}ms)`);
-  });
-  next();
-});
-
 // ── MCP Streamable HTTP endpoint (stateless mode) ────────────────────────────
 //
 // Stateless = each POST creates a fresh McpServer + transport. No sessions.
@@ -68,11 +55,6 @@ app.use((req, res, next) => {
 // No user state, no auth, no side effects.
 
 app.post('/mcp', async (req: Request, res: Response) => {
-  // Log the JSON-RPC method being called so we can trace tool invocations
-  const rpcMethod = req.body?.method ?? '(unknown)';
-  const toolName = req.body?.params?.name ?? (Array.isArray(req.body) ? `batch[${req.body.length}]` : '');
-  console.log(`[MCP] method=${rpcMethod}${toolName ? ` tool=${toolName}` : ''} bodyBytes=${JSON.stringify(req.body ?? '').length}`);
-
   try {
     const server = createSigmaServer();
     const transport = new StreamableHTTPServerTransport({
@@ -99,17 +81,13 @@ app.post('/mcp', async (req: Request, res: Response) => {
   }
 });
 
-// GET /mcp — return 200 for discovery/health checks (Sigma pings this before using the tool)
+// GET /mcp — not used in stateless mode
 app.get('/mcp', (_req: Request, res: Response) => {
-  res.status(200).json({
+  res.writeHead(405).end(JSON.stringify({
     jsonrpc: '2.0',
-    result: {
-      protocolVersion: '2024-11-05',
-      serverInfo: { name: 'sigma-data-model-mcp', version: '1.0.0' },
-      capabilities: { tools: {} }
-    },
+    error: { code: -32000, message: 'Method not allowed — use POST for stateless mode' },
     id: null,
-  });
+  }));
 });
 
 // DELETE /mcp — not used in stateless mode

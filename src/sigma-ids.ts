@@ -34,9 +34,13 @@ export function sigmaInodeId(identifier: string): string {
   return `inode-${sigmaShortId(22)}/${identifier.toUpperCase()}`;
 }
 
-/** SNAKE_CASE → "Title Case" display name */
+/** SNAKE_CASE or camelCase → "Title Case" display name */
 export function sigmaDisplayName(s: string): string {
-  const words = (s || '').toLowerCase().split('_');
+  // Insert underscores at camelCase boundaries so OrderDate → Order_Date
+  const normalized = (s || '')
+    .replace(/([a-z])([A-Z])/g, '$1_$2')       // camelCase → camel_Case
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2'); // HTMLParser → HTML_Parser
+  const words = normalized.toLowerCase().split('_').filter(Boolean);
   return words.map((w, i) =>
     (i === 0 || !SIGMA_LOWERCASE_WORDS.has(w))
       ? w.charAt(0).toUpperCase() + w.slice(1)
