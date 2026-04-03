@@ -123,6 +123,7 @@ export interface SigmaRelationship {
   targetElementId: string;
   keys: SigmaRelationshipKey[];
   name: string;
+  relationshipType?: string;
 }
 
 export interface SigmaElement {
