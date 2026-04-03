@@ -236,6 +236,8 @@ export function convertOmniToSigma(
         formula = `CountIf(IsNotNull([${sigmaDisplayName(pkKey)}]))`;
       } else if (measure.sql) {
         const rawExpr = omniTranslateFormula(measure.sql, sourceTable) ?? measure.sql;
+        // Metrics reference columns by display name only — strip [TABLE/col] → [col]
+        const metricExpr = rawExpr.replace(/\[([^/\]]+)\/([^\]]+)\]/g, '[$2]');
         const aggWrap: Record<string, (e: string) => string> = {
           sum:            (e) => `Sum(${e})`,
           average:        (e) => `Avg(${e})`,
@@ -246,7 +248,7 @@ export function convertOmniToSigma(
           median:         (e) => `Median(${e})`,
           sum_distinct:   (e) => `Sum(${e})`,
         };
-        formula = (aggWrap[type] ?? ((e: string) => `Sum(${e})`))(rawExpr);
+        formula = (aggWrap[type] ?? ((e: string) => `Sum(${e})`))(metricExpr);
       } else {
         formula = sigmaAggFormula(type, name);
       }
@@ -381,8 +383,12 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
   let expr = sql.trim();
 
   // 1. Field reference substitution
+  // For Custom SQL elements Sigma uses the raw SQL alias (uppercase), not a display name
+  const isCustomSql = tableName === 'Custom SQL';
   expr = expr.replace(/\$\{TABLE\}\.(\w+)/g, (_, col) =>
-    `[${tableName}/${sigmaDisplayName(col)}]`
+    isCustomSql
+      ? `[Custom SQL/${col.toUpperCase()}]`
+      : `[${tableName}/${sigmaDisplayName(col)}]`
   );
   expr = expr.replace(/\$\{(\w+)\.(\w+)\}/g, (_, _v, field) =>
     `[${sigmaDisplayName(field)}]`

@@ -388,6 +388,19 @@ export function convertTableauToSigma(
           displayNameMap[displayName.toUpperCase()] = { colId, el: factEl };
           displayNameMap[physCol] = { colId, el: factEl };
           globalColMap[displayName.toUpperCase()] = { elId: factEl.id, displayName };
+
+          // Auto-generate Sum() metric for numeric measure columns
+          const role = attr(col, 'role') || '';
+          const dataType = attr(col, 'datatype') || '';
+          const isNumeric = dataType === 'real' || dataType === 'integer' || dataType === 'decimal';
+          if (role === 'measure' && isNumeric) {
+            if (!(factEl as any).metrics) (factEl as any).metrics = [];
+            (factEl as any).metrics.push({
+              id: sigmaShortId(),
+              formula: `Sum([${displayName}])`,
+              name: displayName,
+            });
+          }
         }
         continue;
       }
