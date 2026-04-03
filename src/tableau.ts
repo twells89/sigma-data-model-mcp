@@ -232,6 +232,10 @@ export function convertTableauToSigma(
   const elements: SigmaElement[] = [];
   const connId = connectionId || '<CONNECTION_ID>';
 
+  // Auto-detect database/schema from connection when not overridden by caller
+  const effectiveDb = dbOverride || (ds.dbname || '').toUpperCase();
+  const effectiveSch = schOverride || (ds.schema || '').toUpperCase();
+
   // ── Build elements from relation structure ──────────────────────────────
   const rootRelation = ds.connection ? asArray(ds.connection.relation || [])[0] : null;
 
@@ -239,7 +243,7 @@ export function convertTableauToSigma(
     const relType = attr(rootRelation, 'type') || 'table';
 
     if (relType === 'table') {
-      const path = extractPath(rootRelation, dbOverride, schOverride);
+      const path = extractPath(rootRelation, effectiveDb, effectiveSch);
       const tableName = path[path.length - 1] || '';
       const columns: any[] = [], order: string[] = [];
       for (const col of asArray(rootRelation?.columns?.column || [])) {
@@ -263,7 +267,7 @@ export function convertTableauToSigma(
         const elementMap: Record<string, { element: any; colIdMap: Record<string, string> }> = {};
 
         for (const t of tables) {
-          const path = extractPath(t.rel, dbOverride, schOverride);
+          const path = extractPath(t.rel, effectiveDb, effectiveSch);
           const tableName = path[path.length - 1] || attr(t.rel, 'name') || '';
           if (elementMap[tableName]) continue;
 
@@ -293,7 +297,7 @@ export function convertTableauToSigma(
         }
 
         // Wire relationships
-        const primaryTableName = extractPath(tables[0].rel, dbOverride, schOverride).pop() || '';
+        const primaryTableName = extractPath(tables[0].rel, effectiveDb, effectiveSch).pop() || '';
         const primaryEntry = elementMap[primaryTableName];
 
         for (let i = 1; i < tables.length; i++) {
@@ -301,7 +305,7 @@ export function convertTableauToSigma(
           if (!t.leftKey || !t.rightKey) continue;
           const leftKey = t.leftKey.replace(/^\[|\]$/g, '').split(/[\.\]]\[?/).pop()?.replace(/\]$/, '').toUpperCase() || '';
           const rightKey = t.rightKey.replace(/^\[|\]$/g, '').split(/[\.\]]\[?/).pop()?.replace(/\]$/, '').toUpperCase() || '';
-          const tgtName = extractPath(t.rel, dbOverride, schOverride).pop() || '';
+          const tgtName = extractPath(t.rel, effectiveDb, effectiveSch).pop() || '';
           const tgtEntry = elementMap[tgtName];
           if (!primaryEntry || !tgtEntry) continue;
 
@@ -326,7 +330,8 @@ export function convertTableauToSigma(
             id: sigmaShortId(),
             targetElementId: tgtEntry.element.id,
             keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-            name: tgtName
+            name: tgtName,
+            relationshipType: 'N:1',
           });
           warnings.push(`ℹ Join ${primaryTableName} → ${tgtName} (${t.joinType || 'left'}) on ${leftKey} = ${rightKey}`);
         }
