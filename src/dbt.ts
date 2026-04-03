@@ -8,7 +8,7 @@ import {
   sigmaColFormula, sigmaAggFormula,
   type SigmaElement, type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
 
 interface DbtEntity {
   name: string;
@@ -104,9 +104,12 @@ function convertDbtSemanticModel(
     return id;
   }
 
-  // Entities (primary/unique) → columns
+  // Entities (primary/unique/natural) → columns
   for (const entity of model.entities || []) {
     if (entity.type === 'primary' || entity.type === 'unique') {
+      addCol((entity.expr || entity.name).toUpperCase());
+    } else if (entity.type === 'natural') {
+      // natural entities are source columns only — no join relationship
       addCol((entity.expr || entity.name).toUpperCase());
     }
   }
@@ -115,13 +118,21 @@ function convertDbtSemanticModel(
   for (const dim of model.dimensions || []) {
     const rawExpr = (dim.expr || dim.name || '').trim();
     if (lookIsComplexSql(rawExpr)) {
-      const formula = lookSqlToSigmaRules(rawExpr);
-      if (formula) {
-        const id = sigmaShortId();
-        const semantic = dim.name.toUpperCase();
-        colIdMap[semantic] = id;
-        element.columns.push({ id, formula, name: sigmaDisplayName(dim.name) });
-        element.order.push(id);
+      const unsupported = detectUnsupportedSigmaFunction(rawExpr);
+      if (unsupported) {
+        // Skip with warning — emitting broken SQL would cause Sigma save errors
+        // Collect on a skippedDims array attached to element for caller to surface
+        (element as any)._skippedDims = (element as any)._skippedDims || [];
+        (element as any)._skippedDims.push({ name: dim.name, reason: unsupported });
+      } else {
+        const formula = lookSqlToSigmaRules(rawExpr);
+        if (formula) {
+          const id = sigmaShortId();
+          const semantic = dim.name.toUpperCase();
+          colIdMap[semantic] = id;
+          element.columns.push({ id, formula, name: sigmaDisplayName(dim.name) });
+          element.order.push(id);
+        }
       }
     } else {
       const identifier = rawExpr.split('.').pop()!.replace(/"/g, '').toUpperCase() || dim.name.toUpperCase();
@@ -226,6 +237,11 @@ export function convertDbtToSigma(
   for (const model of semanticModels) {
     try {
       const { element } = convertDbtSemanticModel(model, config, allMeasuresByModel);
+      // Surface any skipped dimensions as warnings
+      for (const { name, reason } of (element as any)._skippedDims || []) {
+        warnings.push(`⚠ "${model.name}.${name}": skipped — contains ${reason}() which has no Sigma equivalent. Add this column manually in the Sigma UI.`);
+      }
+      delete (element as any)._skippedDims;
       elements.push(element);
     } catch (e: any) {
       warnings.push(`Failed to convert model "${model.name}": ${e.message}`);
@@ -283,7 +299,8 @@ export function convertDbtToSigma(
         id: sigmaShortId(),
         targetElementId: targetEl.id,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-        name: `${sigmaDisplayName(model.name)} to ${sigmaDisplayName(semanticModels[targetIdx].name)}`
+        name: `${sigmaDisplayName(model.name)} to ${sigmaDisplayName(semanticModels[targetIdx].name)}`,
+        relationshipType: 'N:1'
       });
     }
   });

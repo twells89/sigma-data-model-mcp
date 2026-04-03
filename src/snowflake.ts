@@ -8,7 +8,7 @@ import {
   sigmaColFormula, sigmaAggFormula,
   type SigmaElement, type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
 
 interface SnowColumn {
   name: string;
@@ -118,12 +118,18 @@ function snowConvertTable(
     if (physical) {
       addColById(physical, semantic);
     } else if (expr) {
-      const formula = lookSqlToSigmaRules(expr);
-      if (formula) {
-        const id = sigmaShortId();
-        colIdMap[semantic] = id;
-        element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
-        element.order.push(id);
+      const unsupported = detectUnsupportedSigmaFunction(expr);
+      if (unsupported) {
+        (element as any)._skippedDims = (element as any)._skippedDims || [];
+        (element as any)._skippedDims.push({ name: semantic, reason: unsupported });
+      } else {
+        const formula = lookSqlToSigmaRules(expr);
+        if (formula) {
+          const id = sigmaShortId();
+          colIdMap[semantic] = id;
+          element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
+          element.order.push(id);
+        }
       }
     }
   }
@@ -134,12 +140,18 @@ function snowConvertTable(
     if (physical) {
       addColById(physical, semantic);
     } else if (expr) {
-      const formula = lookSqlToSigmaRules(expr);
-      if (formula) {
-        const id = sigmaShortId();
-        colIdMap[semantic] = id;
-        element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
-        element.order.push(id);
+      const unsupported = detectUnsupportedSigmaFunction(expr);
+      if (unsupported) {
+        (element as any)._skippedDims = (element as any)._skippedDims || [];
+        (element as any)._skippedDims.push({ name: semantic, reason: unsupported });
+      } else {
+        const formula = lookSqlToSigmaRules(expr);
+        if (formula) {
+          const id = sigmaShortId();
+          colIdMap[semantic] = id;
+          element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
+          element.order.push(id);
+        }
       }
     }
   }
@@ -219,6 +231,11 @@ export function convertSnowflakeSemanticView(
     try {
       const extra = fkColsByTable[table.name.toUpperCase()] || new Set();
       const result = snowConvertTable(table, connectionId, extra, autoMetrics);
+      // Surface skipped dims as warnings
+      for (const { name, reason } of (result.element as any)._skippedDims || []) {
+        warnings.push(`⚠ "${table.name}.${name}": skipped — contains ${reason}() which has no Sigma equivalent. Add this column manually in the Sigma UI.`);
+      }
+      delete (result.element as any)._skippedDims;
       elements.push(result.element);
       tableIndex[table.name.toUpperCase()] = result;
     } catch (e: any) {
@@ -270,7 +287,8 @@ export function convertSnowflakeSemanticView(
           id: sigmaShortId(),
           targetElementId: tgtEntry.elementId,
           keys,
-          name: (rel.name || '').replace(/_/g, ' ')
+          name: (rel.name || '').replace(/_/g, ' '),
+          relationshipType: 'N:1'
         });
       }
     });
@@ -306,7 +324,8 @@ export function convertSnowflakeSemanticView(
         targetElementId: right.elementId,
         keys,
         name: rel.name ? rel.name.replace(/_/g, ' ')
-          : sigmaDisplayName(rel.left_table) + ' to ' + sigmaDisplayName(rel.right_table)
+          : sigmaDisplayName(rel.left_table) + ' to ' + sigmaDisplayName(rel.right_table),
+        relationshipType: 'N:1'
       });
     }
   });

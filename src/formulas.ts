@@ -10,6 +10,31 @@ export function lookColRef(identifier: string): string {
   return `[${sigmaDisplayName(identifier)}]`;
 }
 
+/** Snowflake-specific SQL constructs that have no Sigma equivalent */
+const UNSUPPORTED_SIGMA_SQL: { pattern: RegExp; name: string }[] = [
+  { pattern: /\bFLATTEN\s*\(/i,         name: 'FLATTEN' },
+  { pattern: /\bLATERAL\b/i,            name: 'LATERAL' },
+  { pattern: /\bQUALIFY\b/i,            name: 'QUALIFY' },
+  { pattern: /\bPIVOT\s*\(/i,           name: 'PIVOT' },
+  { pattern: /\bUNPIVOT\s*\(/i,         name: 'UNPIVOT' },
+  { pattern: /\bGENERATOR\s*\(/i,       name: 'GENERATOR' },
+  { pattern: /\bTABLESAMPLE\b/i,        name: 'TABLESAMPLE' },
+  { pattern: /\bOBJECT_CONSTRUCT\s*\(/i, name: 'OBJECT_CONSTRUCT' },
+  { pattern: /\bARRAY_CONSTRUCT\s*\(/i,  name: 'ARRAY_CONSTRUCT' },
+];
+
+/**
+ * Returns the name of the first unsupported Sigma SQL function found in the
+ * expression, or null if none found. Used to skip-with-warning instead of
+ * emitting broken formulas.
+ */
+export function detectUnsupportedSigmaFunction(formula: string): string | null {
+  for (const { pattern, name } of UNSUPPORTED_SIGMA_SQL) {
+    if (pattern.test(formula)) return name;
+  }
+  return null;
+}
+
 /** Returns true if a sql: value is a complex expression that needs formula conversion */
 export function lookIsComplexSql(sql: string): boolean {
   if (!sql) return false;

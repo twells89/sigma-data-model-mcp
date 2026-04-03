@@ -7,7 +7,7 @@ import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   type SigmaElement, type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, lookStripSql, lookSigmaMetric } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
 
 // ── LookML Parser ────────────────────────────────────────────────────────────
 
@@ -211,15 +211,15 @@ function lookConvertView(
       kind: 'table',
       source: {
         connectionId: connectionId || '<CONNECTION_ID>',
-        statement: rawSql || '-- TODO: derived_table had no sql block',
+        statement: rawSql || '',
         kind: 'sql'
       },
       columns: [],
       metrics: [],
       order: []
     };
-    if (rawSql) warnings.push(`ℹ View "${viewName}" → Custom SQL element.`);
-    else warnings.push(`⚠ View "${viewName}" derived_table has no sql.`);
+    if (rawSql) warnings.push(`ℹ View "${viewName}" → Custom SQL element. Review the SQL before saving.`);
+    else warnings.push(`⚠ View "${viewName}" derived_table has no sql — SQL statement left blank. Add SQL manually in the JSON before saving.`);
   } else {
     const path = lookExtractPath(view);
     tableName = (path[path.length - 1] || viewName).toUpperCase();
@@ -270,6 +270,11 @@ function lookConvertView(
         continue;
       }
 
+      const unsupported = detectUnsupportedSigmaFunction(d.sql || '');
+      if (unsupported) {
+        warnings.push(`⚠ "${d._name}": skipped — contains ${unsupported}() which has no Sigma equivalent. Add this column manually in the Sigma UI.`);
+        continue;
+      }
       const colId = sigmaShortId();
       colIdMap[colName] = colId;
       let sigmaFormula = lookSqlToSigmaRules(d.sql);
@@ -557,7 +562,8 @@ export function convertLookMLToSigma(
         id: sigmaShortId(),
         targetElementId: targetRes.elementId,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-        name: j.alias
+        name: j.alias,
+        relationshipType: 'N:1'
       });
     });
   });
