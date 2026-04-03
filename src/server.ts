@@ -21,7 +21,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createSigmaServer } from './tools.js';
 
 const app = express();
-app.use(express.json());
+// Increase body size limit to 10 MB — Tableau .tds/.twb files can exceed the 100 KB default
+app.use(express.json({ limit: '10mb' }));
 
 // ── Health check (for Render, load balancers, uptime monitors) ───────────────
 
@@ -47,6 +48,19 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
+// ── Request logging (helps diagnose MCP tool call issues) ────────────────────
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const bodySize = req.headers['content-length'] ? `${req.headers['content-length']}b` : '?';
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    // Log method, path, request body size, response status, response time
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} | body=${bodySize} → ${res.statusCode} (${ms}ms)`);
+  });
+  next();
+});
+
 // ── MCP Streamable HTTP endpoint (stateless mode) ────────────────────────────
 //
 // Stateless = each POST creates a fresh McpServer + transport. No sessions.
@@ -54,6 +68,11 @@ app.get('/', (_req: Request, res: Response) => {
 // No user state, no auth, no side effects.
 
 app.post('/mcp', async (req: Request, res: Response) => {
+  // Log the JSON-RPC method being called so we can trace tool invocations
+  const rpcMethod = req.body?.method ?? '(unknown)';
+  const toolName = req.body?.params?.name ?? (Array.isArray(req.body) ? `batch[${req.body.length}]` : '');
+  console.log(`[MCP] method=${rpcMethod}${toolName ? ` tool=${toolName}` : ''} bodyBytes=${JSON.stringify(req.body ?? '').length}`);
+
   try {
     const server = createSigmaServer();
     const transport = new StreamableHTTPServerTransport({
