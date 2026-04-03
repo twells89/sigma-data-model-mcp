@@ -80,13 +80,17 @@ app.post('/mcp', async (req: Request, res: Response) => {
   }
 });
 
-// GET /mcp — not used in stateless mode
+// GET /mcp — return 200 for discovery/health checks (Sigma pings this before using the tool)
 app.get('/mcp', (_req: Request, res: Response) => {
-  res.writeHead(405).end(JSON.stringify({
+  res.status(200).json({
     jsonrpc: '2.0',
-    error: { code: -32000, message: 'Method not allowed — use POST for stateless mode' },
+    result: {
+      protocolVersion: '2024-11-05',
+      serverInfo: { name: 'sigma-data-model-mcp', version: '1.0.0' },
+      capabilities: { tools: {} }
+    },
     id: null,
-  }));
+  });
 });
 
 // DELETE /mcp — not used in stateless mode
