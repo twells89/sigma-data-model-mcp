@@ -44,16 +44,16 @@ The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
 create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     {
       yaml_content: z.string().describe('The dbt semantic model YAML content'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID (from GET /v2/connections)'),
-      database: z.string().nullable().describe('Override database name (e.g. ANALYTICS)'),
-      schema: z.string().nullable().describe('Override schema name (e.g. DBT_PROD)'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name (e.g. ANALYTICS); pass empty string to omit'),
+      schema: z.string().describe('Override schema name (e.g. DBT_PROD); pass empty string to omit'),
     },
     async ({ yaml_content, connection_id, database, schema }) => {
       try {
         const result = convertDbtToSigma(yaml_content, {
-          connectionId: connection_id ?? undefined,
-          database: database ?? undefined,
-          schema: schema ?? undefined,
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{
@@ -78,14 +78,14 @@ with dimensions, time_dimensions, facts, primary keys, inline relationships,
 and top-level relationships. Facts auto-generate Sum() metrics.`,
     {
       yaml_content: z.string().describe('The Snowflake semantic view YAML content'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID'),
-      auto_metrics: z.boolean().nullable().describe('Auto-generate Sum() metrics for fact columns (default: true)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      auto_metrics: z.boolean().describe('Auto-generate Sum() metrics for fact columns (pass true unless you want to skip metrics)'),
     },
     async ({ yaml_content, connection_id, auto_metrics }) => {
       try {
         const result = convertSnowflakeSemanticView(yaml_content, {
-          connectionId: connection_id ?? undefined,
-          autoMetrics: auto_metrics ?? true,
+          connectionId: connection_id || undefined,
+          autoMetrics: auto_metrics,
         });
         return {
           content: [{
@@ -115,17 +115,16 @@ Pass files as an array of {name, content} objects.`,
         name: z.string().describe('Filename (e.g. "sales.model.lkml" or "orders.view.lkml")'),
         content: z.string().describe('Full file content'),
       })).describe('Array of LookML files to parse'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID'),
-      explore_name: z.string().nullable().describe('Name of the explore to convert (auto-detected if only one)'),
-      join_strategy: z.enum(['relationships', 'joins', 'auto']).nullable()
-        .describe('How to handle joins: "relationships" (lazy), "joins" (eager physical), "auto"'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      explore_name: z.string().describe('Name of the explore to convert; pass empty string to auto-detect (uses first explore found)'),
+      join_strategy: z.string().describe('How to handle joins: "relationships" (lazy), "joins" (eager physical), "auto", or "" for default'),
     },
     async ({ files, connection_id, explore_name, join_strategy }) => {
       try {
         const result = convertLookMLToSigma(files, {
-          connectionId: connection_id ?? undefined,
-          exploreName: explore_name ?? undefined,
-          joinStrategy: join_strategy as any,
+          connectionId: connection_id || undefined,
+          exploreName: explore_name || undefined,
+          joinStrategy: (join_strategy || undefined) as any,
         });
         return {
           content: [{
@@ -156,17 +155,17 @@ Complex DAX patterns (CALCULATE+ALL, iterators, time intelligence, VAR/RETURN)
 generate warnings with links to equivalent Sigma patterns.`,
     {
       model_json: z.string().describe('Power BI model JSON content (.bim file, DataModelSchema, or TOM JSON)'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID (from GET /v2/connections)'),
-      database: z.string().nullable().describe('Override database name'),
-      schema: z.string().nullable().describe('Override schema name'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
     },
     async ({ model_json, connection_id, database, schema }) => {
       try {
         const parsed = JSON.parse(model_json);
         const result = convertPowerBIToSigma(parsed, {
-          connectionId: connection_id ?? undefined,
-          database: database ?? undefined,
-          schema: schema ?? undefined,
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{
@@ -197,18 +196,18 @@ Complex patterns (LOD INCLUDE/EXCLUDE, table calculations, RUNNING_SUM, RANK)
 generate warnings with community article links.`,
     {
       xml_content: z.string().describe('Tableau XML content (.twb or .tds file content)'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID'),
-      database: z.string().nullable().describe('Override database name'),
-      schema: z.string().nullable().describe('Override schema name'),
-      datasource_index: z.number().nullable().describe('Which data source to convert (0-indexed, default: 0)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+      datasource_index: z.number().describe('Which data source to convert, 0-indexed (pass 0 for default)'),
     },
     async ({ xml_content, connection_id, database, schema, datasource_index }) => {
       try {
         const result = convertTableauToSigma(xml_content, {
-          connectionId: connection_id ?? undefined,
-          database: database ?? undefined,
-          schema: schema ?? undefined,
-          datasourceIndex: datasource_index ?? 0,
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+          datasourceIndex: datasource_index,
         });
         return {
           content: [{
@@ -247,16 +246,16 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
         name:    z.string().describe('Filename (e.g. "orders.view.yaml" or "retail_analytics.model.yaml")'),
         content: z.string().describe('Full file content'),
       })).describe('Array of Omni YAML files (.view.yaml and/or .model.yaml)'),
-      connection_id: z.string().nullable().describe('Sigma connection UUID (from GET /v2/connections)'),
-      database: z.string().nullable().describe('Override database name (used when sql_table_name is incomplete, e.g. "ANALYTICS")'),
-      schema:   z.string().nullable().describe('Override schema name (e.g. "PUBLIC")'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name (e.g. "ANALYTICS"); pass empty string to omit'),
+      schema:   z.string().describe('Override schema name (e.g. "PUBLIC"); pass empty string to omit'),
     },
     async ({ files, connection_id, database, schema }) => {
       try {
         const result = convertOmniToSigma(files, {
-          connectionId: connection_id ?? undefined,
-          database: database ?? undefined,
-          schema: schema ?? undefined,
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{
