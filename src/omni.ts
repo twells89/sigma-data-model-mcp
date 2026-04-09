@@ -164,6 +164,14 @@ export function convertOmniToSigma(
       if (!name) continue;
       totalDims++;
 
+      // Detect REGEXP functions — Sigma uses RegexpMatch([col], "pattern") but these
+      // can't be auto-translated without knowing which argument is the pattern.
+      if (/\b(?:REGEXP_LIKE|REGEXP_CONTAINS|REGEXP_SUBSTR|REGEXP_REPLACE|REGEXP_EXTRACT)\s*\(/i.test(dim.sql || '')) {
+        warnings.push(`⚠ "${name}": uses REGEXP function — skipped. Sigma uses RegexpMatch([col], "pattern") syntax — add this column manually.`);
+        totalDims--; // don't count skipped dims
+        continue;
+      }
+
       if (dim.primary_key) {
         const formula = dim.sql
           ? omniTranslateFormula(dim.sql, sourceTable)
@@ -375,7 +383,7 @@ const OMNI_FUNC_MAP: Record<string, string> = {
   DATE_TRUNC: 'DateTrunc', TRUNC: 'DateTrunc',
   TO_DATE: 'Date', TO_CHAR: 'Text', TO_NUMBER: 'Number',
   GETDATE: 'Now', CURRENT_DATE: 'Today', CURRENT_TIMESTAMP: 'Now',
-  REGEXP_LIKE: 'RegexpMatch', REGEXP_CONTAINS: 'RegexpMatch',
+  // NOTE: REGEXP_LIKE / REGEXP_CONTAINS intentionally omitted — they emit a skip warning instead
 };
 
 function omniTranslateFormula(sql: string, tableName: string): string | null {

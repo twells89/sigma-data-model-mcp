@@ -243,11 +243,23 @@ function lookConvertView(
   // Warehouse columns get deterministic inode- IDs; calculated/SQL columns get short random IDs
   const makeColId = (physCol: string) => isCustomSql ? sigmaShortId() : sigmaInodeId(physCol);
 
+  // Detect Liquid templating — can't be statically converted
+  const viewSqls = JSON.stringify(view);
+  if (/\{%-?\s*(if|unless|for|assign|capture)\b/i.test(viewSqls)) {
+    warnings.push(`⚠ View "${viewName}": contains Liquid templating ({% if %} blocks). Dimensions using Liquid conditionals will be skipped — review and add manually in Sigma.`);
+  }
+
   // Dimensions
   const dims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
   for (const d of dims) {
     if (!d._name) continue;
     const colName = d._name.toUpperCase();
+
+    // Detect LookML parameter substitution — can't be resolved statically
+    if (/\$\{[^.}]+\}/.test(d.sql || '') && !/\$\{TABLE\}/i.test(d.sql || '')) {
+      warnings.push(`⚠ "${d._name}": uses LookML parameter substitution — skipped. Add this dimension manually after configuring parameters in Sigma.`);
+      continue;
+    }
 
     if (lookIsComplexSql(d.sql)) {
       const cleanedSql = (d.sql || '').replace(/\$\{TABLE\}\./gi, '').replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1').trim();
@@ -324,6 +336,11 @@ function lookConvertView(
   dimGroups.forEach((dg: any) => {
     if (!dg._name) return;
     const colName = dg._name.toUpperCase();
+    // Detect LookML parameter substitution — can't be resolved statically
+    if (/\$\{[^.}]+\}/.test(dg.sql || '') && !/\$\{TABLE\}/i.test(dg.sql || '')) {
+      warnings.push(`⚠ "${dg._name}": uses LookML parameter substitution — skipped. Add this dimension manually after configuring parameters in Sigma.`);
+      return;
+    }
     if (lookIsComplexSql(dg.sql)) {
       warnings.push(`⚠ Dimension group "${dg._name}": complex expression — skipped.`);
       return;

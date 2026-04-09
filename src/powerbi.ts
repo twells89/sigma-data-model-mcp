@@ -115,8 +115,12 @@ export function pbiDaxToSigma(
   f = f.replace(/\bMIN\s*\(/gi, 'Min(');
   f = f.replace(/\bMAX\s*\(/gi, 'Max(');
   f = f.replace(/\bCOUNT\s*\(/gi, 'Count(');
-  // RELATED([Col]) → just [Col]
+  // RELATED([Col]) → just [Col], but warn that cross-table reference may need review
+  const hadRelated = /\bRELATED\s*\(/i.test(f);
   f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
+  if (hadRelated && warnings) {
+    warnings.push(`⚠ Calculated column "${measureName}": uses RELATED() — cross-table reference may not resolve. Review and update to use Sigma linked column syntax: [TABLE/FK - link/Column].`);
+  }
   f = f.replace(/\bRELATEDTABLE\s*\([^)]*\)/gi, '/* RELATEDTABLE - use relationship */');
   // Logical
   f = f.replace(/\bIF\s*\(/gi, 'If(');
@@ -160,6 +164,16 @@ export function pbiDaxToSigma(
   f = f.replace(/\bDATEDIFF\s*\(/gi, 'DateDiff(');
 
   // Clean up 'table'[column] → [column] (quoted table qualifier)
+  // Collect unique table prefixes before [ to detect multi-table references
+  const quotedTablePrefixes = (f.match(/'([^']+)'\[/g) || []).map(m => m.replace(/'\[$/g, '').replace(/^'/g, ''));
+  const unquotedTablePrefixes = (f.match(/\b([A-Za-z_]\w*)\[/g) || []).map(m => m.replace(/\[$/, ''));
+  const allTablePrefixes = [...new Set([...quotedTablePrefixes, ...unquotedTablePrefixes])].filter(p =>
+    !/^(If|Switch|Not|And|Or|Sum|Avg|Min|Max|Count|CountIf|CountDistinct|CumulativeSum|Coalesce|Nullif|Round|Floor|Ceiling|Abs|Upper|Lower|Trim|Left|Right|Mid|Replace|Find|Len|Year|Month|Day|Hour|Minute|Second|Today|Now|MakeDate|DateDiff|DateAdd|DateTrunc|DateFormat|IsNull|IsNotNull|Int|Number|Text|Sqrt|Power|Concat|In|GrandTotal|CumulativeAvg)$/.test(p)
+  );
+  if (allTablePrefixes.length > 1 && warnings) {
+    const tableNames = allTablePrefixes.join(', ');
+    warnings.push(`⚠ Calculated column "${measureName}": references columns from multiple tables (${tableNames}). Column context has been simplified — verify formula references the correct columns.`);
+  }
   f = f.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]');
   // Also handle unquoted: Table[Column] → [Column]
   f = f.replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');

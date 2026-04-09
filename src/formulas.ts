@@ -39,11 +39,11 @@ export function detectUnsupportedSigmaFunction(formula: string): string | null {
 export function lookIsComplexSql(sql: string): boolean {
   if (!sql) return false;
   const cleaned = sql.replace(/\$\{TABLE\}\./gi, '').replace(/\$\{[^}]+\}/g, 'X').trim();
-  // CAST(col AS type) wrapping a simple column ref is not complex — just a type hint
-  if (/^CAST\s*\(\s*"?[A-Za-z_][A-Za-z0-9_]*"?\s+AS\s+\w[\w_]*\s*\)$/i.test(cleaned)) return false;
+  // CAST/SAFE_CAST/TRY_CAST(col AS type) wrapping a simple column ref is not complex — just a type hint
+  if (/^(?:CAST|SAFE_CAST|TRY_CAST)\s*\(\s*"?[A-Za-z_][A-Za-z0-9_]*"?\s+AS\s+\w[\w_]*\s*\)$/i.test(cleaned)) return false;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(cleaned)) return true;
   if (/^CASE\b/i.test(cleaned)) return true;
-  if (/[=<>!+\-*\/]/.test(cleaned.replace(/'[^']*'/g, ''))) return true;
+  if (/[=<>!+\-*\/%]/.test(cleaned.replace(/'[^']*'/g, ''))) return true;
   return false;
 }
 
@@ -67,20 +67,49 @@ const LOOK_FUNC_MAP: Record<string, string> = {
 export function lookConvertCase(expr: string): string | null {
   const body = expr.replace(/^CASE\s*/i, '').replace(/\s*END\s*$/i, '').trim();
   const branches: { cond: string; val: string }[] = [];
-  const branchRe = /WHEN\s+(.+?)\s+THEN\s+('(?:[^'\\]|\\.)*'|\S+)/gi;
-  let bm;
-  while ((bm = branchRe.exec(body)) !== null) {
-    const cond = lookConvertExpression(bm[1].trim());
-    const val = bm[2].trim();
+
+  // Split on WHEN keyword boundaries — each part is "cond THEN val [ELSE elseVal]"
+  const parts = body.split(/\bWHEN\b/i).filter(Boolean);
+  let elseVal: string | null = null;
+
+  for (const part of parts) {
+    // Match: everything up to THEN (non-greedy), then THEN val, then optionally ELSE elseVal
+    const elseMatch = part.match(/^([\s\S]+?)\s+THEN\s+([\s\S]+?)(?:\s+ELSE\s+([\s\S]+))?$/i);
+    if (!elseMatch) {
+      // Try to extract a bare ELSE from this part
+      const e = part.match(/\bELSE\s+([\s\S]+)$/i);
+      if (e && !elseVal) elseVal = e[1].trim();
+      continue;
+    }
+    const cond = elseMatch[1].trim();
+    let val = elseMatch[2].trim();
+    // Check if val itself contains an ELSE clause
+    const elseInVal = val.match(/^([\s\S]+?)\s+ELSE\s+([\s\S]+)$/i);
+    if (elseInVal) {
+      val = elseInVal[1].trim();
+      if (!elseVal) elseVal = elseInVal[2].trim();
+    }
     branches.push({ cond, val });
   }
-  const elseMatch = body.match(/ELSE\s+('(?:[^'\\]|\\.)*'|\S+)\s*$/i);
-  const elseVal = elseMatch ? elseMatch[1] : 'null';
+
+  // Also check for top-level ELSE (e.g. "ELSE 'other'" at end of body)
+  const topElse = body.match(/\bELSE\s+([\s\S]+)$/i);
+  if (topElse && !elseVal) elseVal = topElse[1].trim();
 
   if (branches.length === 0) return null;
-  let result = elseVal;
+
+  const convertVal = (v: string): string => {
+    v = v.trim();
+    if (/^'[^']*'$/.test(v)) return v;        // string literal
+    if (/^-?\d+(\.\d+)?$/.test(v)) return v;  // number literal
+    return lookConvertExpression(v);
+  };
+
+  let result = elseVal ? convertVal(elseVal) : 'null';
   for (let i = branches.length - 1; i >= 0; i--) {
-    result = `If(${branches[i].cond}, ${branches[i].val}, ${result})`;
+    const sigmaCond = lookConvertExpression(branches[i].cond);
+    const sigmaVal  = convertVal(branches[i].val);
+    result = `If(${sigmaCond}, ${sigmaVal}, ${result})`;
   }
   return result;
 }
@@ -334,8 +363,14 @@ export function lookStripSql(sql: string): string {
   if (!sql) return '';
   sql = sql.replace(/\$\{TABLE\}\./gi, '').trim();
   sql = sql.replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1');
-  // Unwrap CAST(col AS type) → col
-  const castMatch = sql.match(/^CAST\s*\(\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s+AS\s+\w[\w_]*\s*\)$/i);
+  // Strip backtick identifiers (BigQuery/MySQL style)
+  sql = sql.replace(/`/g, '');
+  // Strip bracket identifiers: [Column Name] → Column Name
+  sql = sql.replace(/\[([A-Za-z_][A-Za-z0-9_\s]*)\]/g, '$1');
+  // Strip PostgreSQL :: casts: col::INTEGER → col
+  sql = sql.replace(/::\w[\w_]*/g, '');
+  // Unwrap SAFE_CAST/TRY_CAST/CAST(col AS type) → col
+  const castMatch = sql.match(/^(?:SAFE_CAST|TRY_CAST|CAST)\s*\(\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s+AS\s+\w[\w_]*\s*\)$/i);
   if (castMatch) sql = castMatch[1];
   sql = sql.replace(/"/g, '').trim(); // strip Snowflake double-quote identifiers e.g. "COLUMN_NAME"
   const m = sql.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
