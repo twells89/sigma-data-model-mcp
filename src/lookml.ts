@@ -184,6 +184,39 @@ function lookFindColId(elementResult: ElementResult, colName: string): string | 
   return elementResult.colIdMap[upper] || null;
 }
 
+// Parse a LookML filter expression into a Sigma list filter object.
+// Returns null for date/range expressions (unknown JSON schema).
+function lookParseFilterExpr(expr: string, columnId: string): Record<string, any> | null {
+  expr = (expr || '').trim();
+
+  if (/^NULL$/i.test(expr))
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'include', values: [null] };
+  if (/^NOT\s+NULL$/i.test(expr))
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'exclude', values: [null] };
+
+  // Date relative expressions — unsupported
+  if (/^\d+\s+(second|minute|hour|day|week|month|quarter|year)s?$/i.test(expr)) return null;
+  if (/^(this|last|next|current)\s+/i.test(expr)) return null;
+  if (/^\d{4}[\/\-]\d{2}/.test(expr)) return null;
+
+  // Comparison / range — unsupported
+  if (/^[><!]=?/.test(expr)) return null;
+  if (/^[\[(]/.test(expr)) return null;
+
+  // Negation: -value or -value1,-value2
+  if (expr.startsWith('-')) {
+    const vals = expr.slice(1).split(/\s*,\s*-?\s*/).map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean);
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'exclude', values: vals };
+  }
+
+  // Simple string value(s)
+  const vals = expr.split(',').map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean);
+  if (vals.length > 0)
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'include', values: vals };
+
+  return null;
+}
+
 function lookConvertView(
   viewName: string,
   view: any,
@@ -568,7 +601,12 @@ export function convertLookMLToSigma(
     }] : [];
 
     if (!keyMatch && sqlOn) {
-      warnings.push(`⚠ Join "${alias}": complex sql_on — keys may need manual review`);
+      const isRangeJoin = /\$\{[^}]+\}\s*[><!]|[><!]=?\s*\$\{/.test(sqlOn);
+      if (isRangeJoin) {
+        warnings.push(`⚠ Join "${alias}": uses range-based sql_on (>=, <=, >, <) which cannot be expressed as a Sigma relationship. Recreate this as a filtered join or custom SQL after import.`);
+      } else {
+        warnings.push(`⚠ Join "${alias}": complex sql_on could not be parsed automatically — add join keys manually in Sigma's ERD view`);
+      }
     }
 
     joinDefs.push({ alias, viewName, rel, joinType: jType, keys });
@@ -653,6 +691,46 @@ export function convertLookMLToSigma(
     if (aHasRel === bHasRel) return 0;
     return aHasRel ? 1 : -1;
   });
+
+  // ── LookML always_filter → Sigma element filters ─────────────────────────
+  const alwaysFilterItems: any[] = explore.always_filter?.filters
+    ? (Array.isArray(explore.always_filter.filters) ? explore.always_filter.filters : [explore.always_filter.filters])
+    : [];
+
+  for (const af of alwaysFilterItems) {
+    const fieldRef: string = af.field || '';
+    const expr: string = (af.value || '').trim();
+    if (!fieldRef || !expr) continue;
+
+    const dotIdx = fieldRef.lastIndexOf('.');
+    const viewPart = dotIdx >= 0 ? fieldRef.slice(0, dotIdx) : baseViewName;
+    const fieldPart = (dotIdx >= 0 ? fieldRef.slice(dotIdx + 1) : fieldRef).toUpperCase();
+
+    const targetRes = elementMap[viewPart] || elementMap[baseAlias];
+    if (!targetRes) {
+      warnings.push(`⚠ always_filter "${fieldRef}": view "${viewPart}" not found — filter skipped`);
+      continue;
+    }
+
+    // Try exact match then strip timeframe suffix
+    const colId = lookFindColId(targetRes, fieldPart)
+      || lookFindColId(targetRes, fieldPart.replace(/_(?:RAW|TIME|DATE|WEEK|MONTH|QUARTER|YEAR)$/, ''));
+    if (!colId) {
+      warnings.push(`⚠ always_filter "${fieldRef}": column "${fieldPart}" not found in element — filter skipped`);
+      continue;
+    }
+
+    const sigmaFilter = lookParseFilterExpr(expr, colId);
+    if (!sigmaFilter) {
+      warnings.push(`⚠ always_filter "${fieldRef}" = "${expr}": date/range expression cannot be auto-converted — add filter manually in Sigma`);
+      continue;
+    }
+
+    const targetEl: any = targetRes.element;
+    if (!targetEl.filters) targetEl.filters = [];
+    targetEl.filters.push(sigmaFilter);
+    warnings.push(`✅ always_filter "${fieldRef}" = "${expr}" → element list filter added`);
+  }
 
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
