@@ -39,6 +39,8 @@ export function detectUnsupportedSigmaFunction(formula: string): string | null {
 export function lookIsComplexSql(sql: string): boolean {
   if (!sql) return false;
   const cleaned = sql.replace(/\$\{TABLE\}\./gi, '').replace(/\$\{[^}]+\}/g, 'X').trim();
+  // CAST(col AS type) wrapping a simple column ref is not complex — just a type hint
+  if (/^CAST\s*\(\s*"?[A-Za-z_][A-Za-z0-9_]*"?\s+AS\s+\w[\w_]*\s*\)$/i.test(cleaned)) return false;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(cleaned)) return true;
   if (/^CASE\b/i.test(cleaned)) return true;
   if (/[=<>!+\-*\/]/.test(cleaned.replace(/'[^']*'/g, ''))) return true;
@@ -332,6 +334,9 @@ export function lookStripSql(sql: string): string {
   if (!sql) return '';
   sql = sql.replace(/\$\{TABLE\}\./gi, '').trim();
   sql = sql.replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1');
+  // Unwrap CAST(col AS type) → col
+  const castMatch = sql.match(/^CAST\s*\(\s*("?[A-Za-z_][A-Za-z0-9_]*"?)\s+AS\s+\w[\w_]*\s*\)$/i);
+  if (castMatch) sql = castMatch[1];
   sql = sql.replace(/"/g, '').trim(); // strip Snowflake double-quote identifiers e.g. "COLUMN_NAME"
   const m = sql.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
   return m ? m[1] : sql;

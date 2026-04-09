@@ -308,7 +308,18 @@ function lookConvertView(
     element.order.push(colId);
   }
 
-  // Dimension groups (time)
+  // Dimension groups (time) — expand into raw + DateTrunc timeframe columns
+  const TIMEFRAME_MAP: Record<string, { suffix: string; formula: (ref: string) => string }> = {
+    raw:     { suffix: 'Raw',     formula: ref => ref },
+    time:    { suffix: 'Time',    formula: ref => ref },
+    date:    { suffix: 'Date',    formula: ref => `DateTrunc("day", ${ref})` },
+    week:    { suffix: 'Week',    formula: ref => `DateTrunc("week", ${ref})` },
+    month:   { suffix: 'Month',   formula: ref => `DateTrunc("month", ${ref})` },
+    quarter: { suffix: 'Quarter', formula: ref => `DateTrunc("quarter", ${ref})` },
+    year:    { suffix: 'Year',    formula: ref => `DateTrunc("year", ${ref})` },
+  };
+  const DEFAULT_TIMEFRAMES = ['raw', 'time', 'date', 'week', 'month', 'quarter', 'year'];
+
   const dimGroups = view.dimension_group ? (Array.isArray(view.dimension_group) ? view.dimension_group : [view.dimension_group]) : [];
   dimGroups.forEach((dg: any) => {
     if (!dg._name) return;
@@ -319,11 +330,52 @@ function lookConvertView(
     }
     const sqlCol = lookStripSql(dg.sql) || colName;
     const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase();
-    const colId = makeColId(physicalCol);
-    colIdMap[colName] = colId;
-    colIdMap[physicalCol] = colId;
-    element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
-    element.order.push(colId);
+
+    // Determine which timeframes to expand
+    const rawTimeframes: string[] = dg.timeframes
+      ? (Array.isArray(dg.timeframes) ? dg.timeframes : [dg.timeframes]).map((t: any) => (t.field || t).toLowerCase())
+      : DEFAULT_TIMEFRAMES;
+    const timeframes = rawTimeframes.filter(t => TIMEFRAME_MAP[t]);
+
+    const displayBase = sigmaDisplayName(dg._name);
+    const colRef = `[${tableName}/${colLabel(physicalCol)}]`;
+
+    // Raw column — primary ID for this physical column
+    const rawColId = makeColId(physicalCol);
+    colIdMap[colName] = rawColId;
+    colIdMap[physicalCol] = rawColId;
+
+    if (timeframes.length <= 1) {
+      // No expansion needed — just emit raw column
+      element.columns.push({ id: rawColId, formula: colRef });
+      element.order.push(rawColId);
+      return;
+    }
+
+    // Folder to group the timeframes
+    const folderItems: string[] = [];
+
+    timeframes.forEach(tf => {
+      const { suffix, formula } = TIMEFRAME_MAP[tf];
+      const tfFormula = formula(colRef);
+      const tfName = `${displayBase} ${suffix}`;
+      if (tf === 'raw' || tf === 'time') {
+        // Raw/time: emit the physical column itself
+        colIdMap[`${colName}_${tf.toUpperCase()}`] = rawColId;
+        element.columns.push({ id: rawColId, formula: colRef, name: tfName });
+        folderItems.push(rawColId);
+      } else {
+        const tfId = sigmaShortId();
+        element.columns.push({ id: tfId, formula: tfFormula, name: tfName });
+        folderItems.push(tfId);
+        element.order.push(tfId);
+      }
+    });
+
+    // Add folder to group timeframes
+    if (!(element as any).folders) (element as any).folders = [];
+    (element as any).folders.push({ id: sigmaShortId(), name: displayBase, items: folderItems });
+    element.order.push(rawColId);
   });
 
   // Measures → metrics
