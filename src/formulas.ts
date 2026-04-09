@@ -332,7 +332,7 @@ export function lookStripSql(sql: string): string {
   if (!sql) return '';
   sql = sql.replace(/\$\{TABLE\}\./gi, '').trim();
   sql = sql.replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1');
-  sql = sql.trim();
+  sql = sql.replace(/"/g, '').trim(); // strip Snowflake double-quote identifiers e.g. "COLUMN_NAME"
   const m = sql.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
   return m ? m[1] : sql;
 }

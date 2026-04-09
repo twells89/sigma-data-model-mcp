@@ -293,7 +293,7 @@ function lookConvertView(
     }
 
     const sqlCol = lookStripSql(d.sql) || colName;
-    const physicalCol = sqlCol.split('.').pop()!.toUpperCase();
+    const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase();
 
     // Dedup: if physical column already exists, just map the dimension name
     if (colIdMap[physicalCol]) {
@@ -318,7 +318,7 @@ function lookConvertView(
       return;
     }
     const sqlCol = lookStripSql(dg.sql) || colName;
-    const physicalCol = sqlCol.split('.').pop()!.toUpperCase();
+    const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase();
     const colId = makeColId(physicalCol);
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
@@ -334,7 +334,7 @@ function lookConvertView(
     if (!ms._name) return;
     const msName = ms._name.toUpperCase();
     const sqlCol = lookStripSql(ms.sql) || msName;
-    const physicalCol = sqlCol.split('.').pop()!.toUpperCase() || msName;
+    const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase() || msName.replace(/"/g, '');
     const msType = (ms.type || 'count').toLowerCase();
     const msLabel = ms.label || sigmaDisplayName(msName);
 
