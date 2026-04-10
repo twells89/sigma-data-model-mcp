@@ -43,6 +43,7 @@ export function lookIsComplexSql(sql: string): boolean {
   if (/^(?:CAST|SAFE_CAST|TRY_CAST)\s*\(\s*"?[A-Za-z_][A-Za-z0-9_]*"?\s+AS\s+\w[\w_]*\s*\)$/i.test(cleaned)) return false;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(cleaned)) return true;
   if (/^CASE\b/i.test(cleaned)) return true;
+  if (/\bIN\s*\(/i.test(cleaned)) return true;  // SQL IN operator — needs In() formula
   if (/[=<>!+\-*\/%]/.test(cleaned.replace(/'[^']*'/g, ''))) return true;
   return false;
 }
@@ -132,7 +133,8 @@ export function lookConvertExpression(expr: string): string {
   });
 
   // 2. Convert EXPR IN (a, b, c) → In(EXPR, a, b, c)
-  expr = expr.replace(/([\w\]\)]+(?:\([^)]*\))?)\s+IN\s*\(([^)]+)\)/gi, (_, lhs, list) => {
+  // LHS can be a bracket-form [Display Name] or a word/call expression
+  expr = expr.replace(/(\[[^\]]+\]|[\w\]\)]+(?:\([^)]*\))?)\s+IN\s*\(([^)]+)\)/gi, (_, lhs, list) => {
     return `In(${lhs}, ${list})`;
   });
 
@@ -153,13 +155,50 @@ export function lookConvertExpression(expr: string): string {
 export function lookSqlToSigmaRules(sql: string): string | null {
   let expr = sql
     .replace(/\$\{TABLE\}\./gi, '')
-    .replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1')
+    .replace(/\$\{[^.}]+\.([^}]+)\}/g, (_, f) => f.toUpperCase())
+    .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => n.toUpperCase())
+    .replace(/[\r\n]+\s*/g, ' ')
     .trim();
 
   // Pattern 1: COLUMN = 1 (yesno boolean flag)
   {
     const m = expr.match(/^([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)$/i);
     if (m) return `${lookColRef(m[1])} = ${m[2]}`;
+  }
+
+  // Pattern 1b: COLUMN IN ('val1', 'val2', ...) → In([Column], "val1", "val2")
+  {
+    const m = expr.match(/^([A-Z_][A-Z0-9_]*)\s+IN\s*\(([^)]+)\)$/i);
+    if (m) {
+      const col = lookColRef(m[1]);
+      const vals = m[2].split(',').map(v => {
+        v = v.trim();
+        if (/^'[^']*'$/.test(v)) return `"${v.slice(1, -1)}"`;
+        return v;
+      });
+      return `In(${col}, ${vals.join(', ')})`;
+    }
+  }
+
+  // Pattern 1b-bracket: [Display Name] OP number
+  // Handles cases where expandFieldRefs already converted to bracket form
+  {
+    const m = expr.match(/^(\[[^\]]+\])\s*(>=|<=|!=|<>|>|<|=)\s*(-?\d+(?:\.\d+)?)$/i);
+    if (m) return `${m[1]} ${m[2] === '<>' ? '!=' : m[2]} ${m[3]}`;
+  }
+
+  // Pattern 1c-bracket: [Display Name] IN ('val1', 'val2', ...) → In([Display Name], "val1", ...)
+  // Handles bracket-form LHS after expandFieldRefs expansion
+  {
+    const m = expr.match(/^(\[[^\]]+\])\s+IN\s*\(([^)]+)\)$/i);
+    if (m) {
+      const vals = m[2].split(',').map(v => {
+        v = v.trim();
+        if (/^'[^']*'$/.test(v)) return `"${v.slice(1, -1)}"`;
+        return v;
+      });
+      return `In(${m[1]}, ${vals.join(', ')})`;
+    }
   }
 
   // Pattern 2: ROUND(expr, n)
