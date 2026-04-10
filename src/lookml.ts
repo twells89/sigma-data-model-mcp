@@ -37,10 +37,10 @@ export function parseLookML(text: string): LookMLParseResult {
   // Pre-extract raw sql: ... ;; blocks
   const sqlPlaceholders: Record<string, string> = {};
   let phIdx = 0;
-  text = text.replace(/\bsql\s*:([\s\S]*?);;/g, (match, sqlContent) => {
+  text = text.replace(/\b(sql(?:_start|_end)?)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
     const key = `__SQLPH${phIdx++}__`;
     sqlPlaceholders[key] = sqlContent.trim();
-    return `sql: "${key}" ;;`;
+    return `${keyName}: "${key}" ;;`;
   });
 
   const tokens: string[] = [];
@@ -58,7 +58,7 @@ export function parseLookML(text: string): LookMLParseResult {
   ]);
 
   const SQL_KEYS = new Set(['sql', 'sql_on', 'sql_where', 'sql_table_name',
-    'sql_trigger_value', 'html', 'label_from_parameter']);
+    'sql_trigger_value', 'html', 'label_from_parameter', 'sql_start', 'sql_end']);
 
   function parseBlock(): any {
     const obj: any = {};
@@ -282,6 +282,55 @@ function lookConvertView(
     warnings.push(`⚠ View "${viewName}": contains Liquid templating ({% if %} blocks). Dimensions using Liquid conditionals will be skipped — review and add manually in Sigma.`);
   }
 
+  // Build per-view maps for same-view field ref expansion in computed dimensions.
+  // yesnoExprMap: fieldName → cleaned boolean SQL (e.g. IS_ACTIVE = 1)
+  // fieldDisplayMap: fieldName → Sigma display name (uses label if present)
+  const yesnoExprMap = new Map<string, string>();
+  const fieldDisplayMap = new Map<string, string>();
+  {
+    const allDims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
+    allDims.forEach((yd: any) => {
+      if (!yd._name) return;
+      const lname = yd._name.toLowerCase();
+      if ((yd.type || '').toLowerCase() === 'yesno' && yd.sql) {
+        const expr = yd.sql
+          .replace(/\$\{TABLE\}\s*\.\s*/gi, '')
+          .replace(/\$\{[^.}]+\.([^}]+)\}/g, (_: string, f: string) => f.toUpperCase())
+          .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_: string, n: string) => n.toUpperCase())
+          .trim();
+        yesnoExprMap.set(lname, expr);
+      } else {
+        // Simple (non-complex) SQL dims have no explicit "name" in the model spec,
+        // so Sigma auto-assigns a name via its friendly naming (sigmaDisplayName of physCol).
+        // Use that same name for formula refs so [Discount Pct] matches the column.
+        // Complex/calculated dims DO get name: label in the spec, so use the label there.
+        let displayName: string;
+        if (yd.sql && !lookIsComplexSql(yd.sql)) {
+          const stripped = lookStripSql(yd.sql) || yd._name;
+          const physCol = stripped.split('.').pop()!.replace(/"/g, '').toUpperCase();
+          displayName = colLabel(physCol);
+        } else {
+          displayName = yd.label || sigmaDisplayName(yd._name);
+        }
+        fieldDisplayMap.set(lname, displayName);
+      }
+    });
+  }
+
+  // Pre-expand ${field_ref} in dimension SQL before passing to the converter.
+  // Yesno refs → (BOOLEAN_EXPR); other refs → [Display Name] using label if present.
+  function expandFieldRefs(sql: string): string {
+    if (!yesnoExprMap.size && !fieldDisplayMap.size) return sql;
+    return sql.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match: string, n: string) => {
+      const lname = n.toLowerCase();
+      const yesnoExpr = yesnoExprMap.get(lname);
+      if (yesnoExpr !== undefined) return `(${yesnoExpr})`;
+      const displayName = fieldDisplayMap.get(lname);
+      if (displayName !== undefined) return `[${displayName}]`;
+      return match;
+    });
+  }
+
   // Dimensions
   const dims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
   for (const d of dims) {
@@ -324,7 +373,8 @@ function lookConvertView(
       }
       const colId = sigmaShortId();
       colIdMap[colName] = colId;
-      let sigmaFormula = lookSqlToSigmaRules(d.sql);
+      const expandedSql = expandFieldRefs(d.sql || '');
+      let sigmaFormula = lookSqlToSigmaRules(expandedSql);
       if (sigmaFormula) {
         element.columns.push({ id: colId, formula: sigmaFormula, name: d.label || sigmaDisplayName(d._name) });
         element.order.push(colId);
@@ -369,6 +419,56 @@ function lookConvertView(
   dimGroups.forEach((dg: any) => {
     if (!dg._name) return;
     const colName = dg._name.toUpperCase();
+    const dgType = (dg.type || 'time').toLowerCase();
+
+    // ── type: duration ──────────────────────────────────────────────────────
+    if (dgType === 'duration') {
+      if (!dg.sql_start || !dg.sql_end) {
+        warnings.push(`⚠ Duration group "${dg._name}": missing sql_start/sql_end — skipped.`);
+        return;
+      }
+      const normStart = (dg.sql_start || '').replace(/\$\{TABLE\}\s*\.\s*/gi, '').trim();
+      const normEnd   = (dg.sql_end   || '').replace(/\$\{TABLE\}\s*\.\s*/gi, '').trim();
+      const startCol  = ((normStart.match(/^([A-Za-z_][A-Za-z0-9_]*)/) || ['', ''])[1]).toUpperCase()
+                        || lookStripSql(dg.sql_start).split('.').pop()!.replace(/"/g, '').toUpperCase();
+      const endCol    = ((normEnd.match(/^([A-Za-z_][A-Za-z0-9_]*)/) || ['', ''])[1]).toUpperCase()
+                        || lookStripSql(dg.sql_end).split('.').pop()!.replace(/"/g, '').toUpperCase();
+      const startRef  = `[${tableName}/${colLabel(startCol)}]`;
+      const endRef    = `[${tableName}/${colLabel(endCol)}]`;
+      const DG_DURATION: Record<string, string> = {
+        second: 'second', minute: 'minute', hour: 'hour',
+        day: 'day', week: 'week', month: 'month', quarter: 'quarter', year: 'year'
+      };
+      const intervals: string[] = Array.isArray(dg.intervals)
+        ? dg.intervals.map((i: any) => String(i).toLowerCase())
+        : ['day'];
+      const folderItems: string[] = [];
+      intervals.forEach((interval: string) => {
+        const prec = DG_DURATION[interval];
+        if (!prec) return;
+        const durColId = sigmaShortId();
+        const durColName = `${colName}_${interval.toUpperCase()}S`;
+        colIdMap[durColName] = durColId;
+        element.columns.push({
+          id: durColId,
+          formula: `DateDiff("${prec}", ${startRef}, ${endRef})`,
+          name: sigmaDisplayName(durColName)
+        });
+        element.order.push(durColId);
+        folderItems.push(durColId);
+      });
+      if (folderItems.length > 0) {
+        if (!(element as any).folders) (element as any).folders = [];
+        (element as any).folders.push({
+          id: sigmaShortId(),
+          name: sigmaDisplayName(dg._name),
+          items: folderItems
+        });
+      }
+      return;
+    }
+
+    // ── type: time (default) ────────────────────────────────────────────────
     // Detect LookML parameter substitution — can't be resolved statically
     if (/\$\{[^.}]+\}/.test(dg.sql || '') && !/\$\{TABLE\}/i.test(dg.sql || '')) {
       warnings.push(`⚠ "${dg._name}": uses LookML parameter substitution — skipped. Add this dimension manually after configuring parameters in Sigma.`);
