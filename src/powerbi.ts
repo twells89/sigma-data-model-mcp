@@ -12,7 +12,7 @@
  */
 
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
   type SigmaElement, type SigmaColumn, type ConversionResult,
 } from './sigma-ids.js';
 
@@ -335,7 +335,10 @@ export function convertPowerBIToSigma(
         const colId = sigmaShortId();
         tableColMap[tableName][c.name] = colId;
         pbiToSigmaName[c.name] = c.name;
-        columns.push({ id: colId, formula: sigmaFormula, name: c.name });
+        const _calcFmt = inferSigmaFormat(sigmaFormula, c.name);
+        const _calcCol: any = { id: colId, formula: sigmaFormula, name: c.name };
+        if (_calcFmt) _calcCol.format = _calcFmt;
+        columns.push(_calcCol);
         order.push(colId);
         warnings.push(`ℹ "${c.name}" → calculated column. Review: ${sigmaFormula.slice(0, 60)}`);
       } else if (!warnings.some(w => w.includes(c.name))) {
@@ -351,7 +354,9 @@ export function convertPowerBIToSigma(
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
           return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
         });
+        const _mFmt = inferSigmaFormat(sigmaFormula, m.name);
         const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
+        if (_mFmt) metric.format = _mFmt;
         if (m.description) metric.description = m.description;
         metrics.push(metric);
       } else if (!warnings.some(w => w.includes(`"${m.name}"`))) {
@@ -401,7 +406,9 @@ export function convertPowerBIToSigma(
               return allPbiToSigmaNames[colName] ? `[${allPbiToSigmaNames[colName]}]` : `[${colName}]`;
             });
             if (!(factEl as any).metrics) (factEl as any).metrics = [];
+            const _moFmt = inferSigmaFormat(sigmaFormula, m.name);
             const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
+            if (_moFmt) metric.format = _moFmt;
             if (m.description) metric.description = m.description;
             (factEl as any).metrics.push(metric);
           }

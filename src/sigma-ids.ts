@@ -72,6 +72,41 @@ export function sigmaAggFormula(agg: string, identifier: string): string {
   return map[agg?.toLowerCase()] || `Sum([${dn}])`;
 }
 
+/**
+ * Infer a Sigma format object from a formula string and display name.
+ * Returns null when no rule matches (omit format from output).
+ *
+ * Priority:
+ *  1. Formula is already ×100 percent scale (e.g. `* 100`) → plain number + % suffix
+ *  2. Ratio pattern (Agg() / Agg())                         → ,.2%
+ *  3. Name keywords for %                                    → ,.2%
+ *  4. Name keywords for currency                             → $,.2f
+ *  5. Count/CountDistinct formula                            → ,.0f integer
+ */
+export function inferSigmaFormat(formula: string, displayName?: string): Record<string, any> | null {
+  if (!formula) return null;
+  const f = formula.trim();
+  const n = (displayName || '').toLowerCase();
+
+  const alreadyPctScale = /\*\s*100\b/.test(f);
+  if (alreadyPctScale && /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
+    return { kind: 'number', formatString: ',.2f', suffix: '%' };
+  }
+  if (/^[A-Za-z]+\s*\([^)]+\)\s*\/\s*[A-Za-z]+\s*\([^)]+\)$/.test(f)) {
+    return { kind: 'number', formatString: ',.2%' };
+  }
+  if (/\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
+    return { kind: 'number', formatString: ',.2%' };
+  }
+  if (/\b(revenue|sales|profit|cost|spend|amount|discounts?|price|value)\b/.test(n)) {
+    return { kind: 'number', formatString: '$,.2f', currencySymbol: '$' };
+  }
+  if (/^Count(?:Distinct|If|DistinctIf)?\s*\(/.test(f)) {
+    return { kind: 'number', formatString: ',.0f' };
+  }
+  return null;
+}
+
 /** Sigma Data Model JSON Schema reference (for prompts/docs) */
 export const DATA_MODEL_SCHEMA_SUMMARY = `
 Sigma Data Model JSON top-level structure:

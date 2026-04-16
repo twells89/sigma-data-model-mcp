@@ -14,6 +14,7 @@ import { convertTableauToSigma } from './tableau.js';
 import { convertOmniToSigma } from './omni.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
+import { registerResources } from './resources.js';
 
 /** Create and configure a new MCP server with all tools and prompts registered. */
 export function createSigmaServer(): McpServer {
@@ -24,6 +25,7 @@ export function createSigmaServer(): McpServer {
 
   registerTools(server);
   registerPrompts(server);
+  registerResources(server);
 
   return server;
 }
@@ -360,7 +362,16 @@ Useful for inspecting views, explores, dimensions, measures, joins before conver
   server.tool(
     'get_sigma_data_model_schema',
     `Return the Sigma Computing data model JSON schema reference.
-Shows element types, columns, metrics, relationships, controls, and more.`,
+Shows element types, columns, metrics, relationships, controls, and more.
+
+For detailed specs on specific components, read the MCP resources:
+  sigma://data-model-spec/data-model  — top-level structure, ID rules
+  sigma://data-model-spec/column      — column formulas, prefix rules per source type
+  sigma://data-model-spec/metric      — metric formulas (use source column names, not spec IDs)
+  sigma://data-model-spec/source      — all 7 source kinds overview
+  sigma://data-model-spec/join-source — join source with name field requirements
+  sigma://data-model-spec/table       — full table element field reference
+  sigma://data-model-spec/filter, /folder, /grouping, /control, /relationship — supporting types`,
     {},
     async () => ({
       content: [{
@@ -371,15 +382,24 @@ Shows element types, columns, metrics, relationships, controls, and more.`,
 
 1. Warehouse columns use inode-style IDs: "inode-{22char}/{COLUMN}"
 2. Calculated columns use short random IDs and MUST NOT include table prefix in formula
-3. Metrics reference columns by display name only — NO table prefix
+3. Metrics reference SOURCE column names (warehouse names) by display name — NO table prefix, NO spec IDs
 4. Relationships go on the SOURCE (fact/many-side) element pointing to TARGET (dim/one-side)
-5. Element order matters: dimension elements BEFORE fact elements (that reference them)
-6. Duplicate source.path values cause "cycle in dependency order" errors — deduplicate
-7. Sigma API endpoints:
+5. Element IDs must be unique across ALL pages in the model (not just within one page)
+6. Element order matters: dimension elements BEFORE fact elements (that reference them)
+7. Duplicate source.path values cause "cycle in dependency order" errors — deduplicate
+8. Join source REQUIRES "name" fields on both the join source and each relationship to resolve column formulas
+9. Sigma API endpoints:
    - POST /v2/dataModels/spec — create new
    - PUT /v2/dataModels/{id}/spec — update existing
    - GET /v2/dataModels/{id}/spec — get current spec
-   - GET /v2/connections — list connections (for connectionId)`,
+   - GET /v2/connections — list connections (for connectionId)
+
+## Formula prefix by source type
+  warehouse-table: [LastPathSegment/ColName]     — last segment of path[], e.g. ORDERS
+  sql:             [ElementNameField/ColName]    — the table element's "name" field
+  table/data-model:[ReferencedElem.name/ColName]
+  join:            [JoinSource.name/ColName]     — source.name for head, joins[N].name for each right
+  union/transpose: [ColName]                     — no prefix`,
       }],
     })
   );
@@ -395,6 +415,130 @@ Shows element types, columns, metrics, relationships, controls, and more.`,
     async ({ identifier }) => ({
       content: [{ type: 'text' as const, text: sigmaDisplayName(identifier) }],
     })
+  );
+
+  // ── diagnose_sigma_save_error ─────────────────────────────────────────────
+
+  server.tool(
+    'diagnose_sigma_save_error',
+    `Identify which SQL element in a Sigma data model caused a save error.
+
+When Sigma returns a syntax error like "syntax error line 49 at position 24
+unexpected '('" it only provides a connection ID, not which element failed.
+This tool parses the error, scans all Custom SQL elements in the model JSON,
+and pinpoints the likely culprit by matching line number and error token position.
+
+Returns:
+- A list of candidate elements (those whose SQL has >= errorLine lines)
+- The exact line content at the error line for each candidate
+- A "likely culprit" flag on the element where the error token appears at errorPosition`,
+    {
+      error_message: z.string().describe('The full Sigma error message, e.g. "syntax error line 49 at position 24 unexpected \'(\'"'),
+      model_json: z.string().describe('The full Sigma data model JSON string (the output from a converter or GET /v2/dataModels/{id}/spec)'),
+    },
+    async ({ error_message, model_json }) => {
+      try {
+        // Parse error message
+        const lineMatch = error_message.match(/syntax error line (\d+) at position (\d+)/i);
+        if (!lineMatch) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'Could not parse error message. Expected format: "syntax error line N at position M unexpected \'X\'"',
+                raw: error_message,
+              }, null, 2),
+            }],
+          };
+        }
+
+        const targetLine  = parseInt(lineMatch[1], 10);
+        const targetPos   = parseInt(lineMatch[2], 10);
+        const tokenMatch  = error_message.match(/unexpected '([^']+)'/i);
+        const errorToken  = tokenMatch ? tokenMatch[1] : '';
+
+        // Parse model JSON
+        let model: any;
+        try {
+          model = JSON.parse(model_json);
+        } catch (e: any) {
+          return { content: [{ type: 'text' as const, text: `Error: Could not parse model_json — ${e.message}` }], isError: true };
+        }
+
+        // Collect all SQL elements
+        const sqlElements: any[] = [];
+        for (const page of (model.pages || [])) {
+          for (const el of (page.elements || [])) {
+            if (el.source && el.source.kind === 'sql' && el.source.statement) {
+              sqlElements.push({ name: el.name || el.id || '(unnamed)', id: el.id, sql: el.source.statement });
+            }
+          }
+        }
+
+        if (sqlElements.length === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ message: 'No Custom SQL elements found in the model.', targetLine, targetPos, errorToken }, null, 2),
+            }],
+          };
+        }
+
+        // Scan candidates
+        const candidates: any[] = [];
+        for (const el of sqlElements) {
+          const lines = el.sql.split('\n');
+          if (lines.length < targetLine) continue;
+
+          const lineContent = lines[targetLine - 1];   // 1-indexed → 0-indexed
+          const tokenAtPos  = errorToken && lineContent.slice(targetPos, targetPos + errorToken.length) === errorToken;
+          const likelyCulprit = tokenAtPos;
+
+          candidates.push({
+            name:         el.name,
+            id:           el.id,
+            totalLines:   lines.length,
+            errorLineContent: lineContent,
+            tokenAtPosition:  tokenAtPos,
+            likelyCulprit,
+          });
+        }
+
+        if (candidates.length === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                message: `No SQL element has ${targetLine} or more lines. The error may be in a data source not included in this model.`,
+                targetLine,
+                targetPos,
+                errorToken,
+                totalSqlElements: sqlElements.length,
+              }, null, 2),
+            }],
+          };
+        }
+
+        const culprits = candidates.filter(c => c.likelyCulprit);
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              targetLine,
+              targetPos,
+              errorToken: errorToken || '(not parsed)',
+              candidates,
+              summary: culprits.length > 0
+                ? `Likely culprit: "${culprits[0].name}" — error token "${errorToken}" found at position ${targetPos} on line ${targetLine}.`
+                : `${candidates.length} element(s) have enough lines, but token "${errorToken}" was not found at position ${targetPos} in any of them. Check the candidates list and inspect lines manually.`,
+            }, null, 2),
+          }],
+        };
+
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
   );
 }
 

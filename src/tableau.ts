@@ -8,7 +8,7 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
   type SigmaElement, type ConversionResult,
 } from './sigma-ids.js';
 import { tableauFormulaToSigma, tableauIsAggregate } from './formulas.js';
@@ -395,11 +395,10 @@ export function convertTableauToSigma(
           const isNumeric = dataType === 'real' || dataType === 'integer' || dataType === 'decimal';
           if (role === 'measure' && isNumeric) {
             if (!(factEl as any).metrics) (factEl as any).metrics = [];
-            (factEl as any).metrics.push({
-              id: sigmaShortId(),
-              formula: `Sum([${displayName}])`,
-              name: displayName,
-            });
+            const _autoFmt = inferSigmaFormat(`Sum([${displayName}])`, displayName);
+            const _autoMetric: any = { id: sigmaShortId(), formula: `Sum([${displayName}])`, name: displayName };
+            if (_autoFmt) _autoMetric.format = _autoFmt;
+            (factEl as any).metrics.push(_autoMetric);
           }
         }
         continue;
@@ -444,7 +443,10 @@ export function convertTableauToSigma(
                   }
                 }
                 const calcId = sigmaShortId();
-                existingChild.columns.push({ id: calcId, formula: lod.sigmaAgg, name: caption });
+                const _lodFmt1 = inferSigmaFormat(lod.sigmaAgg, caption);
+                const _lodCol1: any = { id: calcId, formula: lod.sigmaAgg, name: caption };
+                if (_lodFmt1) _lodCol1.format = _lodFmt1;
+                existingChild.columns.push(_lodCol1);
                 existingChild.order.push(calcId);
                 existingChild.groupings[0].calculations.push(calcId);
               } else {
@@ -467,7 +469,10 @@ export function convertTableauToSigma(
                   childOrder.push(refColId);
                 }
                 const calcId = sigmaShortId();
-                childCols.push({ id: calcId, formula: lod.sigmaAgg, name: caption });
+                const _lodFmt2 = inferSigmaFormat(lod.sigmaAgg, caption);
+                const _lodCol2: any = { id: calcId, formula: lod.sigmaAgg, name: caption };
+                if (_lodFmt2) _lodCol2.format = _lodFmt2;
+                childCols.push(_lodCol2);
                 childOrder.push(calcId);
 
                 lodChildElements.push({
@@ -485,7 +490,10 @@ export function convertTableauToSigma(
           } else if (lod.lodType === 'FIXED' && lod.dims.length === 0) {
             // Table-scoped: add as metric
             if (!(factEl as any).metrics) (factEl as any).metrics = [];
-            (factEl as any).metrics.push({ id: sigmaShortId(), formula: lod.sigmaAgg, name: caption });
+            const _lodFmt3 = inferSigmaFormat(lod.sigmaAgg, caption);
+            const _lodM3: any = { id: sigmaShortId(), formula: lod.sigmaAgg, name: caption };
+            if (_lodFmt3) _lodM3.format = _lodFmt3;
+            (factEl as any).metrics.push(_lodM3);
             warnings.push(`ℹ LOD "${caption}" (table-scoped FIXED) → metric: ${lod.sigmaAgg}`);
           } else {
             warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) → manual conversion needed. See: community.sigmacomputing.com/t/tableau-level-of-detail-or-lod-calculations-in-sigma/6427`);
@@ -499,10 +507,16 @@ export function convertTableauToSigma(
 
         if (tableauIsAggregate(formula)) {
           if (!(factEl as any).metrics) (factEl as any).metrics = [];
-          (factEl as any).metrics.push({ id: sigmaShortId(), formula: sigmaFormula, name: caption });
+          const _mFmt = inferSigmaFormat(sigmaFormula, caption);
+          const _m: any = { id: sigmaShortId(), formula: sigmaFormula, name: caption };
+          if (_mFmt) _m.format = _mFmt;
+          (factEl as any).metrics.push(_m);
         } else {
           const colId = sigmaShortId();
-          factEl.columns.push({ id: colId, formula: sigmaFormula, name: caption });
+          const _cFmt = inferSigmaFormat(sigmaFormula, caption);
+          const _c: any = { id: colId, formula: sigmaFormula, name: caption };
+          if (_cFmt) _c.format = _cFmt;
+          factEl.columns.push(_c);
           factEl.order.push(colId);
           warnings.push(`ℹ "${caption}" → calculated column. Review: ${sigmaFormula.slice(0, 60)}`);
         }
