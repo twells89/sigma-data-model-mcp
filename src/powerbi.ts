@@ -9,6 +9,7 @@
  * - Measures-only tables → measures moved to fact element
  * - Display folders → Sigma folders
  * - Cross-element column references → auto-rewrite with - link/ syntax
+ * - Calculation groups → derived metric stubs per base measure × calc item
  */
 
 import {
@@ -255,9 +256,14 @@ export function convertPowerBIToSigma(
   const tableColMap: Record<string, Record<string, string>> = {};
   const allPbiToSigmaNames: Record<string, string> = {};
 
-  // Detect "measures only" tables
+  // Detect "measures only" tables and calculation group tables
   const measureOnlyTables = new Set<string>();
+  const calcGroupTables = new Set<string>();
   for (const t of model.tables) {
+    if (t.calculationGroup) {
+      calcGroupTables.add(t.name);
+      continue;
+    }
     const dataCols = (t.columns || []).filter((c: any) => c.type !== 'rowNumber' && !c.isGenerated);
     if (dataCols.length === 0 && (t.measures || []).length > 0) {
       measureOnlyTables.add(t.name);
@@ -267,6 +273,7 @@ export function convertPowerBIToSigma(
   // ── Convert tables to Sigma elements ────────────────────────────────────────
   for (const t of model.tables) {
     if (measureOnlyTables.has(t.name)) continue;
+    if (calcGroupTables.has(t.name)) continue;
     if (t.name.startsWith('LocalDateTable_') || t.name.startsWith('DateTableTemplate_')) continue;
 
     const elementId = sigmaShortId();
@@ -498,6 +505,99 @@ export function convertPowerBIToSigma(
     }
   }
 
+  // ── Calculation groups → derived metric stubs ────────────────────────────
+  // Build a flat index: metric name → element so we can attach derived metrics
+  // to the same element as their base measure.
+  interface MetricRef { elementIndex: number; sigmaFormula: string }
+  const metricIndex: Record<string, MetricRef> = {};
+  for (let ei = 0; ei < elements.length; ei++) {
+    for (const m of ((elements[ei] as any).metrics || [])) {
+      if (m.name && m.formula) metricIndex[m.name] = { elementIndex: ei, sigmaFormula: m.formula };
+    }
+  }
+
+  for (const t of model.tables) {
+    if (!calcGroupTables.has(t.name)) continue;
+    const cg = t.calculationGroup;
+    const items: any[] = cg?.calculationItems || [];
+    if (items.length === 0) continue;
+
+    const groupName = t.name;
+    warnings.push(
+      `ℹ Calculation group "${groupName}" (${items.length} item${items.length !== 1 ? 's' : ''}): ` +
+      `${items.map((i: any) => i.name).join(', ')} — ` +
+      `derived metric stubs generated. Implement time intelligence using Sigma's Period-over-Period: ${PBI_COMMUNITY_LINKS.pop}`
+    );
+
+    // Track which elements get new metrics so we can add/update their folder
+    const newMetricsByElement: Record<number, any[]> = {};
+
+    for (const item of items) {
+      const itemName: string = item.name || 'Unknown';
+      const itemExpr: string = (item.expression || '').trim();
+
+      // Skip "Current" / pass-through items — they're identical to the base measure
+      const isPassthrough =
+        /^SELECTEDMEASURE\s*\(\s*\)\s*$/i.test(itemExpr) ||
+        itemName.toLowerCase() === 'current' ||
+        itemName.toLowerCase() === 'actual';
+      if (isPassthrough) continue;
+
+      // Classify the item's time intelligence pattern for the description
+      let description = `Calculation group "${groupName}" — ${itemName}. `;
+      if (/TOTALYTD|DATESYTD/i.test(itemExpr)) {
+        description += `Year-to-date. Implement using DateTrunc + CumulativeSum or Sigma's Period-over-Period: ${PBI_COMMUNITY_LINKS.pop}`;
+      } else if (/TOTALQTD/i.test(itemExpr)) {
+        description += `Quarter-to-date. Use DateTrunc("quarter", …) + CumulativeSum.`;
+      } else if (/TOTALMTD/i.test(itemExpr)) {
+        description += `Month-to-date. Use DateTrunc("month", …) + CumulativeSum.`;
+      } else if (/SAMEPERIODLASTYEAR|PREVIOUSYEAR/i.test(itemExpr)) {
+        description += `Same period last year. Implement using Sigma's Period-over-Period: ${PBI_COMMUNITY_LINKS.pop}`;
+      } else if (/PREVIOUSQUARTER|PREVIOUSMONTH/i.test(itemExpr)) {
+        description += `Previous period. Implement using DateAdd / Sigma's Period-over-Period: ${PBI_COMMUNITY_LINKS.pop}`;
+      } else if (/PARALLELPERIOD|DATEADD/i.test(itemExpr)) {
+        description += `Date-shifted period. Implement using DateAdd + Sigma's Period-over-Period: ${PBI_COMMUNITY_LINKS.pop}`;
+      } else if (/DIVIDE\s*\(/i.test(itemExpr)) {
+        description += `Ratio/variance calculation. Implement as a derived metric using base period formulas.`;
+      } else {
+        description += `DAX expression: ${itemExpr.slice(0, 120)}`;
+      }
+
+      // Generate one derived metric per base measure
+      for (const [baseName, ref] of Object.entries(metricIndex)) {
+        const derivedName = `${baseName} (${itemName})`;
+        const derivedMetric: any = {
+          id: sigmaShortId(),
+          name: derivedName,
+          // Use base formula as placeholder so the metric is syntactically valid
+          formula: ref.sigmaFormula,
+          description,
+        };
+
+        if (!newMetricsByElement[ref.elementIndex]) newMetricsByElement[ref.elementIndex] = [];
+        newMetricsByElement[ref.elementIndex].push(derivedMetric);
+      }
+    }
+
+    // Attach derived metrics to their elements and group them in a display folder
+    for (const [eiStr, newMetrics] of Object.entries(newMetricsByElement)) {
+      const ei = Number(eiStr);
+      const el = elements[ei] as any;
+      if (!el.metrics) el.metrics = [];
+      el.metrics.push(...newMetrics);
+
+      // Add / update a display folder for this calc group
+      if (!el.folders) el.folders = [];
+      const existingFolder = el.folders.find((f: any) => f.name === groupName);
+      const folderItems = newMetrics.map((m: any) => m.id);
+      if (existingFolder) {
+        existingFolder.items.push(...folderItems);
+      } else {
+        el.folders.push({ id: sigmaShortId(), name: groupName, items: folderItems });
+      }
+    }
+  }
+
   // ── Build output ──────────────────────────────────────────────────────────
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
@@ -510,16 +610,18 @@ export function convertPowerBIToSigma(
   const ec = elements.length;
   const mc = elements.reduce((n, e) => n + ((e as any).metrics?.length || 0), 0);
   const rc = elements.reduce((n, e) => n + (e.relationships?.length || 0), 0);
+  const cgCount = calcGroupTables.size;
 
   return {
     model: sigmaModel,
     warnings,
     stats: {
-      tables: model.tables.length,
+      tables: model.tables.filter((t: any) => !calcGroupTables.has(t.name)).length,
       elements: ec,
       columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
       metrics: mc,
       relationships: rc,
+      ...(cgCount > 0 ? { calculationGroups: cgCount } : {}),
     }
   };
 }
