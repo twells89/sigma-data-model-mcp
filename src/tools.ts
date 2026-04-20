@@ -12,6 +12,7 @@ import { convertLookMLToSigma, parseLookML } from './lookml.js';
 import { convertPowerBIToSigma } from './powerbi.js';
 import { convertTableauToSigma } from './tableau.js';
 import { convertOmniToSigma } from './omni.js';
+import { convertSqlToSigma } from './sql.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
@@ -255,6 +256,57 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     async ({ files, connection_id, database, schema }) => {
       try {
         const result = convertOmniToSigma(files, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_sql_to_sigma ─────────────────────────────────────────────────
+
+  server.tool(
+    'convert_sql_to_sigma',
+    `Convert SQL SELECT statements to Sigma Computing data model JSON.
+
+Parses SQL SELECT statements (including explicit JOINs and aggregate functions)
+and generates a Sigma data model with warehouse elements, relationships, and
+a derived view element that surfaces all SELECT columns.
+
+Supports:
+  - Explicit JOIN ON / JOIN USING → Sigma relationships with FK/PK column IDs
+  - SUM/COUNT/AVG/MIN/MAX → Sigma metrics
+  - CTEs (uses the last top-level SELECT, ignores CTE bodies)
+  - Dot-qualified columns (t.col) → attributed to the correct warehouse element
+  - DISTINCT / ALL SELECT modifiers
+  - Multi-table models (pass multiple statements)
+
+Complex queries (subqueries in FROM, implicit cross-joins) fall back to a
+Custom SQL element with inferred column names.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      statements: z.array(z.object({
+        name:    z.string().describe('Human-readable name for this query (used as derived element name)'),
+        sql:     z.string().describe('The SQL SELECT statement to convert'),
+      })).describe('Array of named SQL SELECT statements to convert'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name (e.g. "ANALYTICS"); pass empty string to omit'),
+      schema:   z.string().describe('Override schema name (e.g. "PUBLIC"); pass empty string to omit'),
+    },
+    async ({ statements, connection_id, database, schema }) => {
+      try {
+        const result = convertSqlToSigma(statements, {
           connectionId: connection_id || undefined,
           database: database || undefined,
           schema: schema || undefined,

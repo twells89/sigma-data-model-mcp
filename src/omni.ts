@@ -391,11 +391,11 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
   let expr = sql.trim();
 
   // 1. Field reference substitution
-  // For Custom SQL elements Sigma uses the raw SQL alias (uppercase), not a display name
+  // For Custom SQL elements Sigma uses bare [Display Name] refs (no table prefix).
   const isCustomSql = tableName === 'Custom SQL';
   expr = expr.replace(/\$\{TABLE\}\.(\w+)/g, (_, col) =>
     isCustomSql
-      ? `[Custom SQL/${col.toUpperCase()}]`
+      ? `[${sigmaDisplayName(col)}]`
       : `[${tableName}/${sigmaDisplayName(col)}]`
   );
   expr = expr.replace(/\$\{(\w+)\.(\w+)\}/g, (_, _v, field) =>
@@ -405,15 +405,27 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
     `[${sigmaDisplayName(field)}]`
   );
 
+  // 1b. Snowflake/SQL ::TYPE casts → Sigma type functions
+  expr = expr.replace(/(\[[^\]]+\]|\w+)\s*::\s*(\w+)/gi, (_, val, typ) => {
+    const t = typ.toUpperCase();
+    if (t === 'DATE') return `Date(${val})`;
+    if (t.startsWith('TIMESTAMP') || t === 'DATETIME') return `Datetime(${val})`;
+    if (t === 'VARCHAR' || t === 'STRING' || t === 'TEXT' || t === 'CHAR') return `Text(${val})`;
+    if (t === 'INTEGER' || t === 'INT' || t === 'BIGINT' || t === 'SMALLINT') return `Int(${val})`;
+    if (t === 'FLOAT' || t === 'DOUBLE' || t === 'NUMERIC' || t === 'DECIMAL' || t === 'NUMBER') return `Number(${val})`;
+    if (t === 'BOOLEAN') return `Boolean(${val})`;
+    return val;
+  });
+
   // 2. Single-quoted strings → double-quoted
   expr = expr.replace(/'([^']*)'/g, '"$1"');
 
-  // 3. expr IN (a, b, c) → (expr = a Or expr = b Or expr = c)
+  // 3. expr IN (a, b, c) → In(expr, a, b, c)
   expr = expr.replace(
     /(\w+(?:\([^)]*\))?|\[[^\]]+\])\s+IN\s+\(([^)]+)\)/gi,
     (_, lhs, items) => {
       const vals = items.split(',').map((v: string) => v.trim());
-      return '(' + vals.map((v: string) => `${lhs} = ${v}`).join(' Or ') + ')';
+      return `In(${lhs}, ${vals.join(', ')})`;
     }
   );
 

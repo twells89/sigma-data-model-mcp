@@ -834,6 +834,12 @@ export function convertLookMLToSigma(
 
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
+  // Build derived (browsable) elements for each fact element that has relationships.
+  // Each derived element sources from the fact warehouse element and surfaces all
+  // its own columns plus cross-element [TABLE/REL_NAME/Col] refs for joined dims.
+  const derivedElements = buildDerivedElements(allElements);
+  allElements = [...allElements, ...derivedElements];
+
   const sigmaModel = {
     name: sigmaDisplayName(exploreName),
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements: allElements }]
@@ -855,4 +861,67 @@ export function convertLookMLToSigma(
       relationships: totalRels
     }
   };
+}
+
+/**
+ * Build "derived" (browsable) elements for each fact element that has relationships.
+ *
+ * The data model manager surfaces joined dimension columns via cross-element
+ * [TABLE/REL_NAME/Col] formulas in a derived element that sources from the fact.
+ * This mirrors the UI's native element, making the model immediately usable in Sigma.
+ */
+function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
+  const derived: SigmaElement[] = [];
+
+  for (const srcEl of elements) {
+    if (!srcEl.relationships?.length) continue;
+    if (srcEl.source?.kind !== 'warehouse-table') continue;
+
+    const srcPath = srcEl.source.path as string[];
+    const srcTableName = srcPath[srcPath.length - 1];
+
+    const viewCols: Array<{ id: string; formula: string }> = [];
+    const viewOrder: string[] = [];
+
+    // Own columns from the fact element
+    for (const col of srcEl.columns ?? []) {
+      if (!col.formula || col.formula.startsWith('/*')) continue;
+      const cId = sigmaShortId();
+      viewCols.push({ id: cId, formula: col.formula });
+      viewOrder.push(cId);
+    }
+
+    // Joined dimension columns via [TABLE/REL_NAME/Col] cross-element refs
+    for (const rel of srcEl.relationships ?? []) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+
+      for (const col of tgtEl.columns ?? []) {
+        if (!col.formula || col.formula.startsWith('/*')) continue;
+        // Extract the display name from a [TABLE/ColName] or [ColName] formula
+        const fm = col.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const slashIdx = inner.lastIndexOf('/');
+        const dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        const cId = sigmaShortId();
+        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewOrder.push(cId);
+      }
+    }
+
+    if (viewCols.length > 0) {
+      derived.push({
+        id: sigmaShortId(),
+        kind: 'table',
+        name: srcEl.name ?? sigmaDisplayName(srcTableName),
+        source: { kind: 'table', elementId: srcEl.id },
+        columns: viewCols,
+        order: viewOrder,
+      } as SigmaElement);
+    }
+  }
+
+  return derived;
 }
