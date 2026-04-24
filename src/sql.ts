@@ -139,6 +139,24 @@ export function convertSqlToSigma(
       if (jKey) ensureSqlColumn(joinElemCache[jKey].elem, jc.name);
     }
 
+    // Computed expression columns → ensure every alias.col they reference exists on its element.
+    // Without this pass, translateSqlExprToSigma produces valid formulas but the referenced
+    // columns are absent from the warehouse-table element, causing "dependency not found" errors.
+    for (const col of parsed.columns) {
+      if (typeof col !== 'object' || !(col as JoinCol).isComputed) continue;
+      for (const [, tblAlias, physCol] of (col as JoinCol).expr!.matchAll(/\b([\w]+)\.([\w]+)\b/g)) {
+        const lowerAlias = tblAlias.toLowerCase();
+        if (!(lowerAlias in parsed.aliasMap)) continue;
+        const joinTable = parsed.aliasMap[lowerAlias];
+        if (joinTable === null) {
+          ensureSqlColumn(primaryElem, physCol);
+        } else {
+          const jKey = Object.keys(joinElemCache).find(k => k.split('.').pop() === joinTable);
+          if (jKey) ensureSqlColumn(joinElemCache[jKey].elem, physCol);
+        }
+      }
+    }
+
     // ── Derived view element (sources from primary, surfaces all SELECT columns) ──
     // Uses three-part [TABLE/REL_NAME/Col] formulas for joined dimension columns.
     const viewCols: SigmaColumn[] = [];
