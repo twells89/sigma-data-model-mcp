@@ -103,9 +103,9 @@ export function convertSqlToSigma(
     };
     allElements.push(primaryElem);
 
-    // Own SELECT columns (dim-attributed columns are deferred to the dim element)
+    // Own SELECT columns (dim-attributed and computed columns are deferred)
     for (const col of parsed.columns) {
-      if (typeof col === 'object' && (col as JoinCol).joinTable) continue;
+      if (typeof col === 'object' && ((col as JoinCol).joinTable || (col as JoinCol).isComputed)) continue;
       ensureSqlColumn(primaryElem, typeof col === 'string' ? col : (col as JoinCol).name);
     }
 
@@ -145,11 +145,16 @@ export function convertSqlToSigma(
     const viewOrder: string[] = [];
     for (const col of parsed.columns) {
       const colName = typeof col === 'string' ? col : (col as JoinCol).name;
-      const formula = (typeof col === 'object' && (col as JoinCol).joinTable)
-        ? `[${primaryTableName}/${(col as JoinCol).joinTable}/${sigmaDisplayName(colName)}]`
-        : `[${primaryTableName}/${sigmaDisplayName(colName)}]`;
+      let formula: string;
+      if (typeof col === 'object' && (col as JoinCol).isComputed) {
+        formula = translateSqlExprToSigma((col as JoinCol).expr!, parsed.aliasMap, primaryTableName);
+      } else if (typeof col === 'object' && (col as JoinCol).joinTable) {
+        formula = `[${primaryTableName}/${(col as JoinCol).joinTable}/${sigmaDisplayName(colName)}]`;
+      } else {
+        formula = `[${primaryTableName}/${sigmaDisplayName(colName)}]`;
+      }
       const cId = sigmaShortId();
-      viewCols.push({ id: cId, formula });
+      viewCols.push({ id: cId, formula, name: sigmaDisplayName(colName) });
       viewOrder.push(cId);
     }
     if (parsed.joins.length > 0 && viewCols.length > 0) {
@@ -196,6 +201,8 @@ export function convertSqlToSigma(
 interface JoinCol {
   name: string;
   joinTable: string | null;
+  isComputed?: boolean;
+  expr?: string;
 }
 
 interface ParsedJoin {
@@ -217,6 +224,7 @@ interface ParsedSql {
   joins: ParsedJoin[];
   columns: Array<string | JoinCol>;
   metrics: ParsedMetric[];
+  aliasMap: Record<string, string | null>;
 }
 
 // ── SQL Parser helpers ────────────────────────────────────────────────────────
@@ -447,6 +455,8 @@ function parseSqlFull(sql: string, db: string, sc: string): ParsedSql | null {
         : part.trim();
 
       let joinTable: string | undefined;
+      let isComputed = false;
+
       if (!/[()]/.test(colExpr)) {
         const dotM = colExpr.match(/^([\w"`[\]]+)\.([\w"`[\]]+)$/);
         if (dotM) {
@@ -456,14 +466,59 @@ function parseSqlFull(sql: string, db: string, sc: string): ParsedSql | null {
             joinTable = aliasMap[tblAlias] ?? undefined;
             alias = physCol;
           }
+        } else if (/[\+\-\*\/|&%]/.test(colExpr) || /\w+\.\w+.*\w+\.\w+/.test(colExpr)) {
+          // Operator expression or multiple table.col refs — computed, not a physical column
+          isComputed = true;
         }
+      } else {
+        // Has parentheses and an AS alias — function call or complex expression — computed
+        isComputed = true;
       }
 
-      columns.push(joinTable !== undefined ? { name: alias, joinTable } : alias);
+      if (isComputed) {
+        columns.push({ name: alias!, joinTable: null, isComputed: true, expr: colExpr });
+      } else {
+        columns.push(joinTable !== undefined ? { name: alias!, joinTable } : alias!);
+      }
     }
   }
 
-  return { primaryPath, joins, columns, metrics };
+  return { primaryPath, joins, columns, metrics, aliasMap };
+}
+
+/**
+ * Translate a SQL expression to a Sigma formula string.
+ * Resolves alias.column references to [TABLE/REL/Col] paths and
+ * converts SQL operators/functions to Sigma equivalents.
+ */
+function translateSqlExprToSigma(
+  expr: string,
+  aliasMap: Record<string, string | null>,
+  primaryTableName: string,
+): string {
+  let result = expr;
+
+  // Replace alias.column references (longest match first to avoid partial replacements)
+  result = result.replace(/\b([\w]+)\.([\w]+)\b/g, (_match, tblAlias, col) => {
+    const lowerAlias = tblAlias.toLowerCase();
+    if (lowerAlias in aliasMap) {
+      const joinTable = aliasMap[lowerAlias];
+      const dn = sigmaDisplayName(col);
+      return joinTable
+        ? `[${primaryTableName}/${joinTable}/${dn}]`
+        : `[${primaryTableName}/${dn}]`;
+    }
+    return `[${sigmaDisplayName(col)}]`;
+  });
+
+  // SQL → Sigma operator/function translations
+  result = result
+    .replace(/\|\|/g, '&')                                         // string concat
+    .replace(/\bNULLIF\s*\(([^,]+),\s*0\s*\)/gi, '$1')           // NULLIF(x,0) → x (Sigma returns null on /0)
+    .replace(/\bNULL\b/gi, 'Null')
+    .replace(/'/g, '"');                                            // SQL string literals → Sigma
+
+  return result;
 }
 
 /**
