@@ -81,8 +81,19 @@ async function handleMcp(req: Request, res: Response): Promise<void> {
 }
 
 app.post('/mcp', handleMcp);
-app.get('/mcp', handleMcp);
 app.delete('/mcp', handleMcp);
+
+// GET /mcp opens a standalone SSE stream for server-initiated notifications.
+// This server is stateless and never sends server-initiated messages, so holding
+// that connection open just causes Render's 5-minute proxy timeout to fire in a
+// loop, reconnecting every 5 minutes and re-fetching the schema each time.
+app.get('/mcp', (_req: Request, res: Response) => {
+  res.status(405).json({
+    jsonrpc: '2.0',
+    error: { code: -32000, message: 'SSE streaming not supported — use POST for all requests' },
+    id: null,
+  });
+});
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
