@@ -198,3 +198,57 @@ export interface ElementResult {
   elementId: string;
   colIdMap: Record<string, string>;
 }
+
+/**
+ * Build a derived "join view" element for each source element that has outgoing
+ * relationships. The derived element exposes own columns plus dim columns via
+ * [SRC/REL_NAME/Col] cross-element formulas. Used by Qlik, OAC, Alteryx, Atlan.
+ */
+export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
+  const derived: SigmaElement[] = [];
+  for (const srcEl of elements) {
+    if (!srcEl.relationships?.length) continue;
+    if (srcEl.source?.kind !== 'warehouse-table') continue;
+
+    const srcPath: string[] = srcEl.source.path || [];
+    const srcTableName: string = srcPath[srcPath.length - 1] || '';
+    const viewCols: Array<{ id: string; formula: string }> = [];
+    const viewOrder: string[] = [];
+
+    for (const col of (srcEl.columns || [])) {
+      if (!col.formula || col.formula.startsWith('/*')) continue;
+      const cId = sigmaShortId();
+      viewCols.push({ id: cId, formula: col.formula });
+      viewOrder.push(cId);
+    }
+
+    for (const rel of srcEl.relationships) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      for (const col of (tgtEl.columns || [])) {
+        if (!col.formula || col.formula.startsWith('/*')) continue;
+        const fm = col.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const s = inner.lastIndexOf('/');
+        const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        const cId = sigmaShortId();
+        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewOrder.push(cId);
+      }
+    }
+
+    if (viewCols.length > 0) {
+      derived.push({
+        id: sigmaShortId(),
+        kind: 'table',
+        name: srcEl.name || sigmaDisplayName(srcTableName),
+        source: { kind: 'table', elementId: srcEl.id },
+        columns: viewCols,
+        order: viewOrder,
+      });
+    }
+  }
+  return derived;
+}

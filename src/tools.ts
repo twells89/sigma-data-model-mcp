@@ -13,6 +13,11 @@ import { convertPowerBIToSigma } from './powerbi.js';
 import { convertTableauToSigma } from './tableau.js';
 import { convertOmniToSigma } from './omni.js';
 import { convertSqlToSigma } from './sql.js';
+import { convertThoughtSpotToSigma } from './thoughtspot.js';
+import { convertQlikToSigma } from './qlik.js';
+import { convertAtlanToSigma } from './atlan.js';
+import { convertAlteryxToSigma } from './alteryx.js';
+import { convertOacToSigma } from './oac.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
@@ -587,6 +592,206 @@ Returns:
           }],
         };
 
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_thoughtspot_to_sigma ─────────────────────────────────────────
+
+  server.tool(
+    'convert_thoughtspot_to_sigma',
+    `Convert a ThoughtSpot TML (YAML) worksheet or model to Sigma Computing data model JSON.
+
+Accepts ThoughtSpot Table/Worksheet TML YAML — the format exported from
+ThoughtSpot's Develop > TML interface. Handles table_paths (physical table
+aliases), worksheet_columns with "ALIAS::column" separator, formula columns,
+and joins with SQL ON clause parsing.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      tml_yaml: z.string().describe('ThoughtSpot TML YAML content (worksheet or table format)'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ tml_yaml, connection_id, database, schema }) => {
+      try {
+        const result = convertThoughtSpotToSigma(tml_yaml, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_qlik_to_sigma ─────────────────────────────────────────────────
+
+  server.tool(
+    'convert_qlik_to_sigma',
+    `Convert a Qlik Sense app metadata JSON to Sigma Computing data model JSON.
+
+Accepts Qlik Engine API "qtr" format or REST API "tables" format. Handles
+tables with fields → warehouse elements, shared field names → relationships,
+master measures → metrics, master dimensions → calculated columns.
+
+Qlik Set Analysis expressions are flagged as warnings and omitted since
+they have no direct Sigma equivalent.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      model_json: z.string().describe('Qlik app metadata JSON (qtr format or REST tables array)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ model_json, connection_id, database, schema }) => {
+      try {
+        const parsed = JSON.parse(model_json);
+        const result = convertQlikToSigma(parsed, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_atlan_to_sigma ────────────────────────────────────────────────
+
+  server.tool(
+    'convert_atlan_to_sigma',
+    `Convert an Atlan Data Contract (YAML or JSON) to Sigma Computing data model JSON.
+
+Accepts an Atlan data contract document. Reads the "models" object to create
+one Sigma element per model, auto-generates Sum() metrics for numeric columns,
+and builds relationships from "field.references" in "model.column" format.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      contract_text: z.string().describe('Atlan data contract content (YAML or JSON string)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ contract_text, connection_id, database, schema }) => {
+      try {
+        const result = convertAtlanToSigma(contract_text, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_alteryx_to_sigma ──────────────────────────────────────────────
+
+  server.tool(
+    'convert_alteryx_to_sigma',
+    `Convert an Alteryx Designer workflow (.yxmd XML) to Sigma Computing data model JSON.
+
+Parses the Alteryx workflow XML. DbFileInput tools → warehouse elements,
+Join tools → relationships (traced back to source inputs via connection graph),
+Formula tools → calculated columns, Summarize tools → metrics.
+
+Cross-element column references are dropped with warnings since Sigma metrics
+must reference columns within the same element.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      xml_content: z.string().describe('Alteryx workflow XML content (.yxmd file content)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ xml_content, connection_id, database, schema }) => {
+      try {
+        const result = convertAlteryxToSigma(xml_content, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_oac_to_sigma ──────────────────────────────────────────────────
+
+  server.tool(
+    'convert_oac_to_sigma',
+    `Convert Oracle Analytics Cloud (OAC) logical tables JSON to Sigma Computing data model JSON.
+
+Accepts an array of OAC logical table objects (SMML export format). Each table
+has logicalColumns and logicalTableSources. Handles physical vs derived column
+mappings, aggregation rules → metrics, and logical joins → relationships.
+
+Pass an optional physicalMap for DB/schema metadata when the OAC model does
+not include full path information.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      tables_json: z.string().describe('JSON array of OAC logical table objects (SMML export)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+      physical_map_json: z.string().describe('Optional JSON object mapping table name → {database, schema}; pass empty string to omit'),
+    },
+    async ({ tables_json, connection_id, database, schema, physical_map_json }) => {
+      try {
+        const tables = JSON.parse(tables_json);
+        const physicalMap = physical_map_json ? JSON.parse(physical_map_json) : {};
+        const result = convertOacToSigma(tables, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+          physicalMap,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
       } catch (e: any) {
         return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
       }
