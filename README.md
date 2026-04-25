@@ -1,6 +1,6 @@
 # Sigma Data Model MCP Server
 
-An MCP server that converts data models from **dbt**, **Snowflake Semantic Views**, **LookML** (Looker), **Tableau**, and **Power BI** into [Sigma Computing](https://sigmacomputing.com) data model JSON format.
+An MCP server that converts data models from **dbt**, **Snowflake Semantic Views**, **LookML** (Looker), **Tableau**, **Power BI**, **Omni**, **SQL**, **ThoughtSpot**, **Qlik Sense**, **Atlan**, **Alteryx**, and **Oracle Analytics Cloud** into [Sigma Computing](https://sigmacomputing.com) data model JSON format.
 
 Works with **Claude Code**, **Claude Desktop**, **Claude.ai**, **Cursor**, and any MCP-compatible client.
 
@@ -45,16 +45,24 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_lookml_to_sigma` | LookML project files (views + explores) → Sigma JSON |
 | `convert_powerbi_to_sigma` | Power BI model (.bim / TOM JSON) → Sigma JSON |
 | `convert_tableau_to_sigma` | Tableau workbook/data source (.twb/.tds XML) → Sigma JSON |
+| `convert_omni_to_sigma` | Omni Analytics view + model YAML → Sigma JSON |
+| `convert_sql_to_sigma` | SQL SELECT statements → Sigma JSON |
+| `convert_thoughtspot_to_sigma` | ThoughtSpot TML (YAML) worksheet → Sigma JSON |
+| `convert_qlik_to_sigma` | Qlik Sense app metadata JSON → Sigma JSON |
+| `convert_atlan_to_sigma` | Atlan data contract (YAML or JSON) → Sigma JSON |
+| `convert_alteryx_to_sigma` | Alteryx Designer workflow (.yxmd XML) → Sigma JSON |
+| `convert_oac_to_sigma` | Oracle Analytics Cloud logical tables JSON → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
 | `get_sigma_data_model_schema` | Return the Sigma data model JSON schema reference |
+| `diagnose_sigma_save_error` | Pinpoint which Custom SQL element caused a Sigma save error |
 | `format_sigma_display_name` | Convert SNAKE_CASE → Sigma Title Case |
 
 ## How It Works
 
-1. **You provide** a dbt YAML, Snowflake semantic view YAML, or LookML files
-2. **The server converts** entities → columns, measures → metrics, joins → relationships
+1. **You provide** source files — YAML, JSON, XML, or SQL depending on the converter
+2. **The server converts** tables → elements, columns → Sigma columns, aggregates → metrics, joins → relationships
 3. **You get back** Sigma data model JSON ready to POST to the Sigma API
 
 The output JSON is compatible with:
@@ -117,6 +125,70 @@ Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD 
 - `schema` — Override schema name
 - `datasource_index` — Which data source to convert (0-indexed, default: 0)
 
+### convert_omni_to_sigma
+Converts Omni Analytics `.view.yaml` and `.model.yaml` files. Handles views → elements, dimensions → columns, type:time dimensions → DateTrunc() expansions per timeframe, measures → metrics, explores/joins → relationships.
+
+**Parameters:**
+- `files` (required) — Array of `{name, content}` objects (.view.yaml and/or .model.yaml)
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_sql_to_sigma
+Converts SQL SELECT statements into a Sigma data model. Parses explicit JOINs → relationships, aggregate functions → metrics, CTEs, and dot-qualified column references. Falls back to a Custom SQL element for complex queries (subqueries in FROM, implicit cross-joins).
+
+**Parameters:**
+- `statements` (required) — Array of `{name, sql}` objects
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_thoughtspot_to_sigma
+Converts ThoughtSpot TML YAML (worksheet or table format, exported from Develop → TML). Handles `table_paths` physical table aliases, `worksheet_columns` with `ALIAS::column` separator, formula columns, and joins with SQL ON clause parsing.
+
+**Parameters:**
+- `tml_yaml` (required) — ThoughtSpot TML YAML content
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_qlik_to_sigma
+Converts Qlik Sense app metadata JSON (Engine API `qtr` format or REST API `tables` format). Tables → warehouse elements, shared field names → relationships, master measures → metrics, master dimensions → calculated columns. Qlik Set Analysis expressions are flagged as warnings and omitted.
+
+**Parameters:**
+- `model_json` (required) — Qlik app metadata JSON
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_atlan_to_sigma
+Converts an Atlan data contract (YAML or JSON). Reads the `models` object, creates one Sigma element per model, auto-generates Sum() metrics for numeric columns, and builds relationships from `field.references` in `"model.column"` format.
+
+**Parameters:**
+- `contract_text` (required) — Atlan data contract content (YAML or JSON string)
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_alteryx_to_sigma
+Converts an Alteryx Designer workflow (.yxmd XML). DbFileInput tools → warehouse elements, Join tools → relationships (traced back through the connection graph), Formula tools → calculated columns, Summarize tools → metrics. Cross-element column references are dropped with warnings.
+
+**Parameters:**
+- `xml_content` (required) — Alteryx workflow XML (.yxmd file content)
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_oac_to_sigma
+Converts Oracle Analytics Cloud logical tables JSON (SMML export format). Handles physical vs. derived (expression-based) column mappings, aggregation rules → metrics, and logical joins → relationships. Pass an optional `physical_map_json` when the OAC model doesn't include full database/schema path info.
+
+**Parameters:**
+- `tables_json` (required) — JSON array of OAC logical table objects
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+- `physical_map_json` — Optional JSON object mapping table name → `{database, schema}`
+
 ### convert_sql_to_sigma_formula
 Converts SQL expressions to Sigma formula syntax:
 - `CASE WHEN x THEN y END` → `If(x, y, null)`
@@ -130,6 +202,13 @@ Converts Tableau calculated field formulas:
 - `ZN([x])` → `Coalesce([x], 0)`, `COUNTD` → `CountDistinct`
 - LOD expressions → comment placeholder (cannot be auto-converted)
 
+### diagnose_sigma_save_error
+When Sigma returns a syntax error like `"syntax error line 49 at position 24 unexpected '('"` without naming which element failed, this tool scans all Custom SQL elements in the model JSON and pinpoints the likely culprit by matching line number and token position.
+
+**Parameters:**
+- `error_message` (required) — The full Sigma error message
+- `model_json` (required) — The full Sigma data model JSON string
+
 ---
 
 ## Self-Hosting
@@ -140,8 +219,6 @@ Converts Tableau calculated field formulas:
 2. Go to [Render Dashboard](https://dashboard.render.com) → New → Web Service
 3. Connect your repo
 4. Render auto-detects `render.yaml` — just click Deploy
-
-Or use the one-click deploy button if configured.
 
 ### Deploy anywhere else
 
@@ -203,7 +280,7 @@ claude mcp add sigma-data-model -- node $(pwd)/build/index.js
 
 ## Credits
 
-Converter logic from the [Sigma Data Model Manager](https://github.com/twells89/sigma-data-models) by TJ Wells.
+Converter logic from the [Sigma Data Model Manager](https://github.com/twells89/sigma-data-model-manager) by TJ Wells.
 
 ## License
 
