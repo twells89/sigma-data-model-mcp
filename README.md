@@ -93,6 +93,12 @@ Converts Snowflake Cortex Analyst semantic view YAML. Handles tables with dimens
 ### convert_lookml_to_sigma
 Converts a full LookML project into a Sigma data model. Includes a complete LookML parser. Handles explores, sql_on join keys, derived_table → Custom SQL, dimension/measure conversion, and role-playing dimension deduplication.
 
+`${view.SQL_TABLE_NAME}` substitution is fully resolved including N-hop alias chains and PDT-referencing-PDT patterns (e.g. the same PDT referenced twice with different table aliases in a self-join).
+
+`include:` directives are parsed and reported in warnings — resolution is limited to the files provided.
+
+PDT materialization hints (`distribution`, `sortkeys`, `datagroup_trigger`, `persist_with`, `cluster_keys`, `partition_keys`) are not converted and emit informational warnings.
+
 **Parameters:**
 - `files` (required) — Array of `{name, content}` objects (view + model files)
 - `connection_id` — Sigma connection UUID

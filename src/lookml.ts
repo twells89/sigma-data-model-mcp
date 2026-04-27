@@ -16,6 +16,7 @@ interface LookMLParseResult {
   explores: any[];
   connection: string | null;
   label: string | null;
+  includes: string[];
 }
 
 function restoreSqlPlaceholders(obj: any, map: Record<string, string>): void {
@@ -143,7 +144,7 @@ export function parseLookML(text: string): LookMLParseResult {
     return obj;
   }
 
-  const result: LookMLParseResult = { views: [], explores: [], connection: null, label: null };
+  const result: LookMLParseResult = { views: [], explores: [], connection: null, label: null, includes: [] };
   while (pos < tokens.length) {
     const keyword = consume();
     if (!keyword) continue;
@@ -160,6 +161,8 @@ export function parseLookML(text: string): LookMLParseResult {
       consume(); result.connection = (consume() || '').replace(/"/g, '');
     } else if (keyword === 'label' && peek() === ':') {
       consume(); result.label = (consume() || '').replace(/"/g, '');
+    } else if (keyword === 'include' && peek() === ':') {
+      consume(); result.includes.push((consume() || '').replace(/"/g, ''));
     } else if (peek() === ':') {
       consume();
       if (peek() === '{') { consume(); parseBlock(); }
@@ -170,11 +173,100 @@ export function parseLookML(text: string): LookMLParseResult {
   return result;
 }
 
+// ── SQL_TABLE_NAME resolution ─────────────────────────────────────────────────
+
+const PDT_SQL_PREFIX = '__PDT_SQL__:';
+
+/**
+ * Pre-compute a map of viewName → resolved table reference.
+ *
+ * For regular views:  "SCHEMA.DB.TABLE"   (literal path, ready to split on '.')
+ * For derived tables: PDT_SQL_PREFIX + sql (the raw SQL, for inline subquery use)
+ *
+ * Resolution is iterative to handle N-hop ${ref.SQL_TABLE_NAME} chains.
+ */
+function buildSqlTableNameMap(views: Record<string, any>): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  for (const [name, view] of Object.entries(views)) {
+    if (!view) continue;
+    if (view.derived_table) {
+      const sql = (view.derived_table.sql || '').replace(/;;\s*$/, '').trim();
+      map[name] = PDT_SQL_PREFIX + sql;
+    } else if (view.sql_table_name) {
+      map[name] = view.sql_table_name.trim();
+    }
+  }
+
+  // Iteratively follow ${ref.SQL_TABLE_NAME} hops until stable (max 20 iterations)
+  let changed = true;
+  for (let i = 0; i < 20 && changed; i++) {
+    changed = false;
+    for (const name of Object.keys(map)) {
+      const val = map[name];
+      if (!val.includes('${')) continue;
+      const next = val.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m, ref) => {
+        const refVal = map[ref];
+        if (refVal !== undefined && !refVal.includes('${')) return refVal;
+        return _m; // not yet resolved
+      });
+      if (next !== val) { map[name] = next; changed = true; }
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Resolve all ${viewName.SQL_TABLE_NAME} references inside a derived-table SQL
+ * string using the pre-built map.
+ *
+ * Regular views   → substituted with the literal path (e.g. CSA.TJ.ORDER_FACT)
+ * Derived tables  → substituted with an inline subquery: (SQL) AS viewName
+ * Unknown refs    → left as-is; caller emits a warning
+ */
+function resolveSqlTableNameRefs(
+  sql: string,
+  map: Record<string, string>,
+  warnings: string[],
+  contextViewName: string
+): string {
+  return sql.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m, ref) => {
+    const val = map[ref];
+    if (val === undefined) {
+      warnings.push(`⚠ View "${contextViewName}": could not resolve \${${ref}.SQL_TABLE_NAME} — view "${ref}" not found in provided files`);
+      return _m;
+    }
+    if (val.includes('${')) {
+      warnings.push(`⚠ View "${contextViewName}": \${${ref}.SQL_TABLE_NAME} could not be fully resolved (circular or missing chain)`);
+      return _m;
+    }
+    if (val.startsWith(PDT_SQL_PREFIX)) {
+      const pdtSql = val.slice(PDT_SQL_PREFIX.length);
+      return `(\n${pdtSql}\n)`;
+    }
+    return val;
+  });
+}
+
 // ── LookML View → Sigma Element Conversion ───────────────────────────────────
 
-function lookExtractPath(view: any): string[] {
-  const raw = (view.sql_table_name || view.from || '').trim().replace(/`/g, '');
+function lookExtractPath(view: any, sqlTableNameMap?: Record<string, string>): string[] {
+  let raw = (view.sql_table_name || view.from || '').trim().replace(/`/g, '');
   if (!raw) return [];
+
+  // Resolve ${ref.SQL_TABLE_NAME} in sql_table_name if a map is provided
+  if (sqlTableNameMap && raw.includes('${')) {
+    raw = raw.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m: string, ref: string) => {
+      const val = sqlTableNameMap[ref];
+      if (val && !val.startsWith(PDT_SQL_PREFIX) && !val.includes('${')) return val;
+      return _m;
+    });
+  }
+
+  // If still unresolved (e.g. cross-file alias not provided), fall back to view name
+  if (raw.includes('${')) return [];
+
   return raw.split('.').map((p: string) => p.trim().toUpperCase()).filter(Boolean);
 }
 
@@ -221,7 +313,8 @@ function lookConvertView(
   viewName: string,
   view: any,
   connectionId: string,
-  warnings: string[]
+  warnings: string[],
+  sqlTableNameMap?: Record<string, string>
 ): ElementResult {
   if (!view) {
     warnings.push(`⚠ View "${viewName}" not found — element will have no columns`);
@@ -237,7 +330,21 @@ function lookConvertView(
   let tableName: string, element: SigmaElement;
 
   if (view.derived_table !== undefined) {
-    const rawSql = (view.derived_table.sql || '').replace(/;;\s*$/, '').trim();
+    let rawSql = (view.derived_table.sql || '').replace(/;;\s*$/, '').trim();
+
+    // Gap 1: resolve ${ref.SQL_TABLE_NAME} references inside derived table SQL
+    if (sqlTableNameMap && rawSql.includes('${')) {
+      rawSql = resolveSqlTableNameRefs(rawSql, sqlTableNameMap, warnings, viewName);
+    }
+
+    // Gap 3: warn on PDT-specific properties that are not converted
+    const PDT_SKIP_PROPS = ['distribution', 'sortkeys', 'datagroup_trigger', 'persist_with', 'cluster_keys', 'partition_keys'];
+    for (const prop of PDT_SKIP_PROPS) {
+      if (view.derived_table[prop] !== undefined) {
+        warnings.push(`ℹ View "${viewName}": PDT property "${prop}" is a warehouse-specific materialization hint and is not converted — configure this in your warehouse or Sigma dataset settings.`);
+      }
+    }
+
     tableName = 'Custom SQL';
     element = {
       id: elementId,
@@ -254,7 +361,7 @@ function lookConvertView(
     if (rawSql) warnings.push(`ℹ View "${viewName}" → Custom SQL element. Review the SQL before saving.`);
     else warnings.push(`⚠ View "${viewName}" derived_table has no sql — SQL statement left blank. Add SQL manually in the JSON before saving.`);
   } else {
-    const path = lookExtractPath(view);
+    const path = lookExtractPath(view, sqlTableNameMap);
     tableName = (path[path.length - 1] || viewName).toUpperCase();
     element = {
       id: elementId,
@@ -650,6 +757,7 @@ export function convertLookMLToSigma(
   // Parse all files
   const views: Record<string, any> = {};
   const explores: Record<string, any> = {};
+  const warnings: string[] = [];
 
   for (const file of files) {
     const isModel = file.name.endsWith('.model.lkml') || file.name.includes('.model.');
@@ -659,6 +767,10 @@ export function convertLookMLToSigma(
         parsed.explores.forEach((ex: any) => { explores[ex._name] = ex; });
       }
       parsed.views.forEach((v: any) => { views[v._name] = v; });
+      // Gap 2: warn on include: directives — cross-file resolution is not supported
+      if (parsed.includes.length > 0) {
+        warnings.push(`ℹ "${file.name}": contains include: directive(s) — ${parsed.includes.join(', ')} — cross-file resolution is not supported. Pass all referenced view files explicitly.`);
+      }
     } catch (e: any) {
       throw new Error(`Parse error in ${file.name}: ${e.message}`);
     }
@@ -676,7 +788,9 @@ export function convertLookMLToSigma(
   const explore = explores[exploreName];
   if (!explore) throw new Error(`Explore "${exploreName}" not found. Available: ${exploreNames.join(', ')}`);
 
-  const warnings: string[] = [];
+  // Gap 1: pre-compute resolved table paths for ${view.SQL_TABLE_NAME} substitution
+  const sqlTableNameMap = buildSqlTableNameMap(views);
+
   const strategy = joinStrategy;
 
   // Build join list
@@ -724,14 +838,14 @@ export function convertLookMLToSigma(
   const elementMap: Record<string, ElementResult> = {};
   const physViewMap: Record<string, ElementResult> = {};
 
-  const baseResult = lookConvertView(baseViewName, views[baseViewName], connectionId, warnings);
+  const baseResult = lookConvertView(baseViewName, views[baseViewName], connectionId, warnings, sqlTableNameMap);
   elementMap[baseAlias] = baseResult;
   physViewMap[baseViewName] = baseResult;
   if (baseAlias !== baseViewName) elementMap[baseViewName] = baseResult;
 
   for (const j of joinDefs) {
     if (!physViewMap[j.viewName]) {
-      const res = lookConvertView(j.viewName, views[j.viewName], connectionId, warnings);
+      const res = lookConvertView(j.viewName, views[j.viewName], connectionId, warnings, sqlTableNameMap);
       physViewMap[j.viewName] = res;
     }
     elementMap[j.alias] = physViewMap[j.viewName];
@@ -883,15 +997,20 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
 
-    // Own columns from the fact element
+    // Own columns from the fact element — physical warehouse refs only.
+    // Computed/named columns use bare [Col] refs in their formulas that won't
+    // resolve as cross-element refs in the derived element context.
     for (const col of srcEl.columns ?? []) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
+      if (col.name) continue;
       const cId = sigmaShortId();
       viewCols.push({ id: cId, formula: col.formula });
       viewOrder.push(cId);
     }
 
-    // Joined dimension columns via [TABLE/REL_NAME/Col] cross-element refs
+    // Joined dimension columns via [TABLE/REL_NAME/Col] cross-element refs.
+    // Only physical warehouse-column refs (no name, simple [TABLE/Col] formula)
+    // are included — computed/named columns can't be resolved via cross-element paths.
     for (const rel of srcEl.relationships ?? []) {
       if (!rel.name) continue;
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
@@ -899,6 +1018,7 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
       for (const col of tgtEl.columns ?? []) {
         if (!col.formula || col.formula.startsWith('/*')) continue;
+        if (col.name) continue;
         // Extract the display name from a [TABLE/ColName] or [ColName] formula
         const fm = col.formula.match(/^\[([^\]]+)\]$/);
         if (!fm) continue;

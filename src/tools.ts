@@ -117,6 +117,17 @@ Provide one or more LookML files (views + model). Parses LookML, resolves
 explores/joins, converts dimensions → columns, measures → metrics,
 sql_on → relationships, and derived_table → Custom SQL elements.
 
+${'{'}view.SQL_TABLE_NAME{'}'} substitution is fully resolved including N-hop alias
+chains and PDT-referencing-PDT patterns (same PDT referenced multiple times
+with different SQL aliases is handled correctly).
+
+include: directives are parsed and listed in warnings — resolution is limited
+to the files provided; referenced views not in the input are silently skipped.
+
+PDT materialization hints (distribution, sortkeys, datagroup_trigger,
+persist_with, cluster_keys, partition_keys) are not converted and emit
+informational warnings.
+
 Pass files as an array of {name, content} objects.`,
     {
       files: z.array(z.object({
@@ -200,6 +211,11 @@ Parses data sources, joins/relationships, calculated fields with formula
 conversion, LOD FIXED expressions → child elements with groupings,
 parameters → controls, and cross-element column reference auto-fixing.
 
+Supports federated/Excel-backed sources: when the Tableau source is not a
+direct warehouse connection, pass database and schema to set the warehouse
+path. Table names are uppercased automatically (Orders → ORDERS). Use
+table_mapping to override specific names when they differ in the warehouse.
+
 Complex patterns (LOD INCLUDE/EXCLUDE, table calculations, RUNNING_SUM, RANK)
 generate warnings with community article links.`,
     {
@@ -208,14 +224,21 @@ generate warnings with community article links.`,
       database: z.string().describe('Override database name; pass empty string to omit'),
       schema: z.string().describe('Override schema name; pass empty string to omit'),
       datasource_index: z.number().describe('Which data source to convert, 0-indexed (pass 0 for default)'),
+      table_mapping: z.string().optional().describe('Optional JSON map of Tableau table names to warehouse table names, e.g. {"Orders":"ORDERS","People":"PEOPLE"}. Required when the Tableau source is Excel/flat-file and warehouse table names differ from the Tableau sheet names.'),
     },
-    async ({ xml_content, connection_id, database, schema, datasource_index }) => {
+    async ({ xml_content, connection_id, database, schema, datasource_index, table_mapping }) => {
       try {
+        let tableMapping: Record<string, string> | undefined;
+        if (table_mapping) {
+          try { tableMapping = JSON.parse(table_mapping); }
+          catch { throw new Error('table_mapping must be valid JSON, e.g. {"Orders":"ORDERS"}'); }
+        }
         const result = convertTableauToSigma(xml_content, {
           connectionId: connection_id || undefined,
           database: database || undefined,
           schema: schema || undefined,
           datasourceIndex: datasource_index,
+          tableMapping,
         });
         return {
           content: [{
@@ -856,7 +879,11 @@ Steps:
 2. Pass them to convert_lookml_to_sigma as [{name, content}, ...]
 3. Specify which explore to convert (or auto-detect if only one)
 4. Choose join strategy: "relationships" | "joins" | "auto"
-5. Review warnings, then save to Sigma via the API`,
+5. Review warnings:
+   - include: directives → listed with paths; upload all referenced view files to resolve joins
+   - PDT property warnings (distribution, sortkeys, datagroup_trigger, etc.) → informational, no action needed
+   - \${view.SQL_TABLE_NAME} refs → fully resolved including N-hop chains and PDT self-joins
+6. Save to Sigma via the API`,
         },
       }],
     })

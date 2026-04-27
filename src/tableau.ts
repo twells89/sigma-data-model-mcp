@@ -71,6 +71,13 @@ function tableauParseLOD(formula: string): LODResult | null {
   return { _isLOD: true, lodType, dims, sigmaAgg };
 }
 
+// ── Column Name Normalization ────────────────────────────────────────────────
+
+// Converts "Country/Region" → "COUNTRY_REGION", "Sub-Category" → "SUB_CATEGORY", etc.
+function normalizeColumnName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
+}
+
 // ── Path Extraction ──────────────────────────────────────────────────────────
 
 function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
@@ -161,6 +168,8 @@ export interface TableauConvertOptions {
   database?: string;
   schema?: string;
   datasourceIndex?: number;
+  /** Map Tableau table names to warehouse names: { "Orders": "ORDERS", "People": "PEOPLE" } */
+  tableMapping?: Record<string, string>;
 }
 
 export function convertTableauToSigma(
@@ -338,6 +347,150 @@ export function convertTableauToSigma(
           return aR === bR ? 0 : aR ? 1 : -1;
         });
       }
+
+    } else if (relType === 'collection') {
+      // ── Federated / Excel datasource ─────────────────────────────────────
+      // Each child <relation type="table"> is a separate source table.
+      // Table names are normalised to UPPER_SNAKE_CASE and mapped to warehouse
+      // names via tableMapping if provided. db/schema come from the caller's
+      // database/schema overrides.
+
+      const rawMapping = options.tableMapping || {};
+      const tableMappingNorm: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawMapping)) {
+        tableMappingNorm[k.toUpperCase()] = v.toUpperCase();
+      }
+
+      const childRels = asArray(rootRelation.relation || []).filter(
+        (r: any) => attr(r, 'type') === 'table'
+      );
+
+      // elementMap keyed by Tableau table name (uppercase) for later relationship wiring
+      const elementMap: Record<string, { element: any; colIdMap: Record<string, string> }> = {};
+
+      for (const rel of childRels) {
+        const rawName = attr(rel, 'name') || 'TABLE';
+        const rawNameUpper = rawName.toUpperCase();
+        const tableName = tableMappingNorm[rawNameUpper] || rawNameUpper;
+
+        // Preserve original db/schema casing — warehouse paths are case-sensitive
+        const dbPart = database || '';
+        const schPart = schema || '';
+        const path: string[] = [];
+        if (dbPart) path.push(dbPart);
+        if (schPart) path.push(schPart);
+        else if (dbPart) path.push('<SCHEMA>');
+        path.push(tableName);
+
+        const columns: any[] = [];
+        const order: string[] = [];
+        const colIdMap: Record<string, string> = {};
+
+        for (const col of asArray(rel?.columns?.column || [])) {
+          const rawCol = attr(col, 'name') || '';
+          const key = normalizeColumnName(rawCol);
+          if (!key) continue;
+          const id = sigmaInodeId(key);
+          const displayName = sigmaDisplayName(key);
+          columns.push({ id, formula: `[${tableName}/${displayName}]` });
+          order.push(id);
+          // Index both the normalized key and display name for relationship key lookup
+          colIdMap[key] = id;
+          colIdMap[displayName.toUpperCase()] = id;
+        }
+
+        const elemId = sigmaShortId();
+        const el: any = {
+          id: elemId,
+          kind: 'table',
+          source: { connectionId: connId, kind: 'warehouse-table', path },
+          columns,
+          order,
+        };
+        elementMap[rawNameUpper] = { element: el, colIdMap };
+        elements.push(el);
+      }
+
+      // ── Wire relationships from <object-graph> ──────────────────────────
+      const objGraph = ds.ds?.['object-graph'];
+      if (objGraph && elements.length > 0) {
+        // Build object-ID → caption map:  "Orders_ECFC..." → "Orders"
+        const objectIdToCaption: Record<string, string> = {};
+        for (const obj of asArray(objGraph?.objects?.object || [])) {
+          const id = attr(obj, 'id');
+          const caption = attr(obj, 'caption');
+          if (id && caption) objectIdToCaption[id] = caption;
+        }
+
+        // Strip Tableau's "(TableAlias)" disambiguation suffix and normalize:
+        //   "[Region (People)]" → "REGION",  "[Order ID]" → "ORDER_ID"
+        const parseOpRef = (opAttr: string): string => {
+          const inner = opAttr.replace(/^\[|\]$/g, '').replace(/\s*\([^)]+\)\s*$/, '').trim();
+          return normalizeColumnName(inner);
+        };
+
+        for (const rel of asArray(objGraph?.relationships?.relationship || [])) {
+          // Source and target tables come from first-end-point / second-end-point
+          const srcObjId = attr(rel['first-end-point'], 'object-id') || '';
+          const tgtObjId = attr(rel['second-end-point'], 'object-id') || '';
+          const srcCaption = objectIdToCaption[srcObjId] || srcObjId;
+          const tgtCaption = objectIdToCaption[tgtObjId] || tgtObjId;
+
+          const srcEntry = elementMap[srcCaption.toUpperCase()];
+          const tgtEntry = elementMap[tgtCaption.toUpperCase()];
+          if (!srcEntry || !tgtEntry || srcEntry === tgtEntry) continue;
+
+          // Column names are in <expression op="="><expression op="[Col]"/><expression op="[Col (Alias)]"/></expression>
+          const exprs = asArray(rel.expression || []);
+          const eqExpr = exprs.find((e: any) => attr(e, 'op') === '=');
+          if (!eqExpr) continue;
+
+          const innerExprs = asArray(eqExpr.expression || []);
+          if (innerExprs.length < 2) continue;
+
+          const srcColKey = parseOpRef(attr(innerExprs[0], 'op') || '');
+          const tgtColKey = parseOpRef(attr(innerExprs[1], 'op') || '');
+          if (!srcColKey || !tgtColKey) continue;
+
+          // Find or lazily create the join-key columns
+          const ensureCol = (
+            entry: { element: any; colIdMap: Record<string, string> },
+            colKey: string
+          ): string => {
+            let id = entry.colIdMap[colKey];
+            if (!id) {
+              id = sigmaInodeId(colKey);
+              const tbl = entry.element.source.path.slice(-1)[0] as string;
+              entry.element.columns.push({ id, formula: `[${tbl}/${sigmaDisplayName(colKey)}]` });
+              entry.element.order.push(id);
+              entry.colIdMap[colKey] = id;
+            }
+            return id;
+          };
+
+          const srcColId = ensureCol(srcEntry, srcColKey);
+          const tgtColId = ensureCol(tgtEntry, tgtColKey);
+
+          if (!srcEntry.element.relationships) srcEntry.element.relationships = [];
+          srcEntry.element.relationships.push({
+            id: sigmaShortId(),
+            targetElementId: tgtEntry.element.id,
+            keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
+            name: `${srcCaption} to ${tgtCaption}`,
+          });
+        }
+      }
+
+      const tableList = elements.map((e: any) => e.source.path.join('.')).join(', ');
+      if (!dbOverride || !schOverride) {
+        warnings.push(
+          `⚠ Federated/Excel source: pass database and schema parameters to set the full warehouse path. Table names used: ${tableList}`
+        );
+      } else {
+        warnings.push(
+          `ℹ Federated/Excel source converted. Verify warehouse table names match: ${tableList}`
+        );
+      }
     }
   }
 
@@ -375,11 +528,23 @@ export function convertTableauToSigma(
       const formula = calcEl ? attr(calcEl, 'formula') : '';
       const fieldKey = rawName.replace(/^\[|\]$/g, '');
 
-      if (hidden || !fieldKey || fieldKey.startsWith('Number of Records')) continue;
+      // Skip Tableau-internal / derived columns that don't exist in the warehouse:
+      //   datatype="table"  → object-graph internal reference
+      //   name ends (group) → Tableau group set (e.g. "[Product Name (group)]")
+      //   name ends (bin)   → Tableau bin column (e.g. "[Profit (bin)]")
+      const colDatatype = attr(col, 'datatype') || '';
+      if (
+        hidden || !fieldKey ||
+        fieldKey.startsWith('Number of Records') ||
+        fieldKey.includes('__tableau_internal_object_id__') ||
+        colDatatype === 'table' ||
+        /\(group\)\s*$/i.test(fieldKey) ||
+        /\(bin\)\s*$/i.test(fieldKey)
+      ) continue;
 
       if (!formula) {
         // Regular (non-calculated) source column — add to factEl if not already tracked
-        const physCol = fieldKey.replace(/\s+/g, '_').toUpperCase();
+        const physCol = normalizeColumnName(fieldKey);
         const displayName = caption || sigmaDisplayName(physCol);
         if (!displayNameMap[displayName.toUpperCase()] && !displayNameMap[physCol]) {
           const colId = sigmaInodeId(physCol);
@@ -589,14 +754,18 @@ export function convertTableauToSigma(
       controls.push({ kind: 'control', controlId, id: sigmaShortId() + 'con',
         controlType: 'list', mode: 'include', selectionMode: 'single', values: [],
         source: { kind: 'manual', valueType: 'text', values: p.members } });
-      warnings.push(`ℹ Parameter "${p.name}" → list control (${p.members.length} values)`);
+      warnings.push(`ℹ Parameter "${p.name}" → list control`);
     } else if (p.type === 'date' || p.type === 'datetime') {
       controls.push({ kind: 'control', controlId, id: sigmaShortId() + 'con',
-        controlType: 'date-range', mode: 'between', includeNulls: 'when-no-value-is-selected' });
-      warnings.push(`ℹ Parameter "${p.name}" → date-range control`);
+        controlType: 'date-range', mode: 'last', value: 90, unit: 'day', includeToday: true });
+      warnings.push(`ℹ Parameter "${p.name}" → date-range control (default: last 90 days — adjust in Sigma UI)`);
+    } else if (p.type === 'real' || p.type === 'integer' || p.domainType === 'range') {
+      controls.push({ kind: 'control', controlId, id: sigmaShortId() + 'con',
+        controlType: 'number-range' });
+      warnings.push(`ℹ Parameter "${p.name}" → number-range control`);
     } else {
       controls.push({ kind: 'control', controlId, id: sigmaShortId() + 'con',
-        controlType: 'text', mode: 'include', values: [] });
+        controlType: 'text', mode: 'contains' });
       warnings.push(`ℹ Parameter "${p.name}" → text control`);
     }
   }
