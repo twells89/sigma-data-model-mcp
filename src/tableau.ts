@@ -8,7 +8,7 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements,
   type SigmaElement, type ConversionResult,
 } from './sigma-ids.js';
 import { tableauFormulaToSigma, tableauIsAggregate } from './formulas.js';
@@ -769,6 +769,9 @@ export function convertTableauToSigma(
       warnings.push(`ℹ Parameter "${p.name}" → text control`);
     }
   }
+
+  // ── Derived elements (fact tables with relationships) ───────────────────
+  for (const de of buildDerivedElements(elements)) elements.push(de);
 
   // ── Build output ────────────────────────────────────────────────────────
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
