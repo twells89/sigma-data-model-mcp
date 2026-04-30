@@ -68,7 +68,8 @@ export function convertAlteryxToSigma(
   }));
 
   const elements: SigmaElement[] = [];
-  const elementMap: Record<string, { element: SigmaElement; colIdMap: Record<string, string>; tableName: string }> = {};
+  const elementMap: Record<string, { element: SigmaElement; colIdMap: Record<string, string>; tableName: string; toolId: string }> = {};
+  const emptyMeta = new Set<string>(); // inputs whose MetaInfo had no fields
 
   // 1. Build elements from Input Data tools
   for (const inp of inputs) {
@@ -89,6 +90,7 @@ export function convertAlteryxToSigma(
       colIdMap[name.toUpperCase()] = id;
       colIdMap[sigmaDisplayName(name).toUpperCase()] = id;
     }
+    if ((inp.metaFields || []).length === 0) emptyMeta.add(inp.toolId);
 
     const element: SigmaElement = {
       id: elementId, kind: 'table',
@@ -96,8 +98,44 @@ export function convertAlteryxToSigma(
       columns, order,
     };
     elements.push(element);
-    elementMap[inp.toolId] = { element, colIdMap, tableName };
+    elementMap[inp.toolId] = { element, colIdMap, tableName, toolId: inp.toolId };
     warnings.push(`Input "${tableName}": ${columns.length} columns`);
+  }
+
+  // 1.5. When MetaInfo is absent, infer warehouse columns from downstream tool refs
+  if (emptyMeta.size > 0) {
+    warnings.push('⚠ Workflow MetaInfo is empty — columns are inferred from Formula/Summarize tools. For accurate columns, run the workflow in Alteryx Designer first, then re-upload.');
+    const formulaOutputs = new Set<string>();
+    for (const form of formulas) {
+      const ffs: any[] = form.config?.FormulaFields?.FormulaField || form.config?.FormulaField || [];
+      for (const ff of ffs) { const f: string = ff['@_field'] || ''; if (f) formulaOutputs.add(f.toUpperCase()); }
+    }
+    const inferredNames = new Set<string>();
+    for (const summ of summarizes) {
+      const sfs: any[] = summ.config?.SummarizeFields?.SummarizeField || summ.config?.SummarizeField || [];
+      for (const sf of sfs) { const f: string = sf['@_field'] || ''; if (f && !formulaOutputs.has(f.toUpperCase())) inferredNames.add(f.toUpperCase()); }
+    }
+    for (const form of formulas) {
+      const ffs: any[] = form.config?.FormulaFields?.FormulaField || form.config?.FormulaField || [];
+      for (const ff of ffs) {
+        const expr: string = ff['@_expression'] || '';
+        const refs = expr.match(/\[([A-Z][A-Z0-9_]{2,})\]/g) || [];
+        for (const r of refs) { const n = r.replace(/^\[|\]$/g, ''); if (!formulaOutputs.has(n)) inferredNames.add(n); }
+      }
+    }
+    const firstEmptyInp = inputs.find(inp => emptyMeta.has(inp.toolId));
+    if (firstEmptyInp && inferredNames.size > 0) {
+      const entry = elementMap[firstEmptyInp.toolId];
+      for (const name of inferredNames) {
+        const dn = sigmaDisplayName(name);
+        const id = sigmaShortId();
+        entry.element.columns.push({ id, formula: `[${entry.tableName}/${dn}]` });
+        (entry.element.order as string[]).push(id);
+        entry.colIdMap[name] = id;
+        entry.colIdMap[dn.toUpperCase()] = id;
+      }
+      warnings.push(`Inferred ${inferredNames.size} column(s) for ${firstEmptyInp.toolId}`);
+    }
   }
 
   // 2. Joins → relationships
@@ -107,7 +145,7 @@ export function convertAlteryxToSigma(
     let leftField = '', rightField = '';
     for (const ji of joinInfos) {
       const conn: string = ji['@_connection'] || '';
-      const fieldName: string = ji.Field?.['@_field'] || '';
+      const fieldName: string = (Array.isArray(ji.Field) ? ji.Field[0] : ji.Field)?.['@_field'] || '';
       if (conn === 'Left') leftField = fieldName;
       else if (conn === 'Right') rightField = fieldName;
     }
@@ -131,10 +169,29 @@ export function convertAlteryxToSigma(
     const rightSrc = rightConn ? traceToInput(rightConn.fromId) : null;
 
     if (leftSrc && rightSrc && leftField && rightField) {
-      const srcColId = leftSrc.colIdMap[leftField.toUpperCase()]
+      let srcColId = leftSrc.colIdMap[leftField.toUpperCase()]
         || leftSrc.colIdMap[sigmaDisplayName(leftField).toUpperCase()];
-      const tgtColId = rightSrc.colIdMap[rightField.toUpperCase()]
+      let tgtColId = rightSrc.colIdMap[rightField.toUpperCase()]
         || rightSrc.colIdMap[sigmaDisplayName(rightField).toUpperCase()];
+
+      // Infer join key columns when MetaInfo was absent
+      if (!srcColId && emptyMeta.has(leftSrc.toolId)) {
+        const id = sigmaShortId(), dn = sigmaDisplayName(leftField);
+        leftSrc.element.columns.push({ id, formula: `[${leftSrc.tableName}/${dn}]` });
+        (leftSrc.element.order as string[]).push(id);
+        leftSrc.colIdMap[leftField.toUpperCase()] = id;
+        leftSrc.colIdMap[dn.toUpperCase()] = id;
+        srcColId = id;
+      }
+      if (!tgtColId && emptyMeta.has(rightSrc.toolId)) {
+        const id = sigmaShortId(), dn = sigmaDisplayName(rightField);
+        rightSrc.element.columns.push({ id, formula: `[${rightSrc.tableName}/${dn}]` });
+        (rightSrc.element.order as string[]).push(id);
+        rightSrc.colIdMap[rightField.toUpperCase()] = id;
+        rightSrc.colIdMap[dn.toUpperCase()] = id;
+        tgtColId = id;
+      }
+
       if (srcColId && tgtColId) {
         if (!leftSrc.element.relationships) leftSrc.element.relationships = [];
         leftSrc.element.relationships.push({
@@ -160,7 +217,7 @@ export function convertAlteryxToSigma(
 
   if (factEl) {
     for (const form of formulas) {
-      const formulaFields: any[] = form.config?.FormulaField || [];
+      const formulaFields: any[] = form.config?.FormulaFields?.FormulaField || form.config?.FormulaField || [];
       for (const ff of formulaFields) {
         const expr: string = ff['@_expression'] || '';
         const fieldName: string = ff['@_field'] || '';
@@ -183,7 +240,7 @@ export function convertAlteryxToSigma(
 
     // 4. Summarize tools → metrics
     for (const summ of summarizes) {
-      const summFields: any[] = summ.config?.SummarizeField || [];
+      const summFields: any[] = summ.config?.SummarizeFields?.SummarizeField || summ.config?.SummarizeField || [];
       for (const sf of summFields) {
         const field: string = sf['@_field'] || '';
         const action: string = sf['@_action'] || '';
@@ -206,7 +263,7 @@ export function convertAlteryxToSigma(
 
     // 5. Select tool rename warnings
     for (const sel of selects) {
-      const selectFields: any[] = sel.config?.SelectField || [];
+      const selectFields: any[] = sel.config?.SelectFields?.SelectField || sel.config?.SelectField || [];
       const renameCount = selectFields.filter((sf: any) => {
         const field: string = sf['@_field'] || '';
         const rename: string = sf['@_rename'] || '';
