@@ -18,7 +18,8 @@ import { tableauFormulaToSigma, tableauIsAggregate } from './formulas.js';
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
-  isArray: (name) => ['datasource', 'relation', 'column', 'member', 'clause', 'expression'].includes(name),
+  isArray: (name) => ['datasource', 'relation', 'column', 'member', 'clause', 'expression',
+    'metadata-record', 'relationship', 'object'].includes(name),
   trimValues: true,
 });
 
@@ -82,13 +83,20 @@ function normalizeColumnName(name: string): string {
 
 function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
   const rawTable = attr(rel, 'table') || attr(rel, 'name') || '';
-  const parts = rawTable.replace(/[\[\]]/g, '').split('.').filter(Boolean).map((s: string) => s.toUpperCase());
+  // Strip brackets, disambiguation suffixes (e.g. "(CSA.TABLE)"), then filter UUID path segments
+  const cleaned = rawTable.replace(/[\[\]]/g, '').replace(/\s*\([^)]*\)/g, '');
+  const parts = cleaned.split('.').filter(Boolean)
+    .map((s: string) => s.toUpperCase().trim())
+    .filter((p: string) => !/^[0-9A-F]{8}-[0-9A-F]{4}-/i.test(p));
+
+  // Strip Tableau hex-hash suffix from the table name segment: "ORDER_FACT_A1B2C3D4E5F60718" → "ORDER_FACT"
+  const stripHash = (s: string) => s.replace(/_[0-9A-Fa-f]{16,}$/, '');
 
   let path: string[];
   if (parts.length >= 2) {
-    path = parts;
+    path = [...parts.slice(0, -1), stripHash(parts[parts.length - 1])];
   } else if (parts.length === 1) {
-    path = [schOverride || 'SCHEMA', parts[0]];
+    path = [schOverride || 'SCHEMA', stripHash(parts[0])];
   } else {
     path = [attr(rel, 'name').toUpperCase() || 'UNKNOWN'];
   }
@@ -349,147 +357,178 @@ export function convertTableauToSigma(
       }
 
     } else if (relType === 'collection') {
-      // ── Federated / Excel datasource ─────────────────────────────────────
-      // Each child <relation type="table"> is a separate source table.
-      // Table names are normalised to UPPER_SNAKE_CASE and mapped to warehouse
-      // names via tableMapping if provided. db/schema come from the caller's
-      // database/schema overrides.
+      // ── Tableau 2020.2+ relationship model (virtual connections) ─────────
+      // Child <relation> elements have join-key columns only; all columns live
+      // in <connection><metadata-records><metadata-record class='column'> grouped
+      // by <object-id> (value = "[TABLE_NAME_HASH]"). Relationships are in
+      // <datasource><object-graph><relationships>.
 
-      const rawMapping = options.tableMapping || {};
-      const tableMappingNorm: Record<string, string> = {};
-      for (const [k, v] of Object.entries(rawMapping)) {
-        tableMappingNorm[k.toUpperCase()] = v.toUpperCase();
-      }
-
-      const childRels = asArray(rootRelation.relation || []).filter(
-        (r: any) => attr(r, 'type') === 'table'
-      );
-
-      // elementMap keyed by Tableau table name (uppercase) for later relationship wiring
-      const elementMap: Record<string, { element: any; colIdMap: Record<string, string> }> = {};
-
-      for (const rel of childRels) {
-        const rawName = attr(rel, 'name') || 'TABLE';
-        const rawNameUpper = rawName.toUpperCase();
-        const tableName = tableMappingNorm[rawNameUpper] || rawNameUpper;
-
-        // Preserve original db/schema casing — warehouse paths are case-sensitive
-        const dbPart = database || '';
-        const schPart = schema || '';
-        const path: string[] = [];
-        if (dbPart) path.push(dbPart);
-        if (schPart) path.push(schPart);
-        else if (dbPart) path.push('<SCHEMA>');
-        path.push(tableName);
-
-        const columns: any[] = [];
-        const order: string[] = [];
-        const colIdMap: Record<string, string> = {};
-
-        for (const col of asArray(rel?.columns?.column || [])) {
-          const rawCol = attr(col, 'name') || '';
-          const key = normalizeColumnName(rawCol);
-          if (!key) continue;
-          const id = sigmaInodeId(key);
-          const displayName = sigmaDisplayName(key);
-          columns.push({ id, formula: `[${tableName}/${displayName}]` });
-          order.push(id);
-          // Index both the normalized key and display name for relationship key lookup
-          colIdMap[key] = id;
-          colIdMap[displayName.toUpperCase()] = id;
+      const childRels = asArray(rootRelation.relation || []);
+      if (childRels.length === 0) {
+        warnings.push('⚠ Collection datasource has no child relations — skipped');
+      } else {
+        // Build UUID→caption map keyed by FULL object-id (with hex hash) so role-playing
+        // dimensions (two instances of the same table) remain distinguishable.
+        const metaByObjId: Record<string, Array<{ uuid: string; caption: string }>> = {};
+        const metaRecords = asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || []);
+        for (const mr of metaRecords) {
+          if (attr(mr, 'class') !== 'column') continue;
+          const uuid     = ((mr['remote-name'] as string) || '').trim();
+          const cap      = ((mr['caption']      as string) || '').trim();
+          const objIdRaw = ((mr['object-id']    as string) || '').replace(/^\[|\]$/g, '');
+          if (!uuid || !cap || !objIdRaw) continue;
+          if (!metaByObjId[objIdRaw]) metaByObjId[objIdRaw] = [];
+          metaByObjId[objIdRaw].push({ uuid, caption: cap });
         }
 
-        const elemId = sigmaShortId();
-        const el: any = {
-          id: elemId,
-          kind: 'table',
-          source: { connectionId: connId, kind: 'warehouse-table', path },
-          columns,
-          order,
+        type EntryType = { element: any; colIdMap: Record<string, string>; cleanName: string; objId?: string | null };
+        const elementMap: Record<string, EntryType> = {};
+
+        for (const rel of childRels) {
+          const fullName  = attr(rel, 'name') || attr(rel, 'table') || 'TABLE';
+          const path      = extractPath(rel, dbOverride, schOverride);
+          const cleanName = path[path.length - 1] || fullName;
+
+          const columns: any[] = [], order: string[] = [], colIdMap: Record<string, string> = {};
+
+          // Role-playing dimensions append a trailing digit to the relation name
+          // (e.g. "DATE_DIM (CSA.DATE_DIM)1") but objIds share the same base prefix.
+          // Fall back to sorted candidates and take the Nth one when no direct match.
+          let matchingObjId = Object.keys(metaByObjId).find(k => k === fullName || k.startsWith(fullName + '_'));
+          if (!matchingObjId) {
+            const roleM = fullName.match(/^([\s\S]+?)(\d+)$/);
+            if (roleM) {
+              const base  = roleM[1];
+              const idx   = parseInt(roleM[2], 10);
+              const cands = Object.keys(metaByObjId).filter(k => k === base || k.startsWith(base + '_')).sort();
+              matchingObjId = cands[idx];
+            }
+          }
+          const metaCols   = matchingObjId ? metaByObjId[matchingObjId] : [];
+
+          for (const { uuid, caption } of metaCols) {
+            const cleanCaption = caption.replace(/\s*\(.*\)$/, '').trim(); // strip disambiguation suffix
+            const idKey = uuid.toUpperCase();
+            const id    = sigmaInodeId(idKey);
+            columns.push({ id, formula: `[${cleanName}/${cleanCaption}]`, name: cleanCaption });
+            order.push(id);
+            colIdMap[idKey] = id;
+            colIdMap[uuid.toUpperCase().replace(/-/g, '_')] = id;
+            colIdMap[cleanCaption.toUpperCase()] = id;
+            colIdMap[cleanCaption.toUpperCase().replace(/\s+/g, '_')] = id;
+          }
+
+          // Fallback: inline <column> elements (join keys only) when no metadata-records match
+          if (metaCols.length === 0) {
+            for (const col of asArray(rel?.columns?.column || [])) {
+              const rawCol = attr(col, 'name') || '';
+              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(rawCol);
+              const key    = isUuid ? rawCol.toUpperCase() : normalizeColumnName(rawCol);
+              if (!key) continue;
+              const id          = sigmaInodeId(key);
+              const capAttr     = attr(col, 'caption');
+              const displayName = isUuid ? (capAttr || rawCol) : sigmaDisplayName(key);
+              columns.push({ id, formula: `[${cleanName}/${displayName}]` });
+              order.push(id);
+              colIdMap[rawCol.toUpperCase()] = id;
+              colIdMap[key] = id;
+            }
+          }
+
+          const el: any = { id: sigmaShortId(), kind: 'table',
+            source: { connectionId: connId, kind: 'warehouse-table', path },
+            columns, order };
+          elementMap[fullName] = { element: el, colIdMap, cleanName, objId: matchingObjId || null };
+          elements.push(el);
+        }
+
+        // Wire relationships from <object-graph><relationships>
+        const objGraph = (ds.ds as any)?.['object-graph'];
+        const relsList  = asArray(objGraph?.relationships?.relationship || []);
+
+        // Resolve object-id to an elementMap entry.
+        // Prefer exact stored objId match (handles role-playing dims with shared prefix),
+        // then fall back to cleaned-segment heuristic.
+        const getCleanSeg = (name: string) =>
+          name.replace(/[\[\]]/g, '').split('.').pop()?.replace(/_[0-9A-Fa-f]{16,}$/, '').toUpperCase() || '';
+        const findEntry = (objId: string): EntryType | undefined => {
+          const exactKey = Object.keys(elementMap).find(k => (elementMap[k] as any).objId === objId);
+          if (exactKey) return elementMap[exactKey];
+          const cleanId = getCleanSeg(objId);
+          const key = Object.keys(elementMap).find(k => getCleanSeg(k) === cleanId);
+          return key ? elementMap[key] : undefined;
         };
-        elementMap[rawNameUpper] = { element: el, colIdMap };
-        elements.push(el);
-      }
 
-      // ── Wire relationships from <object-graph> ──────────────────────────
-      const objGraph = ds.ds?.['object-graph'];
-      if (objGraph && elements.length > 0) {
-        // Build object-ID → caption map:  "Orders_ECFC..." → "Orders"
-        const objectIdToCaption: Record<string, string> = {};
-        for (const obj of asArray(objGraph?.objects?.object || [])) {
-          const id = attr(obj, 'id');
-          const caption = attr(obj, 'caption');
-          if (id && caption) objectIdToCaption[id] = caption;
-        }
+        // Extract UUID from function-call expressions: DATE([uuid]) → uuid (uppercase)
+        const extractOpUuid = (opAttr: string): string => {
+          const fnWrap = opAttr.match(/^\w+\(\[?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]?\)$/i);
+          return fnWrap ? fnWrap[1].toUpperCase() : '';
+        };
 
-        // Strip Tableau's "(TableAlias)" disambiguation suffix and normalize:
-        //   "[Region (People)]" → "REGION",  "[Order ID]" → "ORDER_ID"
+        // Parse a relationship expression op to a colIdMap lookup key
         const parseOpRef = (opAttr: string): string => {
-          const inner = opAttr.replace(/^\[|\]$/g, '').replace(/\s*\([^)]+\)\s*$/, '').trim();
-          return normalizeColumnName(inner);
+          const uuidInFn = extractOpUuid(opAttr);
+          if (uuidInFn) return uuidInFn;
+          // Strip brackets and greedy disambiguation suffix (handles nested parens)
+          return opAttr.replace(/^\[|\]$/g, '').replace(/\s*\(.*\)$/, '').trim().toUpperCase();
         };
 
-        for (const rel of asArray(objGraph?.relationships?.relationship || [])) {
-          // Source and target tables come from first-end-point / second-end-point
-          const srcObjId = attr(rel['first-end-point'], 'object-id') || '';
-          const tgtObjId = attr(rel['second-end-point'], 'object-id') || '';
-          const srcCaption = objectIdToCaption[srcObjId] || srcObjId;
-          const tgtCaption = objectIdToCaption[tgtObjId] || tgtObjId;
+        for (const rel of relsList) {
+          const firstEp  = rel['first-end-point'];
+          const secondEp = rel['second-end-point'];
+          if (!firstEp || !secondEp) continue;
 
-          const srcEntry = elementMap[srcCaption.toUpperCase()];
-          const tgtEntry = elementMap[tgtCaption.toUpperCase()];
-          if (!srcEntry || !tgtEntry || srcEntry === tgtEntry) continue;
+          const firstEntry  = findEntry(attr(firstEp,  'object-id'));
+          const secondEntry = findEntry(attr(secondEp, 'object-id'));
+          if (!firstEntry || !secondEntry || firstEntry === secondEntry) continue;
 
-          // Column names are in <expression op="="><expression op="[Col]"/><expression op="[Col (Alias)]"/></expression>
-          const exprs = asArray(rel.expression || []);
-          const eqExpr = exprs.find((e: any) => attr(e, 'op') === '=');
+          // Expression structure: expression[op="="] > expression[op="col"] x2
+          const outerExprs = asArray(rel.expression || []);
+          const eqExpr     = outerExprs.find((e: any) => attr(e, 'op') === '=') || outerExprs[0];
           if (!eqExpr) continue;
-
           const innerExprs = asArray(eqExpr.expression || []);
           if (innerExprs.length < 2) continue;
 
-          const srcColKey = parseOpRef(attr(innerExprs[0], 'op') || '');
-          const tgtColKey = parseOpRef(attr(innerExprs[1], 'op') || '');
-          if (!srcColKey || !tgtColKey) continue;
+          const srcKey = parseOpRef(attr(innerExprs[0], 'op') || '');
+          const tgtKey = parseOpRef(attr(innerExprs[1], 'op') || '');
+          if (!srcKey || !tgtKey) continue;
 
-          // Find or lazily create the join-key columns
-          const ensureCol = (
-            entry: { element: any; colIdMap: Record<string, string> },
-            colKey: string
-          ): string => {
-            let id = entry.colIdMap[colKey];
+          const ensureCol = (entry: EntryType, key: string): string => {
+            let id = entry.colIdMap[key] || entry.colIdMap[key.replace(/-/g, '_')];
             if (!id) {
-              id = sigmaInodeId(colKey);
-              const tbl = entry.element.source.path.slice(-1)[0] as string;
-              entry.element.columns.push({ id, formula: `[${tbl}/${sigmaDisplayName(colKey)}]` });
+              id = sigmaInodeId(key.replace(/\s+/g, '_'));
+              const isUuid    = /^[0-9A-F]{8}-[0-9A-F]{4}-/i.test(key);
+              const dispName  = isUuid ? key : sigmaDisplayName(key);
+              entry.element.columns.push({ id, formula: `[${entry.cleanName}/${dispName}]` });
               entry.element.order.push(id);
-              entry.colIdMap[colKey] = id;
+              entry.colIdMap[key] = id;
             }
             return id;
           };
 
-          const srcColId = ensureCol(srcEntry, srcColKey);
-          const tgtColId = ensureCol(tgtEntry, tgtColKey);
+          const srcColId = ensureCol(firstEntry,  srcKey);
+          const tgtColId = ensureCol(secondEntry, tgtKey);
 
-          if (!srcEntry.element.relationships) srcEntry.element.relationships = [];
-          srcEntry.element.relationships.push({
+          if (!firstEntry.element.relationships) firstEntry.element.relationships = [];
+          firstEntry.element.relationships.push({
             id: sigmaShortId(),
-            targetElementId: tgtEntry.element.id,
+            targetElementId: secondEntry.element.id,
             keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-            name: `${srcCaption} to ${tgtCaption}`,
+            name: secondEntry.cleanName,
           });
+          warnings.push(`ℹ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} on ${srcKey} = ${tgtKey}`);
         }
-      }
 
-      const tableList = elements.map((e: any) => e.source.path.join('.')).join(', ');
-      if (!dbOverride || !schOverride) {
-        warnings.push(
-          `⚠ Federated/Excel source: pass database and schema parameters to set the full warehouse path. Table names used: ${tableList}`
-        );
-      } else {
-        warnings.push(
-          `ℹ Federated/Excel source converted. Verify warehouse table names match: ${tableList}`
-        );
+        // Sort: dims first, fact last
+        elements.sort((a, b) => {
+          const aR = !!((a as any).relationships?.length);
+          const bR = !!((b as any).relationships?.length);
+          return aR === bR ? 0 : aR ? 1 : -1;
+        });
+
+        if (!dbOverride || !schOverride) {
+          warnings.push('⚠ Virtual connection: pass database and schema parameters to set the full warehouse path.');
+        }
       }
     }
   }
@@ -777,6 +816,7 @@ export function convertTableauToSigma(
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
   const sigmaModel = {
+    schemaVersion: 1,
     name: ds.name,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [...controls, ...elements] }]
   };
