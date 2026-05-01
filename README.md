@@ -52,6 +52,7 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_atlan_to_sigma` | Atlan data contract (YAML or JSON) → Sigma JSON |
 | `convert_alteryx_to_sigma` | Alteryx Designer workflow (.yxmd XML) → Sigma JSON |
 | `convert_oac_to_sigma` | Oracle Analytics Cloud logical tables JSON → Sigma JSON |
+| `convert_cube_to_sigma` | Cube.dev schemas (YAML or JS) → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
@@ -194,6 +195,26 @@ Converts Oracle Analytics Cloud logical tables JSON (SMML export format). Handle
 - `database` — Override database name
 - `schema` — Override schema name
 - `physical_map_json` — Optional JSON object mapping table name → `{database, schema}`
+
+### convert_cube_to_sigma
+Converts Cube.dev schemas to Sigma data model JSON. Accepts YAML (`.yml`, `.yaml`) and JavaScript (`.js`) schema files in the same call — the parser dispatches by extension. Supports `cube(`name`, { ... })` and `view(`name`, { ... })` calls, template literals (`${CUBE}.col`, `${OtherCube.dim}`, `${measure_name}`), and multi-line backtick SQL.
+
+Mapping:
+- Cube with `sql_table` → warehouse-table element
+- Cube with `sql` → Custom SQL element (template refs normalized to plain SQL aliases)
+- Dimensions (string/number/time/boolean) → columns
+- Measures (count/sum/avg/min/max/count_distinct/number/percent) → metrics
+- Filtered measures (`filters: [{ sql: ... }]`) → `SumIf` / `CountIf` / `AvgIf` wrappers
+- Joins (one_to_one / one_to_many / many_to_one) → relationships with FK/PK keys parsed from join SQL
+- Views (`cubes: [{ join_path, includes, prefix }]`) → derived elements with linked-column refs
+
+Pre-aggregations and segments are skipped with informational warnings — Sigma uses warehouse-side caching and has no direct equivalent.
+
+**Parameters:**
+- `files` (required) — array of `{name, content}` objects (`.yml`, `.yaml`, `.js`, `.cjs`, `.mjs`)
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
 
 ### convert_sql_to_sigma_formula
 Converts SQL expressions to Sigma formula syntax:

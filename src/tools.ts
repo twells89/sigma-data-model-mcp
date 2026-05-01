@@ -18,6 +18,7 @@ import { convertQlikToSigma } from './qlik.js';
 import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
+import { convertCubeToSigma } from './cube.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
@@ -777,6 +778,61 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     }
   );
 
+  // ── convert_cube_to_sigma ─────────────────────────────────────────────────
+
+  server.tool(
+    'convert_cube_to_sigma',
+    `Convert Cube.dev schema files to Sigma Computing data model JSON.
+
+Accepts Cube schemas in YAML (.yml, .yaml) and JavaScript (.js) form. The JS
+parser supports cube(\`name\`, { ... }) / view(\`name\`, { ... }) call form,
+template literals (\${CUBE}.col, \${OtherCube.dim}, \${measure_name}), and
+multi-line backtick SQL.
+
+Converts:
+  - Cubes with sql_table → warehouse-table elements
+  - Cubes with sql → Custom SQL elements (template refs are normalized)
+  - Dimensions (string/number/time/boolean) → columns
+  - Measures (count/sum/avg/min/max/count_distinct/number/percent) → metrics
+  - Filtered measures (filters[].sql) → SumIf/CountIf/AvgIf wrappers
+  - Joins (one_to_one/one_to_many/many_to_one) → relationships with FK/PK keys
+  - Views (cubes[].join_path / includes / prefix) → derived elements
+
+Pre-aggregations and segments are skipped with informational warnings —
+Sigma uses warehouse-side caching and has no direct equivalent.
+
+Pass files as an array of {name, content} objects.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      files: z.array(z.object({
+        name:    z.string().describe('Filename (e.g. "orders.yml" or "orders.js"). Extension determines parser: .yml/.yaml → YAML, .js/.cjs/.mjs → JavaScript.'),
+        content: z.string().describe('Full file content'),
+      })).describe('Array of Cube schema files (YAML and/or JavaScript)'),
+      connection_id: z.string().describe('Sigma connection UUID (from GET /v2/connections); pass empty string to omit'),
+      database: z.string().describe('Override database name (e.g. "ANALYTICS"); pass empty string to omit'),
+      schema:   z.string().describe('Override schema name (e.g. "PUBLIC"); pass empty string to omit'),
+    },
+    async ({ files, connection_id, database, schema }) => {
+      try {
+        const result = convertCubeToSigma(files, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── convert_oac_to_sigma ──────────────────────────────────────────────────
 
   server.tool(
@@ -934,6 +990,37 @@ Steps:
    - Table calculations (RUNNING_SUM, RANK, WINDOW_*) → manual conversion
    - Linked columns may need re-adding in Sigma UI
 7. Save to Sigma via POST /v2/dataModels/spec with folderId`,
+        },
+      }],
+    })
+  );
+
+  server.prompt(
+    'convert_cube_schema',
+    'Guide for converting Cube.dev schemas to Sigma',
+    () => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `I need to convert Cube.dev schema files to a Sigma data model.
+
+Steps:
+1. Gather all .yml/.yaml and .js Cube schema files (cubes/ and views/ directories)
+2. Pass them to convert_cube_to_sigma as [{name, content}, ...]
+3. Provide a Sigma connection_id if available
+4. If sql_table values are bare table names with no db.schema prefix, use the
+   database and schema override parameters
+5. Review warnings:
+   - Custom SQL element notes — review the translated SQL before saving
+   - Joins where FK/PK columns couldn't be resolved
+   - pre_aggregations and segments — skipped (no Sigma equivalent)
+6. Save to Sigma via POST /v2/dataModels/spec with folderId
+
+How to get Cube files:
+- Git: cube schemas live in /model or /schema directories of a Cube project
+- Cube Cloud: Develop tab → file tree
+- Cube Playground: Schema page`,
         },
       }],
     })
