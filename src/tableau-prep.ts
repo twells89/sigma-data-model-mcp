@@ -1072,11 +1072,50 @@ function processSuperUnion(
   // Finalize each upstream
   for (const s of upstreamStates) if (!s.finalized) finalizeChain(s, elements);
 
-  // Build a Sigma union element. Uses inputs[] referencing elementIds.
+  // Build a Sigma union element.
+  //   source.sources:  [{kind:'table', elementId:...}] one per upstream
+  //   source.matches:  [{outputColumnName, sourceColumns:["[Display]"...]}] one entry per
+  //                    output column, sourceColumns length === sources length, each ref
+  //                    is a [Display] formula matching that source's column display name.
+  //   columns:         empty `formula: ''` per output column (filled name + id) — avoids
+  //                    the self-reference cycle that `formula: '[Display]'` would create.
   const elementId = sigmaShortId();
   const action = n.actionNode || {};
   const fieldMappings = (action.namespaceFieldMappings || []) as { namespaceName: string; fieldMappings: Record<string, string> }[];
-  // Sigma's union source: kind:'union', inputs:[{elementId:..}], with column refs to the canonical name.
+
+  // First upstream is canonical schema; line up other sources by column display name.
+  const canon = upstreamStates[0];
+  const colByName = new Map<string, string>();
+  const matches: { outputColumnName: string; sourceColumns: string[] }[] = [];
+  const unionCols: any[] = [];
+  const unionOrder: string[] = [];
+
+  // Sigma's union element columns use the implicit `[Union of N Sources/Col]` namespace
+  // for the formula. This is the documented format from Sigma's Data Model Representation
+  // Example Library — without it, the union saves but its columns return null.
+  const numSources = upstreamStates.length;
+  const unionPrefix = `Union of ${numSources} Sources`;
+  for (const c of canon.element.columns) {
+    const dn = c.name || extractDisplayFromFormula(c.formula);
+    if (!dn) continue;
+    const id = sigmaShortId();
+    unionCols.push({ id, name: dn, formula: `[${unionPrefix}/${dn}]` });
+    unionOrder.push(id);
+    colByName.set(dn, id);
+    // sourceColumns: one [Display] entry per source. Each source gets its column with
+    // the same display name (Tableau Prep's namespaceFieldMappings handles renames so
+    // each source already has the canonical name). For sources that don't have a
+    // matching display, we still emit "[<canonical Display>]" — Sigma will warn on
+    // resolution but the structure stays valid.
+    const sourceRefs: string[] = [];
+    for (const s of upstreamStates) {
+      const matchedCol = s.element.columns.find(sc => (sc.name || extractDisplayFromFormula(sc.formula)) === dn);
+      const refDn = matchedCol ? (matchedCol.name || extractDisplayFromFormula(matchedCol.formula)) : dn;
+      sourceRefs.push(`[${refDn}]`);
+    }
+    matches.push({ outputColumnName: dn, sourceColumns: sourceRefs });
+  }
+
   const unionEl: SigmaElement = {
     id: elementId,
     kind: 'table',
@@ -1085,30 +1124,15 @@ function processSuperUnion(
       connectionId,
       kind: 'union',
       sources: upstreamStates.map(s => ({ kind: 'table', elementId: s.element.id })),
-      matches: [],
+      matches,
     },
-    columns: [],
+    columns: unionCols,
     metrics: [],
-    order: [],
+    order: unionOrder,
   };
 
-  // Use the first upstream's columns as the canonical schema. Sigma will line up by column name.
-  const canon = upstreamStates[0];
-  const colByName = new Map<string, string>();
-  for (const c of canon.element.columns) {
-    const dn = c.name || extractDisplayFromFormula(c.formula) || 'col';
-    const id = sigmaShortId();
-    unionEl.columns.push({
-      id,
-      formula: `[${dn}]`,
-      name: c.name,
-    });
-    unionEl.order.push(id);
-    colByName.set(dn, id);
-  }
-
   if (fieldMappings.length > 0) {
-    warnings.push(`ℹ SuperUnion "${n.name}" has namespaceFieldMappings — sources with renamed columns may need manual reconciliation.`);
+    warnings.push(`ℹ SuperUnion "${n.name}" has namespaceFieldMappings — sources with renamed columns may need manual reconciliation in Sigma UI.`);
   }
 
   elements.push(unionEl);
