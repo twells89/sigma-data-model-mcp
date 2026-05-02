@@ -155,7 +155,12 @@ export function convertOacToSigma(
           break;
         }
       }
-      const oacRelName = tgtName.toUpperCase();
+      // Rel name = uppercased target warehouse-table name (last segment of source path).
+      // Using raw `tgtName` would let spaces/lowercase leak in (e.g., "customer dim").
+      // Per spec rule, this name is the middle segment of cross-element refs and must
+      // match what Sigma resolves the relationship as.
+      const tgtPath = tgtInfo.element.source?.path;
+      const oacRelName = (tgtPath ? tgtPath[tgtPath.length - 1] : tgtName).toUpperCase();
       if (!srcInfo.element.relationships) srcInfo.element.relationships = [];
       if (srcEntry && tgtEntry) {
         srcInfo.element.relationships.push({

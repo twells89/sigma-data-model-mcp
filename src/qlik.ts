@@ -128,7 +128,7 @@ export function convertQlikToSigma(
           id: sigmaShortId(),
           targetElementId: toInfo.elementId,
           keys: [{ sourceColumnId: fromColInfo.colId, targetColumnId: toColInfo.colId }],
-          name: tgtPath ? tgtPath[tgtPath.length - 1] : fieldName.toUpperCase(),
+          name: tgtPath ? tgtPath[tgtPath.length - 1].toUpperCase() : fieldName.toUpperCase(),
         });
       }
     }
@@ -154,7 +154,7 @@ export function convertQlikToSigma(
       id: sigmaShortId(),
       targetElementId: toInfo.elementId,
       keys: [{ sourceColumnId: fromColInfo.colId, targetColumnId: toColInfo.colId }],
-      name: expPath ? expPath[expPath.length - 1] : rel.toTable.toUpperCase(),
+      name: expPath ? expPath[expPath.length - 1].toUpperCase() : rel.toTable.toUpperCase(),
     });
   }
 

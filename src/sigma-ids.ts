@@ -214,13 +214,22 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     const srcPath: string[] = srcEl.source.path || [];
     const srcTableName: string = srcPath[srcPath.length - 1] || '';
+    const baseName: string = srcEl.name || sigmaDisplayName(srcTableName);
+    // Derived element NAME must differ from the base so [<base>/Field] is unambiguous.
+    const derivedName = `${baseName} View`;
+    // All formulas in the derived element point AT the base element by its display name.
+    // Using the warehouse-table name (e.g. ORDER_FACT) collides with a sibling that has
+    // the same path-tail and resolves to the wrong element.
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
 
     for (const col of (srcEl.columns || [])) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
+      const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
+      if (!fm) continue; // skip calc cols
+      const dispName = fm[2];
       const cId = sigmaShortId();
-      viewCols.push({ id: cId, formula: col.formula });
+      viewCols.push({ id: cId, formula: `[${baseName}/${dispName}]` });
       viewOrder.push(cId);
     }
 
@@ -236,7 +245,7 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
         const s = inner.lastIndexOf('/');
         const dispName = s >= 0 ? inner.slice(s + 1) : inner;
         const cId = sigmaShortId();
-        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);
       }
     }
@@ -245,7 +254,7 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       derived.push({
         id: sigmaShortId(),
         kind: 'table',
-        name: srcEl.name || sigmaDisplayName(srcTableName),
+        name: derivedName,
         source: { kind: 'table', elementId: srcEl.id },
         columns: viewCols,
         order: viewOrder,

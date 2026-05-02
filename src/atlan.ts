@@ -107,11 +107,15 @@ export function convertAtlanToSigma(
         continue;
       }
       if (!srcElement.relationships) srcElement.relationships = [];
+      // Rel name = target warehouse-table name uppercase. This is the middle
+      // segment in cross-element refs emitted by buildDerivedElements.
+      const tgtPath = (tgtEntry as any).element?.source?.path;
+      const relName = (tgtPath ? tgtPath[tgtPath.length - 1] : targetModel).toUpperCase();
       srcElement.relationships.push({
         id: sigmaShortId(),
         targetElementId: tgtEntry.elementId,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-        name: targetModel,
+        name: relName,
       });
     }
   }

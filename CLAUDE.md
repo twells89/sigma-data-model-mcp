@@ -48,4 +48,21 @@ NEVER `TOKEN=$(eval "$(...)")` — eval inside `$()` sets the var in a subshell 
 
 POST endpoint: `${SIGMA_BASE_URL}/v2/dataModels/spec`, body `{ folderId, ...spec }`.
 
-Verify saved spec by id via MCP V2: `begin_session` → `describe(documentId)` → `query(documentId, elementId, ...)`.
+## Pre-commit check (runs in addition to spec correctness rules above)
+
+When the diff modifies any `src/<converter>.ts`, run `npm run build` and a real-API end-to-end test before committing. The bar for PASS is: a query against the saved data model returns real warehouse data, NOT error-typed columns or all-null rows. Just verifying the POST returns 2xx is insufficient — Sigma will accept structurally-valid specs whose formulas don't resolve at query time.
+
+For each converter touched:
+1. Convert a real fixture (CSA.TJ-pointed; see Test fixtures section above) to a spec via the build module
+2. POST to `${SIGMA_BASE_URL}/v2/dataModels/spec` with body `{ folderId: '9ca9bf60-...', ...spec }` and capture `dataModelId`
+3. `mcp__sigma-mcp-v2__describe(type="datamodel-element", dataModelId, elementId)` on the largest fact-style element. **Every column must have a concrete type** (`text` / `integer` / `number` / `datetime` / `boolean`). Any column showing as `error` is a FAIL — the formula didn't resolve.
+4. `mcp__sigma-mcp-v2__query(type="datamodel", dataModelId, sql="SELECT * FROM \"datamodel\".\"<elementId>\" LIMIT 5")`. Must return rows with real warehouse values. All-null rows or "Unknown column" errors are a FAIL.
+5. **Cleanup (mandatory):** `DELETE ${SIGMA_BASE_URL}/v2/files/{dataModelId}` for each test data model created.
+
+Test folder lists via `GET ${SIGMA_BASE_URL}/v2/files?parentId=9ca9bf60-...&limit=200` so you can sweep accumulated `TEST audit *` / `BROWSER TEST *` models.
+
+**Don't substitute JSDOM-based tests for the real flow** — they bypass async setup and have produced false negatives on this codebase.
+
+## Browser-tool sync
+
+When a converter changes here, the matching inline-JS converter in `/Users/tjwells/sigma-data-model-manager/index.html` must be updated to keep the two implementations in lock-step. The browser-tool repo's `/review-commit` Step 10 runs the same data-verification check via Puppeteer driving the live UI.
