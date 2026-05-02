@@ -214,12 +214,12 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     const srcPath: string[] = srcEl.source.path || [];
     const srcTableName: string = srcPath[srcPath.length - 1] || '';
-    const baseName: string = srcEl.name || sigmaDisplayName(srcTableName);
+    // The base prefix in formulas must match what Sigma resolves the base element as:
+    //   - if the element has an explicit `name` field, that is its identifier
+    //   - otherwise Sigma falls back to the warehouse-table path-tail uppercase
+    const baseName: string = srcEl.name || srcTableName;
     // Derived element NAME must differ from the base so [<base>/Field] is unambiguous.
-    const derivedName = `${baseName} View`;
-    // All formulas in the derived element point AT the base element by its display name.
-    // Using the warehouse-table name (e.g. ORDER_FACT) collides with a sibling that has
-    // the same path-tail and resolves to the wrong element.
+    const derivedName = `${srcEl.name || sigmaDisplayName(srcTableName)} View`;
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
 
