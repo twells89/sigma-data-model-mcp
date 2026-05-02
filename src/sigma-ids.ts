@@ -184,6 +184,7 @@ export interface SigmaPage {
 
 export interface SigmaDataModel {
   name: string;
+  schemaVersion?: number;
   pages: SigmaPage[];
 }
 

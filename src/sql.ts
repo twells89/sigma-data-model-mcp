@@ -10,7 +10,7 @@
  */
 
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, sigmaColFormula,
   type SigmaElement, type SigmaColumn, type SigmaMetric, type SigmaRelationship,
   type ConversionResult,
 } from './sigma-ids.js';
@@ -56,23 +56,31 @@ export function convertSqlToSigma(
     const parsed = parseSqlFull(stmt.sql, db, sc);
 
     if (!parsed) {
-      // Complex query (subquery, implicit cross-join) → Custom SQL element
+      // Complex query (subquery, implicit cross-join) → Custom SQL element.
+      // Wrap the user's SQL in an outer SELECT that aliases each projection to
+      // a double-quoted display name. This is the only column shape Sigma
+      // resolves at query time for sql-source elements: the SQL output column
+      // names must match the formula's [Custom SQL/<Display>] reference.
       const fallbackCols = extractSqlColumns(stmt.sql);
-      const fallbackColObjs: SigmaColumn[] = fallbackCols.map(c => ({
-        id: sigmaInodeId(c.toUpperCase()),
-        formula: `[${sigmaDisplayName(c)}]`,
+      const aliases = fallbackCols.map(c => ({ phys: c, display: sigmaDisplayName(c) }));
+      const wrappedSql = aliases.length
+        ? `SELECT ${aliases.map(a => `"${a.phys.toUpperCase()}" AS "${a.display}"`).join(', ')}\nFROM (\n${stmt.sql}\n) AS _src`
+        : stmt.sql;
+      const fallbackColObjs: SigmaColumn[] = aliases.map(a => ({
+        id: sigmaInodeId(a.phys.toUpperCase()),
+        formula: `[Custom SQL/${a.display}]`,
+        name: a.display,
       }));
-      const fallbackSrc: Record<string, any> = { kind: 'sql', statement: stmt.sql };
+      const fallbackSrc: Record<string, any> = { kind: 'sql', statement: wrappedSql };
       if (connectionId) fallbackSrc.connectionId = connectionId;
       allElements.push({
         id: sigmaShortId(), kind: 'table',
-        name: sigmaDisplayName(stmt.name),
         source: fallbackSrc,
         columns: fallbackColObjs,
         order: fallbackColObjs.map(c => c.id),
       } as SigmaElement);
       sqlFallback++;
-      warnings.push(`"${stmt.name}": subquery or implicit cross-join — kept as custom SQL element.`);
+      warnings.push(`"${stmt.name}": subquery or implicit cross-join — kept as custom SQL element. SQL was wrapped to add display-name aliases.`);
       continue;
     }
 
@@ -195,6 +203,7 @@ export function convertSqlToSigma(
 
   const sigmaModel = {
     name: 'Converted SQL Model',
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements: allElements }],
   };
 

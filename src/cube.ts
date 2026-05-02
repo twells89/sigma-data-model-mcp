@@ -61,7 +61,7 @@ export function convertCubeToSigma(
 
   if (cubes.length === 0 && views.length === 0) {
     return {
-      model: { name: 'Cube Model', pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] },
+      model: { name: 'Cube Model', schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] },
       warnings: warnings.length ? warnings : ['No cubes or views found in the provided files'],
       stats: {},
     };
@@ -116,7 +116,6 @@ export function convertCubeToSigma(
       element = {
         id: elementId,
         kind: 'table',
-        name: displayName,
         source: { connectionId, kind: 'sql', statement: translatedSql },
         columns: [],
         metrics: [],
@@ -143,6 +142,11 @@ export function convertCubeToSigma(
 
     const colIdMap: Record<string, string> = {};
     let pkColId: string | null = null;
+    // For Custom SQL elements: track (physical column → display name) pairs so
+    // we can wrap the user's SQL with aliasing afterward and rewrite formulas
+    // to the qualified `[Custom SQL/Display]` form. Bare `[Display]` refs do
+    // not resolve at query time when the SQL output uses snake_case names.
+    const customSqlPassthroughs: Array<{ phys: string; display: string }> = [];
 
     function addCol(fieldName: string, formula: string, label?: string): string {
       const id = isCustomSql ? sigmaShortId() : sigmaInodeId(fieldName.toUpperCase());
@@ -169,6 +173,7 @@ export function convertCubeToSigma(
         formula = isCustomSql
           ? `[${sigmaDisplayName(physCol)}]`
           : sigmaColFormula(sourceTable, physCol);
+        if (isCustomSql) customSqlPassthroughs.push({ phys: physCol, display: sigmaDisplayName(physCol) });
       } else if (dim.sql) {
         const translated = translateCubeFormula(dim.sql, cubeName, sourceTable, isCustomSql);
         if (translated === null) {
@@ -183,6 +188,7 @@ export function convertCubeToSigma(
         formula = isCustomSql
           ? `[${sigmaDisplayName(dimName)}]`
           : sigmaColFormula(sourceTable, dimName);
+        if (isCustomSql) customSqlPassthroughs.push({ phys: dimName, display: sigmaDisplayName(dimName) });
       }
 
       const label = dim.title || undefined;
@@ -264,6 +270,28 @@ export function convertCubeToSigma(
         name: measure.title || sigmaDisplayName(measureName),
         formula,
       });
+    }
+
+    // For Custom SQL elements: wrap the user's SQL with an outer SELECT that
+    // aliases each passthrough column to its display name, and rewrite each
+    // bare `[Display]` formula to qualified `[Custom SQL/Display]` form.
+    if (isCustomSql && customSqlPassthroughs.length) {
+      const rawSql = String(element.source.statement || '').trim();
+      if (rawSql) {
+        // Dedupe in case multiple dims share the same physical column
+        const seen = new Set<string>();
+        const uniq = customSqlPassthroughs.filter(p => {
+          if (seen.has(p.phys)) return false;
+          seen.add(p.phys);
+          return true;
+        });
+        const aliasList = uniq.map(p => `"${p.phys.toUpperCase()}" AS "${p.display}"`).join(', ');
+        element.source.statement = `SELECT ${aliasList}\nFROM (\n${rawSql}\n) AS _src`;
+        for (const col of element.columns) {
+          const m = (col.formula || '').match(/^\[([^\/\]]+)\]$/);
+          if (m) col.formula = `[Custom SQL/${m[1]}]`;
+        }
+      }
     }
 
     elements.push(element);
@@ -367,6 +395,7 @@ export function convertCubeToSigma(
   return {
     model: {
       name: modelName,
+      schemaVersion: 1,
       pages: [{ id: sigmaShortId(), name: 'Page 1', elements }],
     },
     warnings,

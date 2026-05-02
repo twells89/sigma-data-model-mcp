@@ -223,7 +223,7 @@ export function convertThoughtSpotToSigma(
   };
 
   return {
-    model: { name: modelName, pages: [{ id: pageId, name: 'Page 1', elements }] },
+    model: { name: modelName, schemaVersion: 1, pages: [{ id: pageId, name: 'Page 1', elements }] },
     warnings,
     stats,
   };

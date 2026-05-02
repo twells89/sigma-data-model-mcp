@@ -355,7 +355,7 @@ export function convertAlteryxToSigma(
   };
 
   return {
-    model: { name: finalName, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
+    model: { name: finalName, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
     warnings,
     stats,
   };

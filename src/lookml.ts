@@ -956,6 +956,7 @@ export function convertLookMLToSigma(
 
   const sigmaModel = {
     name: sigmaDisplayName(exploreName),
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements: allElements }]
   };
 

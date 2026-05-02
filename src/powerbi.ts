@@ -604,6 +604,7 @@ export function convertPowerBIToSigma(
   const modelName = modelJson.name || model.name || 'Power BI Import';
   const sigmaModel = {
     name: modelName,
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements }]
   };
 

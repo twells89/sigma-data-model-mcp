@@ -135,6 +135,7 @@ export function convertAtlanToSigma(
   return {
     model: {
       name: sigmaDisplayName(modelName.replace(/[-_]/g, ' ')),
+      schemaVersion: 1,
       pages: [{ id: sigmaShortId(), name: 'Page 1', elements }],
     },
     warnings,

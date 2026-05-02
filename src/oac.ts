@@ -186,7 +186,7 @@ export function convertOacToSigma(
   };
 
   return {
-    model: { name: modelName, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
+    model: { name: modelName, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
     warnings,
     stats,
   };

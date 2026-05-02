@@ -72,7 +72,7 @@ export function convertOmniToSigma(
 
   if (views.length === 0) {
     return {
-      model: { name: 'Omni Analytics Model', pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] },
+      model: { name: 'Omni Analytics Model', schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] },
       warnings: ['No views found in the provided files'],
       stats: {},
     };
@@ -102,7 +102,6 @@ export function convertOmniToSigma(
       element = {
         id:     elementId,
         kind:   'table',
-        name:   displayName,
         source: { connectionId, kind: 'sql', statement: rawSql },
         columns: [],
         metrics: [],
@@ -270,6 +269,34 @@ export function convertOmniToSigma(
       });
     }
 
+    // For Custom SQL elements, wrap the user's SQL with an outer SELECT that
+    // aliases each projected column to its display name, and rewrite each
+    // column's bare `[Display]` formula to qualified `[Custom SQL/Display]`.
+    // Without this, Sigma can't resolve the formulas at query time and every
+    // column shows "Unknown column" errors.
+    if (element.source.kind === 'sql' && sourceTable === 'Custom SQL') {
+      const rawSql = String(element.source.statement || '').trim();
+      if (rawSql) {
+        const passthroughs: Array<{ phys: string; display: string }> = [];
+        for (const col of element.columns) {
+          const m = (col.formula || '').match(/^\[([^\/\]]+)\]$/);
+          if (!m) continue;
+          const display = m[1];
+          const physMatches = Object.entries(colIdMap).find(([, id]) => id === col.id);
+          const phys = physMatches ? physMatches[0] : display.toUpperCase().replace(/\s+/g, '_');
+          passthroughs.push({ phys, display });
+        }
+        if (passthroughs.length) {
+          const aliasList = passthroughs.map(p => `"${p.phys}" AS "${p.display}"`).join(', ');
+          element.source.statement = `SELECT ${aliasList}\nFROM (\n${rawSql}\n) AS _src`;
+          for (const col of element.columns) {
+            const m = (col.formula || '').match(/^\[([^\/\]]+)\]$/);
+            if (m) col.formula = `[Custom SQL/${m[1]}]`;
+          }
+        }
+      }
+    }
+
     elements.push(element);
     viewRegistry.set(viewName.toLowerCase(), { elementId, pkColId, colIdMap, element, sourceTable });
   }
@@ -346,6 +373,7 @@ export function convertOmniToSigma(
   return {
     model: {
       name:  modelName,
+      schemaVersion: 1,
       pages: [{ id: sigmaShortId(), name: 'Page 1', elements }],
     },
     warnings,

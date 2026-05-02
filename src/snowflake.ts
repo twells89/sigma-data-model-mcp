@@ -353,6 +353,7 @@ export function convertSnowflakeSemanticView(
 
   const sigmaModel = {
     name: sigmaDisplayName(viewName),
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements }]
   };
 

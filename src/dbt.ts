@@ -279,6 +279,7 @@ export function convertDbtToSigma(
 
       const targetEl = elements[targetIdx];
       const srcTableName = (element.source?.path?.[2] || model.name).toUpperCase();
+      const tgtTableName = (targetEl.source?.path?.[2] || semanticModels[targetIdx].name).toUpperCase();
 
       let srcColId = elementColIdMaps[i][physicalFk];
       if (!srcColId) {
@@ -299,7 +300,7 @@ export function convertDbtToSigma(
         id: sigmaShortId(),
         targetElementId: targetEl.id,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-        name: `${sigmaDisplayName(model.name)} to ${sigmaDisplayName(semanticModels[targetIdx].name)}`,
+        name: tgtTableName,
         relationshipType: 'N:1'
       });
     }
@@ -320,6 +321,7 @@ export function convertDbtToSigma(
     name: semanticModels.length === 1
       ? sigmaDisplayName(semanticModels[0].name)
       : 'Dbt Semantic Models',
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements }]
   };
 

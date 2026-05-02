@@ -331,6 +331,7 @@ export function convertTableauPrepToSigma(
   return {
     model: {
       name: modelName,
+      schemaVersion: 1,
       pages: [{ id: sigmaShortId(), name: 'Page 1', elements }],
     },
     warnings,

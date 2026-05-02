@@ -223,7 +223,7 @@ export function convertQlikToSigma(
   };
 
   return {
-    model: { name: sigmaDisplayName(modelName), pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
+    model: { name: sigmaDisplayName(modelName), schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
     warnings,
     stats,
   };
