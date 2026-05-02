@@ -1084,7 +1084,8 @@ function processSuperUnion(
     source: {
       connectionId,
       kind: 'union',
-      inputs: upstreamStates.map(s => ({ elementId: s.element.id })),
+      sources: upstreamStates.map(s => ({ kind: 'table', elementId: s.element.id })),
+      matches: [],
     },
     columns: [],
     metrics: [],
