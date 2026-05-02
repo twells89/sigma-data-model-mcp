@@ -19,6 +19,7 @@ import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
 import { convertCubeToSigma } from './cube.js';
+import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
@@ -833,6 +834,75 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     }
   );
 
+  // ── convert_tableau_prep_to_sigma ─────────────────────────────────────────
+
+  server.tool(
+    'convert_tableau_prep_to_sigma',
+    `Convert a Tableau Prep flow (.tfl/.tflx) to Sigma Computing data model JSON.
+
+Accepts the unzipped \`flow\` JSON document from a .tfl/.tflx archive (a .tfl is
+a ZIP containing a file named \`flow\` plus display/metadata files).
+
+Handles:
+  - Inputs (LoadSql, LoadCsv, LoadExcel, LoadJson, LoadHyper, LoadGoogle, LoadSqlProxy)
+  - Containers (.v1.Container) — recursively flattened into the parent graph
+  - Transform actions (linear chain → one Sigma element):
+      AddColumn → calculated column (via tableauFormulaToSigma)
+      RemoveColumns / KeepOnlyColumns → drop columns
+      RenameColumn → column display name
+      ChangeColumnType → cast wrapper
+      Remap → nested If() chain
+      FilterOperation → calculated boolean column "Filter: <name>"
+  - SuperJoin (one_to_one / one_to_many / many_to_one inferred from joinType)
+      → Sigma relationship with FK/PK keys
+  - SuperUnion → Sigma element with source.kind:'union' + sub-element refs
+  - SuperAggregate → child element with groupings + metrics
+  - Output nodes (WriteToHyper / WriteToCsv / PublishExtract) → ignored
+
+LoadSqlProxy (Tableau Server published datasource) is emitted as a Custom SQL
+placeholder element — no direct warehouse reachability.
+
+File-based inputs (CSV, Excel, JSON, Hyper) are mapped to warehouse tables by
+basename. Use \`table_mapping\` to override (e.g. {"Orders_Central":"ORDERS"}).
+
+Pivot, Script, RunCommand, and Prediction nodes are skipped with warnings.`,
+    {
+      flow_json: z.string().describe('The unzipped Tableau Prep flow JSON content (the file named "flow" inside the .tfl ZIP)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name (e.g. "ANALYTICS"); pass empty string to omit'),
+      schema: z.string().describe('Override schema name (e.g. "PUBLIC"); pass empty string to omit'),
+      table_mapping: z.string().optional().describe('Optional JSON map of Prep input names → warehouse table names, e.g. {"Orders_Central":"ORDERS"}. Required when CSV/Excel inputs are used and the warehouse table names differ from the Prep input names.'),
+      tds_files: z.array(z.object({
+        name:    z.string().describe('Filename (e.g. "Product Catalog.tds")'),
+        content: z.string().describe('Tableau .tds/.tdsx XML content (unzipped if .tdsx)'),
+      })).optional().describe('Optional companion Tableau .tds/.tdsx files. When a .tds caption matches a LoadSqlProxy.datasourceName in the flow, the placeholder Custom SQL stub is replaced with the actual relation (warehouse-table for type="table" relations, or Custom SQL with the real SELECT body for type="text" relations).'),
+    },
+    async ({ flow_json, connection_id, database, schema, table_mapping, tds_files }) => {
+      try {
+        let mapping: Record<string, string> | undefined;
+        if (table_mapping) {
+          try { mapping = JSON.parse(table_mapping); }
+          catch { throw new Error('table_mapping must be valid JSON, e.g. {"Orders":"ORDERS"}'); }
+        }
+        const result = convertTableauPrepToSigma(flow_json, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+          tableMapping: mapping,
+          tdsFiles: tds_files || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── convert_oac_to_sigma ──────────────────────────────────────────────────
 
   server.tool(
@@ -990,6 +1060,37 @@ Steps:
    - Table calculations (RUNNING_SUM, RANK, WINDOW_*) → manual conversion
    - Linked columns may need re-adding in Sigma UI
 7. Save to Sigma via POST /v2/dataModels/spec with folderId`,
+        },
+      }],
+    })
+  );
+
+  server.prompt(
+    'convert_tableau_prep_flow',
+    'Guide for converting a Tableau Prep flow to Sigma',
+    () => ({
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `I need to convert a Tableau Prep flow (.tfl or .tflx) to a Sigma data model.
+
+Steps:
+1. Unzip the .tfl/.tflx archive (it's a ZIP). Read the file named \`flow\` — it's the JSON document we need.
+2. Pass the flow JSON content to convert_tableau_prep_to_sigma
+3. Provide a Sigma connection_id if available
+4. For CSV/Excel/JSON/Hyper file inputs, use table_mapping to point each Prep input name at its warehouse table:
+     {"Orders_Central":"ORDERS","Orders_East":"ORDERS"}
+5. Review warnings:
+   - LoadSqlProxy inputs become Custom SQL stubs — replace the SELECT
+   - Filter operations become calculated boolean columns — wire as page filters
+   - Pivot/Script/RunCommand/Prediction → skipped, add manually
+6. Save to Sigma via POST /v2/dataModels/spec with folderId
+
+Tableau Prep stores flows as ZIP archives with a versioned JSON schema. The
+converter handles .v1.Container flattening, linear transform chains
+(AddColumn / RemoveColumns / RenameColumn / Remap / ChangeColumnType / FilterOperation),
+and the three branch nodes (SuperJoin / SuperUnion / SuperAggregate).`,
         },
       }],
     })

@@ -53,6 +53,7 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_alteryx_to_sigma` | Alteryx Designer workflow (.yxmd XML) → Sigma JSON |
 | `convert_oac_to_sigma` | Oracle Analytics Cloud logical tables JSON → Sigma JSON |
 | `convert_cube_to_sigma` | Cube.dev schemas (YAML or JS) → Sigma JSON |
+| `convert_tableau_prep_to_sigma` | Tableau Prep flow JSON (.tfl/.tflx) → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
@@ -215,6 +216,29 @@ Pre-aggregations and segments are skipped with informational warnings — Sigma 
 - `connection_id` — Sigma connection UUID
 - `database` — Override database name
 - `schema` — Override schema name
+
+### convert_tableau_prep_to_sigma
+Converts Tableau Prep flows (.tfl/.tflx) to Sigma data model JSON. Pass the unzipped `flow` JSON content (a .tfl is a ZIP archive containing a file named `flow`).
+
+Mapping:
+- Inputs (LoadSql, LoadCsv, LoadExcel, LoadJson, LoadHyper, LoadGoogle) → warehouse-table elements
+- LoadSqlProxy (Tableau Server published datasource) → Custom SQL placeholder, OR auto-resolved when a companion `.tds`/`.tdsx` is included in `tds_files` (matched by datasource caption — `type='table'` relations become warehouse-table elements, `type='text'` relations become Custom SQL with the real SELECT body)
+- Containers (`.v1.Container`) → recursively flattened into the parent graph
+- Linear transform chains (AddColumn / RemoveColumns / RenameColumn / Remap / FilterOperation / ChangeColumnType) → one Sigma element with calc cols + display name renames + filter passthroughs
+- SuperJoin (`.v2018_2_3.SuperJoin` with `.v1.SimpleJoin` actionNode) → relationship with FK/PK keys + a derived "join view" element with cross-element refs of the form `[FACT_TABLE/REL_NAME/Field]`
+- SuperUnion (`.v2018_2_3.SuperUnion`) → element with `source.kind: 'union'`
+- SuperAggregate (`.v2018_2_3.SuperAggregate` with `.v1.Aggregate` actionNode) → child element with `groupings: [{ groupBy, calculations }]`
+- Output nodes (WriteToHyper, PublishExtract, WriteToCsv) → ignored
+
+Pivot, Script, RunCommand, and Prediction nodes are skipped with warnings. Inline `actions[]` on input nodes (e.g. Salesforce extract column drops) are processed before walking nextNodes.
+
+**Parameters:**
+- `flow_json` (required) — the unzipped `flow` JSON content from a .tfl/.tflx archive
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+- `table_mapping` — Optional JSON map of input names → warehouse table names, e.g. `{"Orders_Central":"ORDERS"}`
+- `tds_files` — Optional array of `{name, content}` objects for companion `.tds`/`.tdsx` XML files. When a `.tds` caption matches a `LoadSqlProxy.datasourceName`, the placeholder is replaced with the real relation
 
 ### convert_sql_to_sigma_formula
 Converts SQL expressions to Sigma formula syntax:
