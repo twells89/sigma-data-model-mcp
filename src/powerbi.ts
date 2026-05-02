@@ -8,7 +8,7 @@
  * - Relationships (fromTable=many → toTable=one) → Sigma relationships
  * - Measures-only tables → measures moved to fact element
  * - Display folders → Sigma folders
- * - Cross-element column references → auto-rewrite with - link/ syntax
+ * - Cross-element column references → auto-rewrite with [SRC/REL_NAME/Field] form
  * - Calculation groups → derived metric stubs per base measure × calc item
  */
 
@@ -120,7 +120,7 @@ export function pbiDaxToSigma(
   const hadRelated = /\bRELATED\s*\(/i.test(f);
   f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
   if (hadRelated && warnings) {
-    warnings.push(`⚠ Calculated column "${measureName}": uses RELATED() — cross-table reference may not resolve. Review and update to use Sigma linked column syntax: [TABLE/FK - link/Column].`);
+    warnings.push(`⚠ Calculated column "${measureName}": uses RELATED() — cross-table reference may not resolve. Review and update to use Sigma cross-element syntax: [SRC_TABLE/REL_NAME/Column].`);
   }
   f = f.replace(/\bRELATEDTABLE\s*\([^)]*\)/gi, '/* RELATEDTABLE - use relationship */');
   // Logical
@@ -455,7 +455,7 @@ export function convertPowerBIToSigma(
     }
   }
 
-  // ── Auto-fix cross-element column references with - link/ syntax ──────────
+  // ── Auto-fix cross-element column references → [SRC/REL_NAME/Field] form ──
   const pbiGlobalColMap: Record<string, { elId: string; displayName: string }> = {};
   for (const el of elements) {
     for (const c of (el.columns || [])) {
@@ -470,19 +470,18 @@ export function convertPowerBIToSigma(
       const fm = c.formula.match(/\/([^\]]+)\]$/);
       if (fm) localNames.add(fm[1].toUpperCase());
     }
-    const relFkLookup: Record<string, string> = {};
+    // Map target-element-id → relationship name. Cross-element refs use the
+    // form [SRC/REL_NAME/Field] where REL_NAME = the relationship.name we
+    // emitted earlier (= target table name uppercase). The dash-link form
+    // [SRC/FK_COL - link/Field] does NOT resolve via the API.
+    const relNameLookup: Record<string, string> = {};
     const elTbl = el.source?.path?.[el.source.path.length - 1] || 'UNKNOWN';
     for (const rel of (el.relationships || [])) {
-      const fkCol = (el.columns || []).find(c => c.id === rel.keys[0]?.sourceColumnId);
-      if (fkCol) {
-        const fkM = fkCol.formula.match(/\/([^\]]+)\]$/);
-        if (fkM) relFkLookup[rel.targetElementId] = fkM[1].replace(/\s+/g, '_').toUpperCase();
-      }
+      if (rel.name && rel.targetElementId) relNameLookup[rel.targetElementId] = rel.name;
     }
     for (const c of (el.columns || [])) {
       if (!c.name || !c.formula) continue;
       if (c.formula.match(/^\[[\w_]+\//)) continue;
-      if (c.formula.includes('- link/')) continue;
       const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
       let fixedFormula = c.formula;
       let wasFixed = false;
@@ -490,8 +489,8 @@ export function convertPowerBIToSigma(
         const rn = ref.replace(/^\[|\]$/g, '');
         if (localNames.has(rn.toUpperCase()) || rn.toUpperCase() === 'TRUE' || rn.toUpperCase() === 'FALSE') continue;
         const ge = pbiGlobalColMap[rn.toUpperCase()];
-        if (ge && relFkLookup[ge.elId]) {
-          fixedFormula = fixedFormula.replace(ref, `[${elTbl}/${relFkLookup[ge.elId]} - link/${ge.displayName}]`);
+        if (ge && relNameLookup[ge.elId]) {
+          fixedFormula = fixedFormula.replace(ref, `[${elTbl}/${relNameLookup[ge.elId]}/${ge.displayName}]`);
           wasFixed = true;
         } else {
           warnings.push(`⚠ "${c.name}" references [${rn}] — no matching relationship found. Fix manually in Sigma UI.`);
@@ -499,8 +498,7 @@ export function convertPowerBIToSigma(
       }
       if (wasFixed) {
         c.formula = fixedFormula;
-        warnings.push(`✅ "${c.name}" → linked column: ${fixedFormula.slice(0, 100)}`);
-        warnings.push(`   ⚠ Note: Sigma API may not round-trip linked columns correctly yet. Re-add manually in UI if needed.`);
+        warnings.push(`✅ "${c.name}" → cross-element ref: ${fixedFormula.slice(0, 100)}`);
       }
     }
   }

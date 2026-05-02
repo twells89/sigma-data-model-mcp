@@ -356,7 +356,7 @@ export function convertCubeToSigma(
       const rel: any = {
         id: sigmaShortId(),
         targetElementId: toEntry.elementId,
-        name: `${sigmaDisplayName(cube.name)} to ${sigmaDisplayName(join.name)}`,
+        name: toEntry.sourceTable.toUpperCase(),
         relationshipType: relType,
       };
       if (srcColId && tgtColId) {
@@ -545,25 +545,26 @@ function buildViewColumnRef(
     return `[${headEntry.element.name || sigmaDisplayName(headEntry.cubeDef.name)}/${dispField}]`;
   }
 
-  // Walk through joins to build a linked-column path.
-  // Each hop uses [Source/FK_COL - link/target] form.
+  // Walk through joins to build a relationship-name cross-element path.
+  // Each hop uses [Source/REL_NAME/...] where REL_NAME = target table name
+  // uppercase (matches the relationship.name we emit in the joins loop).
+  // The leading segment is the head element's display name so it matches the
+  // form used by passthrough columns in this view (e.g., "[Order Fact/...]").
   let currentEntry = headEntry;
   const linkSegments: string[] = [];
+  const headName = headEntry.element.name || sigmaDisplayName(headEntry.cubeDef.name);
   for (let i = 1; i < path.length; i++) {
     const nextName = path[i];
     const join = currentEntry.cubeDef.joins?.find(j => j.name.toLowerCase() === nextName.toLowerCase());
     if (!join) return null;
-    const refs = parseJoinSqlRefs(join.sql, currentEntry.cubeDef.name, join.name);
-    if (!refs) return null;
-    const fkCol = sigmaDisplayName(refs.fromCol);
-    if (i === 1) {
-      const headTable = currentEntry.sourceTable;
-      linkSegments.push(`${headTable}/${fkCol.toUpperCase()} - link`);
-    } else {
-      linkSegments.push(`${fkCol} - link`);
-    }
     const next = cubeRegistry.get(nextName.toLowerCase());
     if (!next) return null;
+    const relName = next.sourceTable.toUpperCase();
+    if (i === 1) {
+      linkSegments.push(`${headName}/${relName}`);
+    } else {
+      linkSegments.push(relName);
+    }
     currentEntry = next;
   }
   return `[${linkSegments.join('/')}/${dispField}]`;

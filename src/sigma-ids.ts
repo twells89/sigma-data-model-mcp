@@ -121,10 +121,11 @@ Calculated columns: { "id": "shortId", "formula": "[Price] - [Cost]", "name": "P
 Metrics: { "id": "shortId", "formula": "Sum([Revenue])", "name": "Total Revenue" }
 Relationships: { "id": "shortId", "targetElementId": "...", "keys": [{ "sourceColumnId": "...", "targetColumnId": "..." }] }
 
-Linked Column Reference (accessing related dimension columns via relationships):
-  [SOURCE_TABLE/FK_COLUMN - link/Column Display Name]
-  Example: DateDiff("day", [ORDER_FACT/PROMO_KEY - link/Start Date], [ORDER_FACT/PROMO_KEY - link/End Date])
-  ⚠ Known API limitation: Sigma API may not round-trip linked columns on PUT. Users may need to re-add in UI.
+Cross-element Reference (accessing related dimension columns via relationships):
+  [SOURCE_TABLE/REL_NAME/Column Display Name]
+  REL_NAME is the relationship's "name" field (= target table name uppercase by convention).
+  Example: DateDiff("day", [ORDER_FACT/PROMO_DIM/Start Date], [ORDER_FACT/PROMO_DIM/End Date])
+  ⚠ The dash-link form [SRC/FK_COL - link/Field] does NOT work via the API — use REL_NAME.
 
 Conditional Aggregate Syntax:
   CountIf(condition) — condition only, NO field argument
