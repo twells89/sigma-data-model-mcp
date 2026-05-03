@@ -196,11 +196,16 @@ export function convertThoughtSpotToSigma(
       warnings.push(`Join "${join.name}": join key columns not found — "${lCol}" / "${rCol}"`);
       continue;
     }
+    // Rel name = uppercased target warehouse path-tail (matches the spec rule used by
+    // OAC/Atlan/Qlik/Cube). The TML join.name is often a phrase like "orders_to_customer"
+    // which doesn't match the canonical [SRC/REL_NAME/Field] convention.
+    const tsTgtPath = rEl.source && (rEl.source as any).path;
+    const tsRelName = (tsTgtPath ? tsTgtPath[tsTgtPath.length - 1] : rTable).toUpperCase();
     lEl.relationships!.push({
       id: sigmaShortId(),
       targetElementId: rEl.id,
       keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
-      name: join.name || rTable,
+      name: tsRelName,
       relationshipType: 'N:1',
     });
   }
