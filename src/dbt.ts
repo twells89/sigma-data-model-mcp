@@ -6,7 +6,8 @@ import yaml from 'js-yaml';
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   sigmaColFormula, sigmaAggFormula,
-  type SigmaElement, type ConversionResult, type ElementResult
+  type SigmaElement, type SigmaColumn, type SigmaMetric,
+  type ConversionResult, type ElementResult
 } from './sigma-ids.js';
 import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
 
@@ -14,18 +15,24 @@ interface DbtEntity {
   name: string;
   type: string;
   expr?: string;
+  description?: string;
+  label?: string;
 }
 
 interface DbtDimension {
   name: string;
   expr?: string;
   type?: string;
+  description?: string;
+  label?: string;
 }
 
 interface DbtMeasure {
   name: string;
   expr?: string;
   agg: string;
+  description?: string;
+  label?: string;
 }
 
 interface DbtSemanticModel {
@@ -96,10 +103,12 @@ function convertDbtSemanticModel(
 
   const colIdMap: Record<string, string> = {};
 
-  function addCol(identifier: string): string {
+  function addCol(identifier: string, description?: string): string {
     const id = sigmaInodeId(identifier.toUpperCase());
     colIdMap[identifier.toUpperCase()] = id;
-    element.columns.push({ id, formula: sigmaColFormula(tableName, identifier) });
+    const col: SigmaColumn = { id, formula: sigmaColFormula(tableName, identifier) };
+    if (description) col.description = description;
+    element.columns.push(col);
     element.order.push(id);
     return id;
   }
@@ -107,10 +116,10 @@ function convertDbtSemanticModel(
   // Entities (primary/unique/natural) → columns
   for (const entity of model.entities || []) {
     if (entity.type === 'primary' || entity.type === 'unique') {
-      addCol((entity.expr || entity.name).toUpperCase());
+      addCol((entity.expr || entity.name).toUpperCase(), entity.description);
     } else if (entity.type === 'natural') {
       // natural entities are source columns only — no join relationship
-      addCol((entity.expr || entity.name).toUpperCase());
+      addCol((entity.expr || entity.name).toUpperCase(), entity.description);
     }
   }
 
@@ -130,13 +139,15 @@ function convertDbtSemanticModel(
           const id = sigmaShortId();
           const semantic = dim.name.toUpperCase();
           colIdMap[semantic] = id;
-          element.columns.push({ id, formula, name: sigmaDisplayName(dim.name) });
+          const col: SigmaColumn = { id, formula, name: sigmaDisplayName(dim.name) };
+          if (dim.description) col.description = dim.description;
+          element.columns.push(col);
           element.order.push(id);
         }
       }
     } else {
       const identifier = rawExpr.split('.').pop()!.replace(/"/g, '').toUpperCase() || dim.name.toUpperCase();
-      addCol(identifier);
+      addCol(identifier, dim.description);
     }
   }
 
@@ -145,11 +156,13 @@ function convertDbtSemanticModel(
     const rawExpr = (measure.expr || measure.name || '').trim();
     const exprId = rawExpr.split('.').pop()!.replace(/"/g, '').toUpperCase() || measure.name.toUpperCase();
     if (!colIdMap[exprId]) addCol(exprId);
-    element.metrics!.push({
+    const metric: SigmaMetric = {
       id: sigmaShortId(),
       formula: sigmaAggFormula(measure.agg, exprId),
-      name: sigmaDisplayName(measure.name)
-    });
+      name: sigmaDisplayName(measure.name),
+    };
+    if (measure.description) metric.description = measure.description;
+    element.metrics!.push(metric);
     allMeasuresByModel[measure.name] = { agg: measure.agg, exprId };
   }
 

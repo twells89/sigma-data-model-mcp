@@ -82,7 +82,7 @@ function snowConvertTable(
   const colIdMap: Record<string, string> = {};
   const addedIds = new Set<string>();
 
-  function addColById(physicalId: string, semanticAlias?: string): string {
+  function addColById(physicalId: string, semanticAlias?: string, description?: string): string {
     if (addedIds.has(physicalId)) {
       if (semanticAlias && semanticAlias !== physicalId) colIdMap[semanticAlias] = colIdMap[physicalId];
       return colIdMap[physicalId];
@@ -90,7 +90,9 @@ function snowConvertTable(
     const id = sigmaInodeId(physicalId);
     colIdMap[physicalId] = id;
     addedIds.add(physicalId);
-    element.columns.push({ id, formula: sigmaColFormula(tableName, physicalId) });
+    const col: any = { id, formula: sigmaColFormula(tableName, physicalId) };
+    if (description) col.description = description;
+    element.columns.push(col);
     element.order.push(id);
     if (semanticAlias && semanticAlias !== physicalId) colIdMap[semanticAlias] = id;
     return id;
@@ -115,8 +117,9 @@ function snowConvertTable(
   // 1. Dimensions
   for (const col of table.dimensions || []) {
     const { physical, semantic, expr } = resolveCol(col);
+    const description = typeof col === 'object' ? col.description : undefined;
     if (physical) {
-      addColById(physical, semantic);
+      addColById(physical, semantic, description);
     } else if (expr) {
       const unsupported = detectUnsupportedSigmaFunction(expr);
       if (unsupported) {
@@ -127,7 +130,9 @@ function snowConvertTable(
         if (formula) {
           const id = sigmaShortId();
           colIdMap[semantic] = id;
-          element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
+          const c: any = { id, formula, name: sigmaDisplayName(semantic) };
+          if (description) c.description = description;
+          element.columns.push(c);
           element.order.push(id);
         }
       }
@@ -137,8 +142,9 @@ function snowConvertTable(
   // 2. Time dimensions
   for (const col of table.time_dimensions || []) {
     const { physical, semantic, expr } = resolveCol(col);
+    const description = typeof col === 'object' ? col.description : undefined;
     if (physical) {
-      addColById(physical, semantic);
+      addColById(physical, semantic, description);
     } else if (expr) {
       const unsupported = detectUnsupportedSigmaFunction(expr);
       if (unsupported) {
@@ -149,7 +155,9 @@ function snowConvertTable(
         if (formula) {
           const id = sigmaShortId();
           colIdMap[semantic] = id;
-          element.columns.push({ id, formula, name: sigmaDisplayName(semantic) });
+          const c: any = { id, formula, name: sigmaDisplayName(semantic) };
+          if (description) c.description = description;
+          element.columns.push(c);
           element.order.push(id);
         }
       }
@@ -160,14 +168,17 @@ function snowConvertTable(
   for (const col of table.facts || []) {
     const { physical, semantic } = resolveCol(col);
     if (!physical) continue;
-    addColById(physical, semantic);
+    const description = typeof col === 'object' ? col.description : undefined;
+    addColById(physical, semantic, description);
     if (autoMetrics && !snowIsIndicator(col as SnowColumn)) {
       if (physical.endsWith('_KEY') || physical.endsWith('_CODE')) continue;
-      element.metrics!.push({
+      const m: any = {
         id: sigmaShortId(),
         formula: 'Sum([' + sigmaDisplayName(physical) + '])',
-        name: sigmaDisplayName(semantic || physical)
-      });
+        name: sigmaDisplayName(semantic || physical),
+      };
+      if (description) m.description = description;
+      element.metrics!.push(m);
     }
   }
 

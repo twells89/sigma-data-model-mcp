@@ -151,6 +151,7 @@ export interface SigmaMetric {
   id: string;
   formula: string;
   name: string;
+  description?: string;
 }
 
 export interface SigmaRelationshipKey {
