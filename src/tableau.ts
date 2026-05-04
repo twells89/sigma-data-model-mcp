@@ -194,6 +194,58 @@ function tableauParseWindow(formula: string): WindowResult | null {
   return null;
 }
 
+// Parse the <table-calculation> child of a <calculation> element to extract
+// "Compute Using" addressing override config. Tableau encodes "Specific
+// Dimensions" (and the Table/Pane axis presets) as either a `direction` attr or
+// nested <address> children listing the order axis fields. Returns null when
+// no addressing block is present (caller should fall back to rows/cols heuristic).
+//
+// Scope:
+//  - Specific Dimensions:  <address ref-name='[X]' /> → orderFields = [X], partition = (rows+cols) - {X}
+//  - Table (Across):       direction='right' (no <address>) → order = cols dims, partition = rows dims
+//  - Table (Down):         direction='down'  (no <address>) → order = rows dims, partition = cols dims
+//  - Pane / Cell variants are flagged and fall back to heuristic (out of scope).
+interface WindowAddressing {
+  mode: 'specific' | 'table-across' | 'table-down' | 'unknown';
+  orderFields: string[];           // uppercase warehouse identifiers (no brackets)
+  rawDirection?: string;           // for diagnostics
+}
+function _parseWindowAddressing(calcEl: any): WindowAddressing | null {
+  if (!calcEl) return null;
+  const tc = calcEl['table-calculation'];
+  if (!tc) return null;
+  const tcNode = Array.isArray(tc) ? tc[0] : tc;
+  if (!tcNode) return null;
+
+  const direction = (attr(tcNode, 'direction') || '').toLowerCase();
+  const scope = (attr(tcNode, 'scope') || '').toLowerCase(); // 'table' | 'pane' | 'cell'
+  const addresses = asArray(tcNode['address'] || tcNode.address || []);
+  const orderFields: string[] = [];
+  for (const a of addresses) {
+    const refName = attr(a, 'ref-name') || '';
+    const cleaned = refName.replace(/^\[|\]$/g, '');
+    // Strip any "yr:FIELD:ok" style date prefix; we only need the bare field name.
+    const colonStripped = cleaned.match(/^(?:yr|mn|qr|dy|wk|md):([^:]+)(?::[a-z]{2})?$/i);
+    const bare = colonStripped ? colonStripped[1] : cleaned;
+    if (bare) orderFields.push(bare.toUpperCase());
+  }
+
+  if (orderFields.length > 0) {
+    return { mode: 'specific', orderFields, rawDirection: direction || undefined };
+  }
+  if (scope === 'pane' || scope === 'cell') {
+    return { mode: 'unknown', orderFields: [], rawDirection: `${scope}/${direction}` };
+  }
+  if (direction === 'right' || direction === 'left') {
+    return { mode: 'table-across', orderFields: [], rawDirection: direction };
+  }
+  if (direction === 'down' || direction === 'up') {
+    return { mode: 'table-down', orderFields: [], rawDirection: direction };
+  }
+  // table-calculation block exists but didn't match any known mode — fall through.
+  return null;
+}
+
 // Build a deterministic uppercase alias for window calcs (mirrors LOD path).
 function _windowAlias(caption: string, used: Set<string>): string {
   let base = (caption || 'WIN_VAL')
@@ -318,8 +370,24 @@ function _topNAlias(caption: string, used: Set<string>): string {
 // Extract per-worksheet rows/cols dim split from a parsed workbook XML so we can
 // derive PARTITION BY / ORDER BY heuristically. Returns: byField (calc-key →
 // list of contexts) AND each context records rowsDims / colsDims separately.
-interface WindowViewContext { rowsDims: string[]; colsDims: string[]; allDims: string[]; dateDim?: string; }
+interface WindowViewContext { rowsDims: string[]; colsDims: string[]; allDims: string[]; dateDim?: string; dateGrain?: string | null; }
 interface WindowWorksheetIndex { byField: Map<string, WindowViewContext[]>; }
+
+// Map a Tableau cols-shelf bracket prefix to the matching DATE_TRUNC grain.
+// 'md' (month-day) is treated as 'day' since Snowflake DATE_TRUNC has no md grain.
+// Returns null when no time prefix was present (i.e. caller should NOT wrap in DATE_TRUNC).
+function _tableauPrefixToDateTrunc(prefix: string | null | undefined): string | null {
+  if (!prefix) return null;
+  switch (prefix.toLowerCase()) {
+    case 'yr': return 'year';
+    case 'qr': return 'quarter';
+    case 'mn': return 'month';
+    case 'wk': return 'week';
+    case 'dy': return 'day';
+    case 'md': return 'day';
+    default: return null;
+  }
+}
 
 function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
   const byField = new Map<string, WindowViewContext[]>();
@@ -329,6 +397,7 @@ function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
     const rowRefs: string[] = [];
     const colRefs: string[] = [];
     let dateDim: string | undefined;
+    let dateGrain: string | null = null;
 
     for (const r of asArray(tbl?.rows || [])) {
       const text = typeof r === 'string' ? r : (r['#text'] || '');
@@ -336,8 +405,8 @@ function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
     }
     for (const c of asArray(tbl?.cols || [])) {
       const text = typeof c === 'string' ? c : (c['#text'] || '');
-      // Tableau encodes date truncations in the bracket prefix (yr:, mn:, qr:, dy:, wk:).
-      // Detect them and tag the underlying field as the date order dim.
+      // Tableau encodes date truncations in the bracket prefix (yr:, mn:, qr:, dy:, wk:, md:).
+      // Detect them and tag the underlying field as the date order dim plus its grain.
       const re = /\[[^\]]+\]\.\[([^\]]+)\]/g;
       let mm: RegExpExecArray | null;
       while ((mm = re.exec(text)) !== null) {
@@ -345,6 +414,7 @@ function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
         const colon = inner.match(/^(yr|mn|qr|dy|wk|md):([^:]+):[a-z]{2}$/i);
         if (colon) {
           dateDim = colon[2].toUpperCase();
+          dateGrain = _tableauPrefixToDateTrunc(colon[1]);
           colRefs.push(dateDim);
         } else {
           const colon2 = inner.match(/^[a-z]{2,5}:([^:]+):[a-z]{2}$/i);
@@ -370,7 +440,7 @@ function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
 
     for (const used of usedFields) {
       const list = byField.get(used) || [];
-      list.push({ rowsDims: rowsDims.slice(), colsDims: colsDims.slice(), allDims: allDims.slice(), dateDim });
+      list.push({ rowsDims: rowsDims.slice(), colsDims: colsDims.slice(), allDims: allDims.slice(), dateDim, dateGrain });
       byField.set(used, list);
     }
   }
@@ -1722,15 +1792,52 @@ export function convertTableauToSigma(
           }
           if (!chosen && ctxList.length > 0) chosen = ctxList[0];
 
+          // Default: rows/cols heuristic — partition = rows dims, order = first
+          // cols dim (preferring a date-truncated dim if present).
           let partitionDimNames: string[] = chosen ? chosen.rowsDims.slice() : [];
           let orderDimRaw: string | null = chosen?.dateDim || null;
-          let orderDimDateTrunc: string | null = null;
-          if (chosen?.dateDim) {
-            // Heuristic: monthly grain is the most common Tableau view default
-            // when ORDER_DATE is on cols with mn: prefix. Use 'month'.
-            orderDimDateTrunc = 'month';
-          } else if (chosen && chosen.colsDims.length > 0) {
+          // Use the cols-shelf prefix to derive the DATE_TRUNC grain. When the
+          // chosen worksheet's cols carries a yr:/mn:/qr:/dy:/wk: prefix, we
+          // captured the matching grain at index time. When no time prefix was
+          // present the order dim should be projected as-is (no DATE_TRUNC).
+          let orderDimDateTrunc: string | null = chosen?.dateGrain ?? null;
+          if (!chosen?.dateDim && chosen && chosen.colsDims.length > 0) {
             orderDimRaw = chosen.colsDims[0];
+            orderDimDateTrunc = null;
+          }
+
+          // Apply explicit "Compute Using" addressing override from
+          // <calculation>'s <table-calculation> child if present. This trumps
+          // the rows/cols heuristic for partition + order axes. We still keep
+          // the cols-shelf grain mapping from above so DATE_TRUNC matches the
+          // viz when the addressing field IS the date dim.
+          const addressing = _parseWindowAddressing(calcEl);
+          if (addressing) {
+            if (addressing.mode === 'specific' && addressing.orderFields.length > 0) {
+              const orderSet = new Set(addressing.orderFields.map(s => s.toUpperCase()));
+              const allShelfDims = chosen
+                ? Array.from(new Set([...chosen.rowsDims, ...chosen.colsDims]))
+                : [];
+              partitionDimNames = allShelfDims.filter(d => !orderSet.has(d.toUpperCase()));
+              const firstOrder = addressing.orderFields[0];
+              orderDimRaw = firstOrder;
+              // If this addressing field matches the date-shelf dim, keep its grain;
+              // otherwise project the field raw (no DATE_TRUNC).
+              orderDimDateTrunc = (chosen?.dateDim && firstOrder.toUpperCase() === chosen.dateDim.toUpperCase())
+                ? (chosen.dateGrain ?? null)
+                : null;
+              warnings.push(`✅ Window calc "${caption}" — addressing override: order=[${addressing.orderFields.join(',')}], partition=[${partitionDimNames.join(',')}]`);
+            } else if (addressing.mode === 'table-across') {
+              // Table (Across): partition = rows dims, order = cols dims (default).
+              // Already matches rows/cols heuristic, no change needed.
+            } else if (addressing.mode === 'table-down') {
+              // Table (Down): partition = cols dims, order = rows dims (first).
+              partitionDimNames = chosen ? chosen.colsDims.slice() : [];
+              orderDimRaw = chosen && chosen.rowsDims.length > 0 ? chosen.rowsDims[0] : null;
+              orderDimDateTrunc = null;
+            } else if (addressing.mode === 'unknown') {
+              warnings.push(`⚠ Window calc "${caption}" — Compute Using mode "${addressing.rawDirection}" is not yet supported; falling back to rows/cols heuristic`);
+            }
           }
 
           // Resolve partition dims to baseColIds for the relationship

@@ -125,7 +125,7 @@ DAX conversion tiers:
 ### convert_tableau_to_sigma
 Converts Tableau workbooks (.twb) and data sources (.tds) to Sigma JSON. Parses data sources, joins/relationships, calculated fields with formula conversion, LOD FIXED/INCLUDE/EXCLUDE expressions → kind:sql helper elements + relationships, window/table calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK*, INDEX, FIRST, LAST, PREVIOUS_VALUE) → kind:sql helper elements with explicit OVER() clauses, parameters → controls.
 
-Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD → CountDistinct, DATEPART/DATETRUNC/DATEADD/DATEDIFF, LOD FIXED/INCLUDE/EXCLUDE → kind:sql helpers (view dims from worksheet rows/cols), window calcs → kind:sql helpers with PARTITION BY (rows shelf) and ORDER BY (time-truncated cols shelf). After saving, call `validate_dm_columns` to surface any column-level errors (e.g. unknown function, arity mismatch).
+Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD → CountDistinct, DATEPART/DATETRUNC/DATEADD/DATEDIFF, LOD FIXED/INCLUDE/EXCLUDE → kind:sql helpers (view dims from worksheet rows/cols), window calcs → kind:sql helpers with PARTITION BY (rows shelf) and ORDER BY (time-truncated cols shelf, `DATE_TRUNC` grain inferred from the `yr:`/`mn:`/`qr:`/`dy:`/`wk:` prefix). Explicit "Compute Using" addressing (`<table-calculation>` with `<address>` children, plus Table Across/Down direction) overrides the rows/cols heuristic. After saving, call `validate_dm_columns` to surface any column-level errors (e.g. unknown function, arity mismatch).
 
 **Parameters:**
 - `xml_content` (required) — Tableau XML content (.twb or .tds)
