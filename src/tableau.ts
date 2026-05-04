@@ -209,6 +209,112 @@ function _windowAlias(caption: string, used: Set<string>): string {
   return alias;
 }
 
+// ── Tableau Top-N / Bottom-N Set parser ─────────────────────────────────────
+// Parses <calculation class='categorical-set'> with a <groupfilter function='end'>
+// child (Tableau Top-N/Bottom-N set) into a structured form so the converter can
+// lower it to a kind:'sql' RANK helper element + relationship.
+interface TopNResult {
+  _isTopN: true;
+  setName: string;        // e.g. "Top 10 Customers Set"
+  caption: string;        // user-facing caption
+  dimField: string;       // ranking key, uppercase warehouse identifier (e.g. CUSTOMER_NAME)
+  byField: string;        // measure col, uppercase warehouse identifier (e.g. SALES)
+  byAggFunc: string;      // SUM | AVG | MIN | MAX | COUNT | COUNTD
+  count: number | null;   // literal N (when count attr is set)
+  countControl: string | null; // Tableau parameter name (when count-control attr is set)
+  direction: 'top' | 'bottom';
+  partitionBy: string[];  // uppercase warehouse identifiers for PARTITION BY (empty = global)
+}
+
+function _stripBrackets(s: string): string { return (s || '').replace(/^\[|\]$/g, '').trim(); }
+
+function tableauParseTopNSet(calcEl: any, caption: string, setName: string): TopNResult | null {
+  if (!calcEl) return null;
+  if (attr(calcEl, 'class') !== 'categorical-set') return null;
+  const groupFilters = asArray(calcEl.groupfilter || []);
+  // Find the function='end' filter (Top/Bottom-N marker)
+  let endFilter: any = null;
+  for (const gf of groupFilters) {
+    if (attr(gf, 'function') === 'end') { endFilter = gf; break; }
+  }
+  if (!endFilter) return null;
+
+  const rawDim = attr(endFilter, 'field');
+  const rawCount = attr(endFilter, 'count');
+  const rawCountCtl = attr(endFilter, 'count-control');
+  const direction = (attr(endFilter, 'direction') || 'top').toLowerCase() as 'top' | 'bottom';
+
+  const dimField = _stripBrackets(rawDim).toUpperCase();
+  if (!dimField) return null;
+
+  let count: number | null = null;
+  let countControl: string | null = null;
+  if (rawCount) count = parseInt(rawCount, 10);
+  else if (rawCountCtl) countControl = _stripBrackets(rawCountCtl);
+  if (count === null && countControl === null) return null;
+
+  // Walk nested groupfilter children to find the aggregation node and any partition-by.
+  // Structure: end → filter (user:op='TOP', user:partition-by=...) → aggregation (user:op='SUM', user:op-field='[SALES]')
+  let byField = '';
+  let byAggFunc = 'SUM';
+  const partitionBy: string[] = [];
+  function walk(node: any): void {
+    if (!node || typeof node !== 'object') return;
+    const fn = attr(node, 'function');
+    if (fn === 'aggregation') {
+      const opField = attr(node, 'user:op-field') || attr(node, 'op-field');
+      const op = (attr(node, 'user:op') || attr(node, 'op') || 'SUM').toUpperCase();
+      if (opField) byField = _stripBrackets(opField).toUpperCase();
+      // Tableau aggregation ops: SUM | AVG | MIN | MAX | COUNT | COUNTD
+      byAggFunc = op === 'COUNTD' ? 'COUNTD' : op;
+    }
+    if (fn === 'filter') {
+      const partRaw = attr(node, 'user:partition-by') || attr(node, 'partition-by');
+      if (partRaw) {
+        // Comma- or space-separated list of [DIM] refs
+        const matches = partRaw.match(/\[[^\]]+\]/g) || [];
+        for (const m of matches) partitionBy.push(_stripBrackets(m).toUpperCase());
+      }
+    }
+    for (const k of Object.keys(node)) {
+      if (k.startsWith('@_')) continue;
+      const v = (node as any)[k];
+      if (Array.isArray(v)) for (const x of v) walk(x);
+      else if (v && typeof v === 'object') walk(v);
+    }
+  }
+  walk(endFilter);
+
+  if (!byField) return null;
+  return {
+    _isTopN: true,
+    setName,
+    caption,
+    dimField,
+    byField,
+    byAggFunc,
+    count,
+    countControl,
+    direction,
+    partitionBy,
+  };
+}
+
+// Build a uppercase, identifier-safe alias from a caption (used for helper element names).
+function _topNAlias(caption: string, used: Set<string>): string {
+  let base = (caption || 'TOPN')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (!base) base = 'TOPN';
+  let alias = base;
+  let n = 2;
+  while (used.has(alias)) { alias = `${base}_${n++}`; }
+  used.add(alias);
+  return alias;
+}
+
 // Extract per-worksheet rows/cols dim split from a parsed workbook XML so we can
 // derive PARTITION BY / ORDER BY heuristically. Returns: byField (calc-key →
 // list of contexts) AND each context records rowsDims / colsDims separately.
@@ -499,18 +605,23 @@ export function convertTableauToSigma(
 
   const parameters: any[] = [];
   const datasources: any[] = [];
+  // Maps Tableau parameter name → DM control descriptor; populated by Top-N
+  // helpers so the parameter→control emit step can pick up the right shape.
+  const topNParamControls: Record<string, { controlId: string; defaultVal: number }> = {};
 
   for (const ds of allDs) {
     if (attr(ds, 'hasconnection') === 'false' || attr(ds, 'name') === 'Parameters') {
       // Parse parameters
       for (const col of asArray(ds.column)) {
         const colName = attr(col, 'caption') || attr(col, 'name') || '';
+        const rawName = attr(col, 'name') || '';
         const colType = attr(col, 'datatype') || 'string';
         const domainType = attr(col, 'param-domain-type') || 'all';
         const members = asArray(col.member).map((m: any) => attr(m, 'value')).filter(Boolean);
         const calcEl = col.calculation;
         parameters.push({
           name: colName.replace(/^\[|\]$/g, ''),
+          rawName: rawName.replace(/^\[|\]$/g, ''),
           type: colType,
           domainType,
           members,
@@ -984,6 +1095,198 @@ export function convertTableauToSigma(
       }
     }
 
+    // ── Top-N / Bottom-N Set helper-element registry (kind:sql) ───────────
+    // Each Tableau Top-N set becomes a kind:'sql' RANK helper element + a
+    // relationship from the base on the dim key (and partition cols, if any).
+    // The set's boolean is exposed as IS_TOP_N on the helper; calc formulas
+    // referencing the set caption are rewritten to [<HelperRel>/IS_TOP_N].
+    const topNHelpers: Array<{
+      element: any;
+      isTopNColId: string;
+      relationshipName: string;
+      setNames: string[];   // captions/setNames that resolve to this helper's IS_TOP_N
+    }> = [];
+    const topNUsedAliases = new Set<string>();
+    // Maps caption (lowercased+stripped) → { helperEl, isTopNDisplayName, relName, isTopNColId }
+    const topNSetIndex: Record<string, {
+      helperEl: any;
+      relName: string;
+      isTopNDisplayName: string;
+      helperElName: string;
+      isTopNColId: string;
+    }> = {};
+
+    function _emitTopNHelper(top: TopNResult): boolean {
+      // Resolve the dim key to a base column
+      const keyResolved = _resolveDimDisplayName(top.dimField);
+      if (!keyResolved || !keyResolved.baseColId) {
+        warnings.push(`⚠ Set "${top.caption}": ranking key [${top.dimField}] not found on base; skipped.`);
+        return false;
+      }
+      // Resolve partition dims, if any
+      const partResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
+      for (const p of top.partitionBy) {
+        const r = _resolveDimDisplayName(p);
+        if (!r || !r.baseColId) {
+          warnings.push(`⚠ Set "${top.caption}": partition dim [${p}] not found on base; skipped.`);
+          return false;
+        }
+        partResolved.push(r);
+      }
+
+      // Determine N expression — either a literal or a DM control reference
+      let nLiteral: string;
+      let controlId: string | null = null;
+      if (top.count !== null) {
+        nLiteral = String(top.count);
+      } else if (top.countControl) {
+        const param = parameters.find(p =>
+          p.name.toUpperCase() === top.countControl!.toUpperCase()
+          || (p as any).rawName?.toUpperCase() === top.countControl!.toUpperCase()
+          || sigmaDisplayName(p.name).toUpperCase() === sigmaDisplayName(top.countControl!).toUpperCase()
+        );
+        // Use the parameter's user-facing name when known so the control id
+        // matches the existing parameter→control emit step.
+        const ctlSourceName = param?.name || top.countControl;
+        const cidBase = sigmaDisplayName(ctlSourceName).replace(/\s+/g, '-');
+        controlId = cidBase;
+        const defaultVal = parseInt(param?.defaultVal || '10', 10) || 10;
+        if (param) topNParamControls[param.name] = { controlId: cidBase, defaultVal };
+        topNParamControls[top.countControl] = { controlId: cidBase, defaultVal };
+        // The IS_TOP_N column lives on the helper element; reference the control as a Sigma column formula
+        nLiteral = `[${cidBase}]`;
+      } else {
+        warnings.push(`⚠ Set "${top.caption}": no count or count-control; skipped.`);
+        return false;
+      }
+
+      const dirSql = top.direction === 'bottom' ? 'ASC' : 'DESC';
+      const aliasBase = _topNAlias(top.caption, topNUsedAliases);
+      const helperId = sigmaShortId();
+      const cols: any[] = [];
+      const order: string[] = [];
+
+      // Helper columns (in select order):
+      //   <KEY>            (warehouse identifier)
+      //   <PART>...        (one per partition col)
+      //   TOTAL (numeric, the ranked aggregate value)
+      //   RNK (rank int)
+      //   IS_TOP_N (bool — uses RANK() result; conditional on N which may be a control ref)
+      const keyColId = sigmaShortId();
+      cols.push({ id: keyColId, formula: `[Custom SQL/${keyResolved.dimUpper}]`, name: keyResolved.displayName });
+      order.push(keyColId);
+
+      const partColIds: string[] = [];
+      for (const p of partResolved) {
+        const pid = sigmaShortId();
+        cols.push({ id: pid, formula: `[Custom SQL/${p.dimUpper}]`, name: p.displayName });
+        order.push(pid);
+        partColIds.push(pid);
+      }
+
+      // TOTAL & RNK come straight from SQL aliases
+      const totalColId = sigmaShortId();
+      cols.push({ id: totalColId, formula: '[Custom SQL/TOTAL]', name: `${top.caption} Total` });
+      order.push(totalColId);
+      const rnkColId = sigmaShortId();
+      cols.push({ id: rnkColId, formula: '[Custom SQL/RNK]', name: `${top.caption} Rank` });
+      order.push(rnkColId);
+
+      // IS_TOP_N column. Two emit modes:
+      //   • literal N → put `(rnk <= N) AS IS_TOP_N` in the SQL, expose as
+      //     [Custom SQL/IS_TOP_N] (matches spike Case 1 / Case 3).
+      //   • parameterized N → emit a Sigma calc-col formula referencing the
+      //     local rank column display name and the DM control by id (matches
+      //     spike Case 2 — controls are not bindable inside SQL).
+      const isTopNColId = sigmaShortId();
+      const isTopNName = `${top.caption} ${top.direction === 'bottom' ? 'Bottom' : 'Top'} N`;
+      const rankColName = `${top.caption} Rank`;
+      let isTopNFormula: string;
+      let emitIsTopNInSql = false;
+      if (controlId) {
+        // Parameterized — Sigma calc col referencing the control + local Rank col display name
+        isTopNFormula = `[${rankColName}] <= [${controlId}]`;
+      } else {
+        // Literal — emit boolean in SQL and reference via [Custom SQL/IS_TOP_N]
+        isTopNFormula = '[Custom SQL/IS_TOP_N]';
+        emitIsTopNInSql = true;
+      }
+      cols.push({ id: isTopNColId, formula: isTopNFormula, name: isTopNName });
+      order.push(isTopNColId);
+
+      // Build the WITH agg / ranked / SELECT statement
+      const fe = factEl as any;
+      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
+        ? fe.source.path.join('.')
+        : factTableName;
+      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)];
+      const groupByIdx = groupCols.map((_g, i) => i + 1).join(', ');
+      let aggSql = top.byAggFunc;
+      if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${top.byField})`;
+      else aggSql = `${aggSql}(${top.byField})`;
+      const partBy = top.partitionBy.length > 0
+        ? `PARTITION BY ${top.partitionBy.join(', ')} `
+        : '';
+      const overClause = `RANK() OVER (${partBy}ORDER BY s ${dirSql})`;
+      const innerSelect =
+        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+      const rankedSelect =
+        `SELECT ${groupCols.join(', ')}, s, ${overClause} AS RNK FROM agg`;
+      const outerCols = emitIsTopNInSql
+        ? `${groupCols.join(', ')}, s AS TOTAL, RNK, (RNK <= ${nLiteral}) AS IS_TOP_N`
+        : `${groupCols.join(', ')}, s AS TOTAL, RNK`;
+      const outerSelect = `SELECT ${outerCols} FROM ranked`;
+      const statement = `WITH agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`;
+
+      const helperEl: any = {
+        id: helperId,
+        kind: 'table',
+        // No element-level name field for kind:sql elements (per spec rule 3).
+        source: { connectionId: connId, kind: 'sql', statement },
+        columns: cols,
+        order,
+      };
+      // Sigma data-model elements need *some* name to render in folders/UI.
+      // Helper elements created elsewhere in this file use a `name` (e.g. window
+      // helper). We follow the same convention.
+      helperEl.name = `${top.caption} Top-N Helper`;
+
+      // Wire relationship from base on the dim key (and partition cols)
+      const relName = `${factTableName}_TOPN_${aliasBase}`;
+      if (!fe.relationships) fe.relationships = [];
+      const relKeys: any[] = [
+        { sourceColumnId: keyResolved.baseColId, targetColumnId: keyColId },
+      ];
+      for (let i = 0; i < partResolved.length; i++) {
+        const baseColId = partResolved[i].baseColId;
+        if (baseColId) relKeys.push({ sourceColumnId: baseColId, targetColumnId: partColIds[i] });
+      }
+      fe.relationships.push({
+        id: sigmaShortId(),
+        targetElementId: helperEl.id,
+        keys: relKeys,
+        name: relName,
+      });
+
+      topNHelpers.push({
+        element: helperEl,
+        isTopNColId,
+        relationshipName: relName,
+        setNames: [top.setName, top.caption],
+      });
+      const idxEntry = {
+        helperEl,
+        relName,
+        isTopNDisplayName: isTopNName,
+        helperElName: helperEl.name,
+        isTopNColId,
+      };
+      topNSetIndex[top.setName.toUpperCase()] = idxEntry;
+      topNSetIndex[top.caption.toUpperCase()] = idxEntry;
+      warnings.push(`✅ Set "${top.caption}" (${top.direction.toUpperCase()}-${top.count !== null ? top.count : '[' + top.countControl + ']'}${top.partitionBy.length ? ' per ' + top.partitionBy.join(',') : ''}) → kind:sql RANK helper`);
+      return true;
+    }
+
     // ── Window-calc helper element registry ───────────────────────────────
     // Window calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK, INDEX, FIRST, LAST,
     // PREVIOUS_VALUE) cannot be expressed via Sigma DM formulas (the partitioned/
@@ -1266,6 +1569,19 @@ export function convertTableauToSigma(
         /\(bin\)\s*$/i.test(fieldKey)
       ) continue;
 
+      // ── Top-N / Bottom-N Set → kind:sql RANK helper element ─────────
+      if (calcEl && attr(calcEl, 'class') === 'categorical-set') {
+        const topN = tableauParseTopNSet(calcEl, caption, fieldKey);
+        if (topN) {
+          _emitTopNHelper(topN);
+          continue;
+        }
+        // Non-Top-N set (member/condition) — let the converter skip it for now;
+        // the SMM/tableau-local browser tools handle these as boolean columns.
+        warnings.push(`ℹ Set "${caption}": non-Top-N set ignored (handled by browser tools).`);
+        continue;
+      }
+
       if (!formula) {
         // Regular (non-calculated) source column — add to factEl if not already tracked
         const physCol = normalizeColumnName(fieldKey);
@@ -1501,6 +1817,14 @@ export function convertTableauToSigma(
     if (lodChildElements.length > 0) {
       warnings.push(`ℹ ${lodChildElements.length} LOD helper element(s) created`);
     }
+
+    // Add Top-N helper child elements
+    for (const rec of topNHelpers) {
+      elements.push(rec.element);
+    }
+    if (topNHelpers.length > 0) {
+      warnings.push(`ℹ ${topNHelpers.length} Top-N helper element(s) created (kind:sql)`);
+    }
   }
 
   // ── Auto-fix cross-element column references with - link/ syntax ────────
@@ -1555,6 +1879,23 @@ export function convertTableauToSigma(
   const controls: any[] = [];
   for (const p of parameters) {
     const controlId = sigmaDisplayName(p.name).replace(/\s+/g, '-');
+    // Top-N parameter: emit a single-number control with the Tableau default value.
+    // (The Top-N IS_TOP_N calc col references this control by id.)
+    if (topNParamControls[p.name]) {
+      const def = topNParamControls[p.name];
+      const defVal = parseInt(p.defaultVal || String(def.defaultVal), 10) || def.defaultVal;
+      controls.push({
+        kind: 'control',
+        controlId: def.controlId,
+        id: sigmaShortId() + 'con',
+        controlType: 'number',
+        mode: '<=',
+        value: defVal,
+        includeNulls: 'when-no-value-is-selected',
+      });
+      warnings.push(`ℹ Parameter "${p.name}" → number control (Top-N driver, default ${defVal})`);
+      continue;
+    }
     if (p.domainType === 'list' && p.members.length > 0) {
       controls.push({ kind: 'control', controlId, id: sigmaShortId() + 'con',
         controlType: 'list', mode: 'include', selectionMode: 'single', values: [],
