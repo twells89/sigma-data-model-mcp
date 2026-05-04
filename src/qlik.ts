@@ -229,6 +229,139 @@ export function convertQlikToSigma(
   };
 }
 
+// ── QVD ingestion ───────────────────────────────────────────────────────────
+// QVD (Qlik Data) files are Qlik's proprietary binary data extract format used
+// by both QlikView and Qlik Sense. Each QVD is a single table.
+//
+// We only parse the XML header (everything before the first \0 byte after
+// </QvdTableHeader>) to recover table name, fields, types, distinct counts.
+// The binary symbol + index tables that follow are skipped — Sigma re-pulls
+// data from the warehouse on save.
+//
+// Format spec: https://pyqvd.readthedocs.io/stable/guide/qvd-file-format.html
+
+export interface QvdFile {
+  /** filename, used as the table name fallback when <TableName> is empty */
+  name: string;
+  /** raw bytes of the .qvd file */
+  buffer: Uint8Array | Buffer;
+}
+
+export interface QvdHeaderInfo {
+  tableName: string;
+  noOfRecords: number;
+  fields: Array<{
+    name: string;
+    type: string;        // QVD NumberFormat.Type — UNKNOWN, INTEGER, REAL, DATE, etc.
+    tags: string[];      // Qlik tags — $key, $numeric, $text, $timestamp, etc.
+    noOfSymbols: number; // distinct value count
+  }>;
+}
+
+function _decodeXmlEntity(s: string): string {
+  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+}
+
+/** Read tag text content. Returns '' if tag is absent or self-closing/empty. */
+function _xmlText(scope: string, tag: string): string {
+  const m = scope.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  return m ? _decodeXmlEntity(m[1].trim()) : '';
+}
+
+/** Slice between first <Tag> ... last </Tag> (single occurrence per scope). */
+function _xmlSection(scope: string, tag: string): string {
+  const m = scope.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  return m ? m[1] : '';
+}
+
+/** Parse a QVD file's XML header. Reads up to first \0 byte after </QvdTableHeader>. */
+export function parseQvdHeader(buf: Uint8Array | Buffer): QvdHeaderInfo {
+  // Find end of XML header — terminated by \r\n\0 or just \0 after the closing tag.
+  const len = buf.length;
+  let endIdx = -1;
+  for (let i = 0; i < len; i++) {
+    if (buf[i] === 0) { endIdx = i; break; }
+  }
+  if (endIdx < 0) throw new Error('QVD header: no NUL terminator found — not a valid QVD file');
+  const xml = Buffer.from(buf.slice(0, endIdx)).toString('utf8');
+  if (!xml.includes('<QvdTableHeader>')) throw new Error('QVD header: missing <QvdTableHeader> root element');
+
+  const tableName = _xmlText(xml, 'TableName');
+  const noOfRecords = parseInt(_xmlText(xml, 'NoOfRecords') || '0', 10);
+
+  const fieldsScope = _xmlSection(xml, 'Fields');
+  const fields: QvdHeaderInfo['fields'] = [];
+  const fieldRe = /<QvdFieldHeader>([\s\S]*?)<\/QvdFieldHeader>/g;
+  let m: RegExpExecArray | null;
+  while ((m = fieldRe.exec(fieldsScope))) {
+    const f = m[1];
+    const name = _xmlText(f, 'FieldName');
+    const numFmt = _xmlSection(f, 'NumberFormat');
+    const type = _xmlText(numFmt, 'Type') || 'UNKNOWN';
+    const tagsScope = _xmlSection(f, 'Tags');
+    const tagRe = /<String>([^<]+)<\/String>/g;
+    const tags: string[] = [];
+    let tm: RegExpExecArray | null;
+    while ((tm = tagRe.exec(tagsScope))) tags.push(tm[1]);
+    const noOfSymbols = parseInt(_xmlText(f, 'NoOfSymbols') || '0', 10);
+    if (name) fields.push({ name, type, tags, noOfSymbols });
+  }
+  return { tableName: tableName || '', noOfRecords, fields };
+}
+
+/** Convert QVD header info → qtr table entry that matches Qlik Engine API export shape. */
+function _qvdHeaderToQtrTable(h: QvdHeaderInfo, fallbackName: string): any {
+  return {
+    qName: h.tableName || fallbackName,
+    qNoOfRows: h.noOfRecords,
+    qFields: h.fields.map(f => ({
+      qName: f.name,
+      qnTotalDistinctValues: f.noOfSymbols,
+      qnRows: h.noOfRecords,
+      qTags: f.tags,
+    })),
+  };
+}
+
+/**
+ * Convert one or more QVD files to a Sigma data model spec.
+ *
+ * Each QVD is one table. Implicit Qlik associations across tables (shared
+ * field names) are resolved by the existing `convertQlikToSigma` pipeline.
+ *
+ * The QVD format does not include the load script, so the converter cannot
+ * recover database/schema/table paths — pass them via opts.
+ */
+export function convertQvdsToSigma(
+  qvds: QvdFile[],
+  options: QlikConvertOptions = {},
+): ConversionResult {
+  const headers: QvdHeaderInfo[] = [];
+  const warnings: string[] = [];
+  for (const qf of qvds) {
+    try {
+      const h = parseQvdHeader(qf.buffer);
+      headers.push(h);
+    } catch (e: any) {
+      warnings.push(`${qf.name}: failed to parse QVD header — ${e.message}`);
+    }
+  }
+  const qtr = headers.map((h, i) => {
+    const qf = qvds[i];
+    const fallback = (qf.name || '').replace(/\.qvd$/i, '').toUpperCase();
+    return _qvdHeaderToQtrTable(h, fallback);
+  });
+  const synthetic = {
+    appName: 'Qlik QVDs',
+    qtr,
+    masterMeasures: [],
+    masterDimensions: [],
+  };
+  const result = convertQlikToSigma(synthetic, options);
+  result.warnings = [...warnings, ...result.warnings];
+  return result;
+}
+
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 function qlikParseInput(raw: any): { tables: any[]; masterMeasures: any[]; masterDimensions: any[]; appName: string } {
