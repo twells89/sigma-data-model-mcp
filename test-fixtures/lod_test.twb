@@ -1,0 +1,97 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Superstore Orders' inline='true' name='federated.superstore' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0' />
+        </named-connections>
+        <relation connection='snowflake.0' name='SUPERSTORE_ORDERS' table='[TJ].[PUBLIC].[SUPERSTORE_ORDERS]' type='table'>
+          <columns>
+            <column datatype='string' name='ORDER_ID' ordinal='1' />
+            <column datatype='date' name='ORDER_DATE' ordinal='2' />
+            <column datatype='date' name='SHIP_DATE' ordinal='3' />
+            <column datatype='string' name='SHIP_MODE' ordinal='4' />
+            <column datatype='string' name='CUSTOMER_NAME' ordinal='5' />
+            <column datatype='string' name='SEGMENT' ordinal='6' />
+            <column datatype='string' name='COUNTRY_REGION' ordinal='7' />
+            <column datatype='string' name='CITY' ordinal='8' />
+            <column datatype='string' name='STATE_PROVINCE' ordinal='9' />
+            <column datatype='string' name='POSTAL_CODE' ordinal='10' />
+            <column datatype='string' name='REGION' ordinal='11' />
+            <column datatype='string' name='PRODUCT_NAME' ordinal='12' />
+            <column datatype='string' name='CATEGORY' ordinal='13' />
+            <column datatype='string' name='SUB_CATEGORY' ordinal='14' />
+            <column datatype='string' name='MANUFACTURER' ordinal='15' />
+            <column datatype='string' name='RETURNED' ordinal='16' />
+            <column datatype='string' name='REGIONAL_MANAGER' ordinal='17' />
+            <column datatype='real' name='SALES' ordinal='18' />
+            <column datatype='integer' name='QUANTITY' ordinal='19' />
+            <column datatype='real' name='DISCOUNT' ordinal='20' />
+            <column datatype='real' name='PROFIT' ordinal='21' />
+          </columns>
+        </relation>
+      </connection>
+      <column caption='Sales per Customer' datatype='real' name='[Calculation_SalesPerCustomer]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{INCLUDE [CUSTOMER_NAME] : SUM([SALES])}' />
+      </column>
+      <column caption='Region Total' datatype='real' name='[Calculation_RegionTotal]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{EXCLUDE [ORDER_DATE] : SUM([SALES])}' />
+      </column>
+      <column caption='Region Avg Profit Ratio' datatype='real' name='[Calculation_RegionAvgProfitRatio]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [REGION] : AVG([PROFIT]/[SALES])}' />
+      </column>
+      <column caption='Region Avg Profit Ratio Dup' datatype='real' name='[Calculation_RegionAvgProfitRatioDup]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [REGION] : SUM([PROFIT])}' />
+      </column>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sheet 1 - Region'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Superstore Orders' name='federated.superstore' />
+          </datasources>
+          <datasource-dependencies datasource='federated.superstore'>
+            <column datatype='string' name='[REGION]' role='dimension' type='nominal' />
+            <column caption='Sales per Customer' datatype='real' name='[Calculation_SalesPerCustomer]' role='measure' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <rows>[federated.superstore].[REGION]</rows>
+        <cols>[federated.superstore].[avg:Calculation_SalesPerCustomer:qk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='Sheet 2 - Region by Year'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Superstore Orders' name='federated.superstore' />
+          </datasources>
+          <datasource-dependencies datasource='federated.superstore'>
+            <column datatype='string' name='[REGION]' role='dimension' type='nominal' />
+            <column datatype='date' name='[ORDER_DATE]' role='dimension' type='ordinal' />
+            <column caption='Region Total' datatype='real' name='[Calculation_RegionTotal]' role='measure' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <rows>[federated.superstore].[REGION]</rows>
+        <cols>[federated.superstore].[yr:ORDER_DATE:ok] / [federated.superstore].[avg:Calculation_RegionTotal:qk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='Sheet 3 - SubCategory'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Superstore Orders' name='federated.superstore' />
+          </datasources>
+          <datasource-dependencies datasource='federated.superstore'>
+            <column datatype='string' name='[SUB_CATEGORY]' role='dimension' type='nominal' />
+            <column caption='Region Avg Profit Ratio' datatype='real' name='[Calculation_RegionAvgProfitRatio]' role='measure' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <rows>[federated.superstore].[SUB_CATEGORY]</rows>
+        <cols>[federated.superstore].[avg:Calculation_RegionAvgProfitRatio:qk]</cols>
+      </table>
+    </worksheet>
+  </worksheets>
+</workbook>

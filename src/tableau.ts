@@ -19,7 +19,7 @@ const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (name) => ['datasource', 'relation', 'column', 'member', 'clause', 'expression',
-    'metadata-record', 'relationship', 'object'].includes(name),
+    'metadata-record', 'relationship', 'object', 'worksheet', 'filter', 'rows', 'cols'].includes(name),
   trimValues: true,
 });
 
@@ -36,15 +36,32 @@ function attr(node: any, key: string): string {
 
 interface LODResult {
   _isLOD: true;
-  lodType: string;
-  dims: string[];
-  sigmaAgg: string;
+  lodType: 'FIXED' | 'INCLUDE' | 'EXCLUDE';
+  dims: string[];           // dim refs as written in the formula (raw bracket contents)
+  rawAgg: string;           // raw inner aggregate (e.g. "SUM([SALES])")
+  aggFunc: string;          // canonical agg function for SQL emission: SUM/AVG/MIN/MAX/COUNT/COUNTD
+  aggExpr: string;          // SQL-expression form of the inner expr (e.g. "PROFIT/NULLIF(SALES,0)")
+  sigmaAgg: string;         // Sigma-formula form of the aggregate (legacy compatibility)
+}
+
+function _tableauInnerToSql(expr: string): string {
+  // Convert Tableau bracket refs to bare warehouse identifiers.
+  // [PROFIT]/[SALES] → PROFIT/SALES; ZN([Sales]) → SALES (we ignore safe-null wrappers in the helper SQL).
+  let s = expr;
+  // Strip ZN(...) wrapper (zero-if-null)
+  s = s.replace(/\bZN\s*\(([^()]+)\)/gi, '$1');
+  // Tableau IFNULL(x, 0) — keep as Snowflake-compatible IFNULL
+  // Bracket refs → bare uppercase identifiers
+  s = s.replace(/\[([^\]]+)\]/g, (_m, name) => name.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase());
+  // Division by potentially zero column → wrap denominator with NULLIF (best-effort heuristic for AVG ratios)
+  s = s.replace(/\/\s*([A-Z][A-Z0-9_]*)\b/g, '/NULLIF($1,0)');
+  return s;
 }
 
 function tableauParseLOD(formula: string): LODResult | null {
   const m = formula.match(/^\{\s*(FIXED|INCLUDE|EXCLUDE)\s*(.*?)\s*:\s*(.*?)\s*\}$/is);
   if (!m) return null;
-  const lodType = m[1].toUpperCase();
+  const lodType = m[1].toUpperCase() as 'FIXED' | 'INCLUDE' | 'EXCLUDE';
   const rawDims = m[2].trim();
   const rawAgg = m[3].trim();
 
@@ -54,7 +71,17 @@ function tableauParseLOD(formula: string): LODResult | null {
     for (const ref of dimRefs) dims.push(ref.replace(/^\[|\]$/g, ''));
   }
 
-  // Convert the aggregate part
+  // Determine aggregate function and inner expression
+  const aggMatch = rawAgg.match(/^(SUM|AVG|MIN|MAX|COUNTD|COUNT)\s*\(([\s\S]+)\)\s*$/i);
+  let aggFunc = 'SUM';
+  let innerExpr = rawAgg;
+  if (aggMatch) {
+    aggFunc = aggMatch[1].toUpperCase();
+    innerExpr = aggMatch[2].trim();
+  }
+  const aggExpr = _tableauInnerToSql(innerExpr);
+
+  // Sigma-formula form (legacy)
   let sigmaAgg = rawAgg;
   sigmaAgg = sigmaAgg.replace(/\bSUM\s*\(/gi, 'Sum(');
   sigmaAgg = sigmaAgg.replace(/\bAVG\s*\(/gi, 'Avg(');
@@ -62,14 +89,102 @@ function tableauParseLOD(formula: string): LODResult | null {
   sigmaAgg = sigmaAgg.replace(/\bMAX\s*\(/gi, 'Max(');
   sigmaAgg = sigmaAgg.replace(/\bCOUNTD\s*\(/gi, 'CountDistinct(');
   sigmaAgg = sigmaAgg.replace(/\bCOUNT\s*\(([^)]+)\)/gi, 'CountIf(IsNotNull($1))');
-
-  // Convert column refs to display names
   sigmaAgg = sigmaAgg.replace(/\[([A-Z][A-Z0-9_]{2,})\]/g, (_m, colName) => {
     if (colName.includes(' ')) return `[${colName}]`;
     return '[' + sigmaDisplayName(colName) + ']';
   });
 
-  return { _isLOD: true, lodType, dims, sigmaAgg };
+  return { _isLOD: true, lodType, dims, rawAgg, aggFunc, aggExpr, sigmaAgg };
+}
+
+// ── LOD alias generation ─────────────────────────────────────────────────────
+// Build a deterministic uppercase SQL alias for the LOD calc, e.g.
+// "Sales per Customer" → "SALES_PER_CUSTOMER".
+function _lodAlias(caption: string, used: Set<string>): string {
+  let base = (caption || 'LOD_VAL')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (!base) base = 'LOD_VAL';
+  let alias = base;
+  let n = 2;
+  while (used.has(alias)) {
+    alias = `${base}_${n++}`;
+  }
+  used.add(alias);
+  return alias;
+}
+
+// ── Worksheet view-dim extraction ────────────────────────────────────────────
+// Returns a map: fieldKey → set of view-dim sets (each set is a sorted joined string).
+// We also return view dim *details* (set per worksheet) so the LOD effective grouping
+// can be computed once per worksheet a calc participates in.
+interface ViewContext { dims: string[]; }
+interface WorksheetIndex {
+  byField: Map<string, ViewContext[]>;  // calcFieldKey (uppercase) → contexts where used
+}
+
+function _extractFieldRefsFromShelf(text: string): string[] {
+  // Tableau shelf strings look like: "[ds].[REGION]" or "[ds].[avg:Calculation_X:qk]"
+  // or "[ds].[yr:ORDER_DATE:ok] / [ds].[avg:Calc:qk]"
+  const refs: string[] = [];
+  const re = /\[[^\]]+\]\.\[([^\]]+)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    let inner = m[1];
+    // Strip Tableau aggregation prefix: "yr:ORDER_DATE:ok" → "ORDER_DATE"
+    const colon = inner.match(/^[a-z]{2,5}:([^:]+):[a-z]{2}$/i);
+    if (colon) inner = colon[1];
+    refs.push(inner);
+  }
+  return refs;
+}
+
+function _buildWorksheetIndex(parsed: any): WorksheetIndex {
+  const byField = new Map<string, ViewContext[]>();
+  const worksheets = asArray(parsed?.workbook?.worksheets?.worksheet || []);
+  for (const ws of worksheets) {
+    const tbl = ws.table || ws;
+    const viewDims: string[] = [];
+    const usedFields = new Set<string>();
+    const shelves: string[] = [];
+
+    // rows / cols
+    for (const r of asArray(tbl?.rows || [])) shelves.push(typeof r === 'string' ? r : (r['#text'] || ''));
+    for (const c of asArray(tbl?.cols || [])) shelves.push(typeof c === 'string' ? c : (c['#text'] || ''));
+
+    for (const s of shelves) {
+      for (const ref of _extractFieldRefsFromShelf(s)) {
+        usedFields.add(ref.toUpperCase());
+      }
+    }
+
+    // Dimensions in the view come from datasource-dependencies <column role='dimension'>
+    // intersected with fields that appear on rows/cols shelves.
+    const view = tbl?.view || {};
+    const deps = asArray(view['datasource-dependencies'] || []);
+    const dimFieldNames = new Set<string>();
+    for (const d of deps) {
+      for (const col of asArray(d.column || [])) {
+        const role = attr(col, 'role');
+        const name = attr(col, 'name').replace(/^\[|\]$/g, '');
+        if (role === 'dimension') dimFieldNames.add(name.toUpperCase());
+      }
+    }
+
+    for (const used of usedFields) {
+      if (dimFieldNames.has(used)) viewDims.push(used);
+    }
+
+    // Index every used field (calc or column) → this view context
+    for (const used of usedFields) {
+      const list = byField.get(used) || [];
+      list.push({ dims: viewDims.slice() });
+      byField.set(used, list);
+    }
+  }
+  return { byField };
 }
 
 // ── Column Name Normalization ────────────────────────────────────────────────
@@ -559,6 +674,142 @@ export function convertTableauToSigma(
     const factTableName = (factEl.source?.path?.[factEl.source.path.length - 1]) || 'FACT';
     const lodChildElements: any[] = [];
 
+    // ── LOD: build worksheet view-dim index and helper-element registry ───
+    const wsIndex = _buildWorksheetIndex(parsed);
+    // signatureKey (sorted UPPER dim names joined ',') → helper element record
+    const lodHelpers: Record<string, {
+      element: any;
+      groupDimNames: string[];        // ordered upper-case dim names (matches SELECT order)
+      groupDimColIds: string[];       // helper column ids for the dim columns
+      aggsByExpr: Record<string, { alias: string; aggFunc: string; aggExpr: string; calcId: string; caption: string }>;
+      relationshipName: string;
+    }> = {};
+    const usedAliases = new Set<string>();
+
+    function _resolveDimDisplayName(dimNameRaw: string): { dimUpper: string; displayName: string; baseColId?: string } | null {
+      const found = displayNameMap[dimNameRaw.toUpperCase()]
+        || displayNameMap[sigmaDisplayName(dimNameRaw).toUpperCase()];
+      if (!found) return null;
+      const parentCol = found.el.columns?.find((c: any) => c.id === found.colId);
+      const dn = parentCol?.name || (parentCol?.formula.match(/\/([^\]]+)\]$/)?.[1]) || dimNameRaw;
+      // Determine the warehouse identifier (uppercase) from the formula tail
+      const fm = parentCol?.formula.match(/\/([^\]]+)\]$/);
+      const dispName: string = dn;
+      const dimUpper = dispName.replace(/\s+/g, '_').toUpperCase();
+      // Prefer the actual warehouse name if we can derive it from the parent col formula
+      // (since Sigma display names are derived from SNAKE_CASE).
+      const physicalUpper = (fm ? fm[1] : dispName).replace(/\s+/g, '_').toUpperCase();
+      return { dimUpper: physicalUpper, displayName: dispName, baseColId: found.colId };
+    }
+
+    function _ensureHelper(
+      effectiveDims: string[],          // ordered uppercase warehouse identifiers
+      dimResolved: { dimUpper: string; displayName: string; baseColId?: string }[],
+      relNameSuggestion: string
+    ): { helper: any; signatureKey: string } | null {
+      if (effectiveDims.length === 0) return null;
+      const signatureKey = effectiveDims.slice().sort().join(',');
+      const existing = lodHelpers[signatureKey];
+      if (existing) return { helper: existing.element, signatureKey };
+
+      const helperId = sigmaShortId();
+      const helperCols: any[] = [];
+      const helperOrder: string[] = [];
+      const groupDimColIds: string[] = [];
+      for (const d of dimResolved) {
+        const colId = sigmaShortId();
+        helperCols.push({ id: colId, formula: `[Custom SQL/${d.dimUpper}]`, name: d.displayName });
+        helperOrder.push(colId);
+        groupDimColIds.push(colId);
+      }
+      const helperEl: any = {
+        id: helperId,
+        kind: 'table',
+        name: relNameSuggestion,
+        source: {
+          connectionId: connId,
+          kind: 'sql',
+          statement: '__PLACEHOLDER__'   // filled in below once aggs are known
+        },
+        columns: helperCols,
+        order: helperOrder,
+      };
+      // Internal: defer SQL emission until we know all aggregates
+      lodHelpers[signatureKey] = {
+        element: helperEl,
+        groupDimNames: effectiveDims.slice(),
+        groupDimColIds,
+        aggsByExpr: {},
+        relationshipName: relNameSuggestion,
+      };
+      lodChildElements.push(helperEl);
+      return { helper: helperEl, signatureKey };
+    }
+
+    function _ensureRelationship(
+      sigKey: string,
+      dimResolved: { dimUpper: string; displayName: string; baseColId?: string }[],
+      relName: string
+    ): void {
+      const rec = lodHelpers[sigKey];
+      if (!rec) return;
+      // Check if relationship to this helper already exists on the base
+      const existing = (factEl as any).relationships || [];
+      if (existing.find((r: any) => r.targetElementId === rec.element.id)) return;
+      // Build keys array using base column ids and helper dim col ids
+      const keys: any[] = [];
+      for (let i = 0; i < dimResolved.length; i++) {
+        const baseColId = dimResolved[i].baseColId;
+        const helperColId = rec.groupDimColIds[i];
+        if (!baseColId || !helperColId) return;
+        keys.push({ sourceColumnId: baseColId, targetColumnId: helperColId });
+      }
+      if (!(factEl as any).relationships) (factEl as any).relationships = [];
+      (factEl as any).relationships.push({
+        id: sigmaShortId(),
+        targetElementId: rec.element.id,
+        keys,
+        name: relName,
+      });
+    }
+
+    function _addAggToHelper(sigKey: string, alias: string, aggFunc: string, aggExpr: string, caption: string): { alias: string; caption: string } {
+      const rec = lodHelpers[sigKey];
+      if (!rec) return { alias, caption };
+      // dedup by (aggFunc, aggExpr)
+      const dedupKey = `${aggFunc}::${aggExpr}`;
+      const ex = rec.aggsByExpr[dedupKey];
+      if (ex) return { alias: ex.alias, caption: ex.caption };
+      const calcId = sigmaShortId();
+      rec.aggsByExpr[dedupKey] = { alias, aggFunc, aggExpr, calcId, caption };
+      // Add the calc column referencing the SQL alias; column name = user-facing caption
+      rec.element.columns.push({ id: calcId, formula: `[Custom SQL/${alias}]`, name: caption });
+      rec.element.order.push(calcId);
+      return { alias, caption };
+    }
+
+    function _finalizeHelpers(): void {
+      const fe = factEl as any;
+      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
+        ? fe.source.path.join('.')
+        : factTableName;
+      for (const sigKey of Object.keys(lodHelpers)) {
+        const rec = lodHelpers[sigKey];
+        const dimList = rec.groupDimNames.join(', ');
+        const aggParts: string[] = [];
+        for (const k of Object.keys(rec.aggsByExpr)) {
+          const a = rec.aggsByExpr[k];
+          let sqlAggFunc = a.aggFunc;
+          if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + a.aggExpr + ')';
+          else sqlAggFunc = `${sqlAggFunc}(${a.aggExpr})`;
+          aggParts.push(`${sqlAggFunc} AS ${a.alias}`);
+        }
+        const groupByIdx = rec.groupDimNames.map((_d, i) => i + 1).join(', ');
+        rec.element.source.statement =
+          `SELECT ${dimList}, ${aggParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+      }
+    }
+
     for (const col of asArray(ds.ds?.column || [])) {
       const rawName = attr(col, 'name') || '';
       const caption = attr(col, 'caption') || rawName.replace(/^\[|\]$/g, '');
@@ -613,94 +864,83 @@ export function convertTableauToSigma(
         // Check for LOD expression
         const lod = tableauParseLOD(formula);
         if (lod) {
-          if (lod.lodType === 'FIXED' && lod.dims.length > 0) {
-            const dimInfos: { displayName: string }[] = [];
-            let allFound = true;
-            for (const dimName of lod.dims) {
-              const found = displayNameMap[dimName.toUpperCase()]
-                || displayNameMap[sigmaDisplayName(dimName).toUpperCase()];
-              if (found) {
-                const parentCol = found.el.columns?.find((c: any) => c.id === found.colId);
-                const dn = parentCol?.name || (parentCol?.formula.match(/\/([^\]]+)\]$/)?.[1]) || dimName;
-                dimInfos.push({ displayName: dn });
-              } else {
-                allFound = false;
-                warnings.push(`⚠ LOD "${caption}": dimension [${dimName}] not found`);
-              }
+          // Resolve LOD dim names → display + warehouse identifiers
+          const lodDimsResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
+          let allFound = true;
+          for (const dimName of lod.dims) {
+            const r = _resolveDimDisplayName(dimName);
+            if (r) lodDimsResolved.push(r);
+            else { allFound = false; warnings.push(`⚠ LOD "${caption}" dim [${dimName}] not found`); }
+          }
+
+          // Determine view contexts where this calc field is used
+          const fieldKeyUpper = fieldKey.toUpperCase();
+          const viewContexts = wsIndex.byField.get(fieldKeyUpper) || [];
+          const viewDimSets: string[][] = viewContexts.length > 0
+            ? viewContexts.map(c => c.dims.slice())
+            : [[]];   // fallback when no worksheet uses the calc
+
+          // Compute effective grouping(s) per LOD type. Dedup by signature.
+          const effectiveSets: string[][] = [];
+          const seenSigs = new Set<string>();
+          for (const viewDims of viewDimSets) {
+            let effective: string[];
+            if (lod.lodType === 'FIXED') {
+              effective = lodDimsResolved.map(d => d.dimUpper);
+            } else if (lod.lodType === 'INCLUDE') {
+              const set = new Set<string>(viewDims);
+              for (const d of lodDimsResolved) set.add(d.dimUpper);
+              effective = Array.from(set);
+            } else { // EXCLUDE
+              const exclude = new Set(lodDimsResolved.map(d => d.dimUpper));
+              effective = viewDims.filter(v => !exclude.has(v));
             }
-
-            if (allFound && dimInfos.length > 0) {
-              const dimKey = dimInfos.map(d => d.displayName).sort().join(',');
-              let existingChild = lodChildElements.find((ce: any) => ce._dimKey === dimKey);
-
-              if (existingChild) {
-                // Add referenced columns
-                const existingFormulas = new Set(existingChild.columns.map((c: any) => c.formula));
-                for (const ref of (lod.sigmaAgg.match(/\[([^\]]+)\]/g) || [])) {
-                  const colName = ref.replace(/^\[|\]$/g, '');
-                  const refFormula = `[${factTableName}/${colName}]`;
-                  if (!existingFormulas.has(refFormula)) {
-                    existingFormulas.add(refFormula);
-                    const refColId = sigmaShortId();
-                    existingChild.columns.push({ id: refColId, formula: refFormula });
-                    existingChild.order.push(refColId);
-                  }
-                }
-                const calcId = sigmaShortId();
-                const _lodFmt1 = inferSigmaFormat(lod.sigmaAgg, caption);
-                const _lodCol1: any = { id: calcId, formula: lod.sigmaAgg, name: caption };
-                if (_lodFmt1) _lodCol1.format = _lodFmt1;
-                existingChild.columns.push(_lodCol1);
-                existingChild.order.push(calcId);
-                existingChild.groupings[0].calculations.push(calcId);
-              } else {
-                // Create new child element
-                const childCols: any[] = [], childOrder: string[] = [], groupByIds: string[] = [];
-                for (const di of dimInfos) {
-                  const colId = sigmaShortId();
-                  childCols.push({ id: colId, formula: `[${factTableName}/${di.displayName}]` });
-                  childOrder.push(colId);
-                  groupByIds.push(colId);
-                }
-                // Add referenced columns
-                const addedNames = new Set(dimInfos.map(d => d.displayName.toUpperCase()));
-                for (const ref of (lod.sigmaAgg.match(/\[([^\]]+)\]/g) || [])) {
-                  const colName = ref.replace(/^\[|\]$/g, '');
-                  if (addedNames.has(colName.toUpperCase())) continue;
-                  addedNames.add(colName.toUpperCase());
-                  const refColId = sigmaShortId();
-                  childCols.push({ id: refColId, formula: `[${factTableName}/${colName}]` });
-                  childOrder.push(refColId);
-                }
-                const calcId = sigmaShortId();
-                const _lodFmt2 = inferSigmaFormat(lod.sigmaAgg, caption);
-                const _lodCol2: any = { id: calcId, formula: lod.sigmaAgg, name: caption };
-                if (_lodFmt2) _lodCol2.format = _lodFmt2;
-                childCols.push(_lodCol2);
-                childOrder.push(calcId);
-
-                lodChildElements.push({
-                  id: sigmaShortId(), kind: 'table',
-                  name: `${factTableName} by ${dimInfos.map(d => d.displayName).join(', ')}`,
-                  source: { elementId: factEl.id, kind: 'table' },
-                  columns: childCols,
-                  groupings: [{ id: sigmaShortId(), groupBy: groupByIds, calculations: [calcId] }],
-                  order: childOrder,
-                  _dimKey: dimKey
-                });
-              }
-              warnings.push(`✅ LOD "${caption}" → child element with grouping: ${lod.sigmaAgg}`);
+            const sig = effective.slice().sort().join(',');
+            if (sig && !seenSigs.has(sig)) {
+              seenSigs.add(sig);
+              effectiveSets.push(effective);
             }
-          } else if (lod.lodType === 'FIXED' && lod.dims.length === 0) {
-            // Table-scoped: add as metric
+          }
+
+          if (lod.lodType === 'FIXED' && lod.dims.length === 0) {
+            // Table-scoped FIXED → metric (existing behavior)
             if (!(factEl as any).metrics) (factEl as any).metrics = [];
-            const _lodFmt3 = inferSigmaFormat(lod.sigmaAgg, caption);
-            const _lodM3: any = { id: sigmaShortId(), formula: lod.sigmaAgg, name: caption };
-            if (_lodFmt3) _lodM3.format = _lodFmt3;
-            (factEl as any).metrics.push(_lodM3);
-            warnings.push(`ℹ LOD "${caption}" (table-scoped FIXED) → metric: ${lod.sigmaAgg}`);
-          } else {
-            warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) → manual conversion needed. See: community.sigmacomputing.com/t/tableau-level-of-detail-or-lod-calculations-in-sigma/6427`);
+            (factEl as any).metrics.push({ id: sigmaShortId(), formula: lod.sigmaAgg, name: caption });
+            warnings.push(`✅ LOD "${caption}" (table-scoped FIXED) → metric: ${lod.sigmaAgg}`);
+            continue;
+          }
+
+          if (!allFound) continue;
+
+          if (effectiveSets.length === 0) {
+            warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) — no view context found and dims empty; skipped.`);
+            continue;
+          }
+
+          // For INCLUDE/EXCLUDE we need real view dims. For FIXED, lodDimsResolved already
+          // has the warehouse-identifier list and the matching baseColIds.
+          for (const effective of effectiveSets) {
+            // Build dimResolved aligned to `effective`. Each entry needs a baseColId on the fact element.
+            const dimResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
+            let ok = true;
+            for (const dn of effective) {
+              const m = _resolveDimDisplayName(dn);
+              if (!m) { ok = false; warnings.push(`⚠ LOD "${caption}" view dim [${dn}] not found on base`); break; }
+              dimResolved.push(m);
+            }
+            if (!ok) continue;
+
+            const alias = _lodAlias(caption, usedAliases);
+            const relName = `${lod.lodType} ${lod.dims.join(', ') || '(table)'}` + (effectiveSets.length > 1 ? ` @ ${effective.join('×')}` : '');
+            const helperRes = _ensureHelper(effective, dimResolved, `${factTableName} ${lod.lodType} ${effective.join(', ')}`);
+            if (!helperRes) continue;
+            _ensureRelationship(helperRes.signatureKey, dimResolved, relName);
+            _addAggToHelper(helperRes.signatureKey, alias, lod.aggFunc, lod.aggExpr, caption);
+            // The LOD value is exposed via the helper element + relationship.
+            // Workbook authors reference it as [HELPER_ELEMENT/REL_NAME/Caption]; we do not
+            // emit a calc column on the base because cross-element formulas referencing a
+            // related element's column don't validate at the data-model level.
+            warnings.push(`✅ LOD "${caption}" (${lod.lodType}) → helper "${helperRes.helper.name}" alias ${alias}`);
           }
           continue;
         }
@@ -727,13 +967,16 @@ export function convertTableauToSigma(
       }
     }
 
-    // Add LOD child elements
+    // Finalize LOD helper SQL statements now that all aggregates are registered
+    _finalizeHelpers();
+
+    // Add LOD helper child elements
     for (const child of lodChildElements) {
       delete child._dimKey;
       elements.push(child);
     }
     if (lodChildElements.length > 0) {
-      warnings.push(`ℹ ${lodChildElements.length} child element(s) created from LOD expressions`);
+      warnings.push(`ℹ ${lodChildElements.length} LOD helper element(s) created`);
     }
   }
 
@@ -815,9 +1058,9 @@ export function convertTableauToSigma(
   // ── Build output ────────────────────────────────────────────────────────
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
-  const sigmaModel = {
-    schemaVersion: 1,
+  const sigmaModel: any = {
     name: ds.name,
+    schemaVersion: 1,
     pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [...controls, ...elements] }]
   };
 
