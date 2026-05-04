@@ -97,6 +97,180 @@ function tableauParseLOD(formula: string): LODResult | null {
   return { _isLOD: true, lodType, dims, rawAgg, aggFunc, aggExpr, sigmaAgg };
 }
 
+// ── Window/Table-calc parser ────────────────────────────────────────────────
+// Parses Tableau table calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK*, INDEX, FIRST,
+// LAST) into a structured form so the converter can lower them to a kind:'sql'
+// helper element with SQL OVER clauses (Sigma DM has no working partitioned/
+// ordered window formulas, so SQL is the only path).
+interface WindowResult {
+  _isWindow: true;
+  windowType: 'RUNNING_SUM' | 'RUNNING_AVG' | 'RUNNING_MIN' | 'RUNNING_MAX'
+            | 'WINDOW_SUM' | 'WINDOW_AVG' | 'WINDOW_MIN' | 'WINDOW_MAX' | 'WINDOW_COUNT'
+            | 'LOOKUP' | 'PREVIOUS_VALUE'
+            | 'RANK' | 'RANK_DENSE' | 'RANK_UNIQUE' | 'INDEX'
+            | 'FIRST' | 'LAST';
+  innerAggFunc: string;       // SUM/AVG/MIN/MAX/COUNT — the inner aggregate (or '' for RANK()/INDEX())
+  innerColRaw: string;        // raw inner column ref e.g. "[SALES]" — '' for RANK()/INDEX()
+  innerExprSql: string;       // SQL form of inner expression (uppercased identifiers); '' for RANK()/INDEX()
+  lookupOffset?: number;      // for LOOKUP — Tableau offset (negative = prior period)
+  rankDirection?: 'asc' | 'desc';
+}
+
+function _windowInnerToSql(expr: string): string {
+  let s = expr;
+  s = s.replace(/\bZN\s*\(([^()]+)\)/gi, '$1');
+  s = s.replace(/\[([^\]]+)\]/g, (_m, name) => name.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase());
+  return s;
+}
+
+function tableauParseWindow(formula: string): WindowResult | null {
+  const f = formula.trim();
+  if (!/^(WINDOW_|RUNNING_|LOOKUP\(|PREVIOUS_VALUE\(|RANK\b|RANK_DENSE\b|RANK_UNIQUE\b|INDEX\(|FIRST\(|LAST\()/i.test(f)) {
+    return null;
+  }
+  // RUNNING_SUM(SUM([x])), RUNNING_AVG(AVG([x])), etc.
+  let m = f.match(/^(RUNNING_(?:SUM|AVG|MIN|MAX))\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: m[2].toUpperCase(), innerColRaw: m[3],
+    innerExprSql: _windowInnerToSql(m[3]),
+  };
+  // RUNNING_SUM([x]) — bare column form
+  m = f.match(/^(RUNNING_(?:SUM|AVG|MIN|MAX))\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: 'SUM', innerColRaw: m[2],
+    innerExprSql: _windowInnerToSql(m[2]),
+  };
+  // WINDOW_SUM(SUM([x])), etc.
+  m = f.match(/^(WINDOW_(?:SUM|AVG|MIN|MAX|COUNT))\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: m[2].toUpperCase(), innerColRaw: m[3],
+    innerExprSql: _windowInnerToSql(m[3]),
+  };
+  // LOOKUP(SUM([x]), N)
+  m = f.match(/^LOOKUP\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*,\s*(-?\d+)\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: 'LOOKUP',
+    innerAggFunc: m[1].toUpperCase(), innerColRaw: m[2],
+    innerExprSql: _windowInnerToSql(m[2]),
+    lookupOffset: parseInt(m[3], 10),
+  };
+  // PREVIOUS_VALUE([x]) — best effort: treat as LAG-1 of inner
+  m = f.match(/^PREVIOUS_VALUE\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: 'PREVIOUS_VALUE',
+    innerAggFunc: m[1].toUpperCase(), innerColRaw: m[2],
+    innerExprSql: _windowInnerToSql(m[2]),
+    lookupOffset: -1,
+  };
+  // FIRST() / LAST() — emit constant 0/-1 placeholders as offsets vs current row;
+  // We handle them as RANK-style offset-from-partition-start/end via FIRST_VALUE/LAST_VALUE.
+  m = f.match(/^(FIRST|LAST)\s*\(\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: '', innerColRaw: '', innerExprSql: '',
+  };
+  // RANK() / RANK_DENSE() / RANK_UNIQUE() — bare-arg or measure form
+  m = f.match(/^(RANK|RANK_DENSE|RANK_UNIQUE)\s*\(\s*\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: '', innerColRaw: '', innerExprSql: '',
+    rankDirection: 'desc',
+  };
+  m = f.match(/^(RANK|RANK_DENSE|RANK_UNIQUE)\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*(?:,\s*['"]?(asc|desc)['"]?\s*)?\)\s*$/i);
+  if (m) return {
+    _isWindow: true, windowType: m[1].toUpperCase() as any,
+    innerAggFunc: m[2].toUpperCase(), innerColRaw: m[3],
+    innerExprSql: _windowInnerToSql(m[3]),
+    rankDirection: (m[4] || 'desc').toLowerCase() as 'asc' | 'desc',
+  };
+  // INDEX()
+  if (/^INDEX\s*\(\s*\)\s*$/i.test(f)) return {
+    _isWindow: true, windowType: 'INDEX',
+    innerAggFunc: '', innerColRaw: '', innerExprSql: '',
+  };
+  return null;
+}
+
+// Build a deterministic uppercase alias for window calcs (mirrors LOD path).
+function _windowAlias(caption: string, used: Set<string>): string {
+  let base = (caption || 'WIN_VAL')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  if (!base) base = 'WIN_VAL';
+  let alias = base;
+  let n = 2;
+  while (used.has(alias)) { alias = `${base}_${n++}`; }
+  used.add(alias);
+  return alias;
+}
+
+// Extract per-worksheet rows/cols dim split from a parsed workbook XML so we can
+// derive PARTITION BY / ORDER BY heuristically. Returns: byField (calc-key →
+// list of contexts) AND each context records rowsDims / colsDims separately.
+interface WindowViewContext { rowsDims: string[]; colsDims: string[]; allDims: string[]; dateDim?: string; }
+interface WindowWorksheetIndex { byField: Map<string, WindowViewContext[]>; }
+
+function _buildWindowWorksheetIndex(parsed: any): WindowWorksheetIndex {
+  const byField = new Map<string, WindowViewContext[]>();
+  const worksheets = asArray(parsed?.workbook?.worksheets?.worksheet || []);
+  for (const ws of worksheets) {
+    const tbl = ws.table || ws;
+    const rowRefs: string[] = [];
+    const colRefs: string[] = [];
+    let dateDim: string | undefined;
+
+    for (const r of asArray(tbl?.rows || [])) {
+      const text = typeof r === 'string' ? r : (r['#text'] || '');
+      for (const ref of _extractFieldRefsFromShelf(text)) rowRefs.push(ref.toUpperCase());
+    }
+    for (const c of asArray(tbl?.cols || [])) {
+      const text = typeof c === 'string' ? c : (c['#text'] || '');
+      // Tableau encodes date truncations in the bracket prefix (yr:, mn:, qr:, dy:, wk:).
+      // Detect them and tag the underlying field as the date order dim.
+      const re = /\[[^\]]+\]\.\[([^\]]+)\]/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = re.exec(text)) !== null) {
+        const inner = mm[1];
+        const colon = inner.match(/^(yr|mn|qr|dy|wk|md):([^:]+):[a-z]{2}$/i);
+        if (colon) {
+          dateDim = colon[2].toUpperCase();
+          colRefs.push(dateDim);
+        } else {
+          const colon2 = inner.match(/^[a-z]{2,5}:([^:]+):[a-z]{2}$/i);
+          colRefs.push((colon2 ? colon2[1] : inner).toUpperCase());
+        }
+      }
+    }
+
+    const view = tbl?.view || {};
+    const deps = asArray(view['datasource-dependencies'] || []);
+    const dimFields = new Set<string>();
+    const usedFields = new Set<string>([...rowRefs, ...colRefs]);
+    for (const d of deps) {
+      for (const col of asArray(d.column || [])) {
+        const role = attr(col, 'role');
+        const name = attr(col, 'name').replace(/^\[|\]$/g, '');
+        if (role === 'dimension') dimFields.add(name.toUpperCase());
+      }
+    }
+    const rowsDims = rowRefs.filter(r => dimFields.has(r));
+    const colsDims = colRefs.filter(c => dimFields.has(c));
+    const allDims = Array.from(new Set([...rowsDims, ...colsDims]));
+
+    for (const used of usedFields) {
+      const list = byField.get(used) || [];
+      list.push({ rowsDims: rowsDims.slice(), colsDims: colsDims.slice(), allDims: allDims.slice(), dateDim });
+      byField.set(used, list);
+    }
+  }
+  return { byField };
+}
+
 // ── LOD alias generation ─────────────────────────────────────────────────────
 // Build a deterministic uppercase SQL alias for the LOD calc, e.g.
 // "Sales per Customer" → "SALES_PER_CUSTOMER".
@@ -810,6 +984,266 @@ export function convertTableauToSigma(
       }
     }
 
+    // ── Window-calc helper element registry ───────────────────────────────
+    // Window calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK, INDEX, FIRST, LAST,
+    // PREVIOUS_VALUE) cannot be expressed via Sigma DM formulas (the partitioned/
+    // ordered window forms either don't exist or only accept a single arg). We
+    // lower them to a kind:'sql' helper element with explicit OVER clauses, then
+    // wire a relationship from the base on the partition dim columns so the
+    // workbook can reference [<helper>/<rel>/<calc>] cross-element refs.
+    const windowWsIndex = _buildWindowWorksheetIndex(parsed);
+    const windowHelpers: Record<string, {
+      element: any;
+      partitionDimNames: string[];     // e.g. ['REGION']
+      orderDimRaw: string | null;      // e.g. 'ORDER_DATE' (warehouse identifier) or null
+      orderDimAlias: string | null;    // 'ORDER_MONTH' if truncated, else same as orderDimRaw
+      orderDimDateTrunc: string | null;// 'month' | 'year' | etc, or null when orderDimRaw is not date-truncated
+      partitionDimColIds: string[];    // helper col ids matching partitionDimNames
+      orderDimColId: string | null;    // helper col id for the order dim (if present)
+      innerAggs: Record<string, { alias: string }>;  // dedup base aggregates keyed by aggFunc::expr
+      windowAliases: Set<string>;
+      windowOverParts: string[];       // ALIAS_AS_OVER_CLAUSE strings, in emit order
+      relationshipName: string;
+    }> = {};
+    const windowUsedAliases = new Set<string>();
+    const windowChildElements: any[] = [];
+
+    function _ensureWindowHelper(
+      partitionDims: { dimUpper: string; displayName: string; baseColId?: string }[],
+      orderDimRaw: string | null,
+      orderDimDateTrunc: string | null,
+      relName: string,
+    ): { helper: any; key: string; rec: any } | null {
+      const partKey = partitionDims.map(d => d.dimUpper).slice().sort().join(',');
+      const orderKey = orderDimRaw ? `${orderDimRaw}|${orderDimDateTrunc || ''}` : '';
+      const key = partKey + '||' + orderKey;
+      const existing = windowHelpers[key];
+      if (existing) return { helper: existing.element, key, rec: existing };
+      if (partitionDims.length === 0 && !orderDimRaw) return null;
+
+      const helperId = sigmaShortId();
+      const cols: any[] = [];
+      const order: string[] = [];
+      const partitionDimColIds: string[] = [];
+      for (const d of partitionDims) {
+        const colId = sigmaShortId();
+        cols.push({ id: colId, formula: `[Custom SQL/${d.dimUpper}]`, name: d.displayName });
+        order.push(colId);
+        partitionDimColIds.push(colId);
+      }
+      let orderDimColId: string | null = null;
+      let orderDimAlias: string | null = null;
+      if (orderDimRaw) {
+        orderDimAlias = orderDimDateTrunc
+          ? `${orderDimRaw.replace(/_DATE$/, '')}_${orderDimDateTrunc.toUpperCase()}`
+          : orderDimRaw;
+        // Avoid alias collision with partition dims
+        if (partitionDims.find(p => p.dimUpper === orderDimAlias)) {
+          orderDimAlias = `${orderDimAlias}_W`;
+        }
+        const oid = sigmaShortId();
+        cols.push({
+          id: oid,
+          formula: `[Custom SQL/${orderDimAlias}]`,
+          name: sigmaDisplayName(orderDimAlias),
+        });
+        order.push(oid);
+        orderDimColId = oid;
+      }
+
+      const helperEl: any = {
+        id: helperId,
+        kind: 'table',
+        name: relName,
+        source: { connectionId: connId, kind: 'sql', statement: '__PLACEHOLDER__' },
+        columns: cols,
+        order,
+      };
+      const rec = {
+        element: helperEl,
+        partitionDimNames: partitionDims.map(d => d.dimUpper),
+        orderDimRaw,
+        orderDimAlias,
+        orderDimDateTrunc,
+        partitionDimColIds,
+        orderDimColId,
+        innerAggs: {},
+        windowAliases: new Set<string>(),
+        windowOverParts: [] as string[],
+        relationshipName: relName,
+      };
+      windowHelpers[key] = rec;
+      windowChildElements.push(helperEl);
+
+      // Wire relationship from base on partition dim columns
+      const baseRels = (factEl as any).relationships || [];
+      const alreadyLinked = baseRels.find((r: any) => r.targetElementId === helperEl.id);
+      if (!alreadyLinked && partitionDims.length > 0 && partitionDims.every(d => d.baseColId)) {
+        if (!(factEl as any).relationships) (factEl as any).relationships = [];
+        const keys: any[] = [];
+        for (let i = 0; i < partitionDims.length; i++) {
+          keys.push({ sourceColumnId: partitionDims[i].baseColId, targetColumnId: partitionDimColIds[i] });
+        }
+        (factEl as any).relationships.push({
+          id: sigmaShortId(),
+          targetElementId: helperEl.id,
+          keys,
+          name: relName,
+        });
+      }
+      return { helper: helperEl, key, rec };
+    }
+
+    function _registerInnerAgg(rec: any, aggFunc: string, exprSql: string): string {
+      // Deduplicates the base SUM(SALES) AS SALES so multiple OVER clauses share it.
+      const key = `${aggFunc}::${exprSql}`;
+      if (rec.innerAggs[key]) return rec.innerAggs[key].alias;
+      // Pick a clean alias from the column expression: SALES, PROFIT, etc.
+      const idMatch = exprSql.match(/[A-Z][A-Z0-9_]*/);
+      let alias = idMatch ? idMatch[0] : 'VAL';
+      let n = 2;
+      while (rec.windowAliases.has(alias) || Object.values(rec.innerAggs).some((v: any) => v.alias === alias)) {
+        alias = idMatch ? `${idMatch[0]}_${n++}` : `VAL_${n++}`;
+      }
+      rec.innerAggs[key] = { alias };
+      return alias;
+    }
+
+    function _emitWindowOverClause(
+      rec: any,
+      win: WindowResult,
+      windowAlias: string,
+      innerAlias: string,
+    ): { ok: boolean; reason?: string } {
+      const partBy = rec.partitionDimNames.length > 0
+        ? `PARTITION BY ${rec.partitionDimNames.join(', ')}`
+        : '';
+      const orderBy = rec.orderDimAlias ? `ORDER BY ${rec.orderDimAlias}` : '';
+      const windowSpec = (parts: string[]) => parts.filter(Boolean).join(' ');
+
+      let overSql = '';
+      switch (win.windowType) {
+        case 'RUNNING_SUM':
+        case 'RUNNING_AVG':
+        case 'RUNNING_MIN':
+        case 'RUNNING_MAX': {
+          if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
+          const fn = win.windowType.replace('RUNNING_', '');
+          overSql = `${fn}(${innerAlias}) OVER (${windowSpec([partBy, orderBy])} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`;
+          break;
+        }
+        case 'WINDOW_SUM':
+        case 'WINDOW_AVG':
+        case 'WINDOW_MIN':
+        case 'WINDOW_MAX':
+        case 'WINDOW_COUNT': {
+          const fn = win.windowType.replace('WINDOW_', '');
+          // Full-partition agg — no ORDER BY
+          overSql = `${fn}(${innerAlias}) OVER (${partBy})`;
+          break;
+        }
+        case 'LOOKUP':
+        case 'PREVIOUS_VALUE': {
+          if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
+          const offset = win.lookupOffset ?? -1;
+          const fn = offset < 0 ? 'LAG' : (offset > 0 ? 'LEAD' : '');
+          if (!fn) {
+            overSql = `${innerAlias}`;  // LOOKUP(x, 0) is identity
+          } else {
+            overSql = `${fn}(${innerAlias}, ${Math.abs(offset)}) OVER (${windowSpec([partBy, orderBy])})`;
+          }
+          break;
+        }
+        case 'RANK':
+        case 'RANK_DENSE':
+        case 'RANK_UNIQUE': {
+          // For RANK with no inner expr, rank by first inner agg DESC.
+          let rankExpr = innerAlias;
+          if (!rankExpr) {
+            const firstInner = Object.values(rec.innerAggs)[0] as any;
+            if (firstInner) rankExpr = firstInner.alias;
+            else return { ok: false, reason: 'rank has no measure to order by' };
+          }
+          const dir = (win.rankDirection || 'desc').toUpperCase();
+          const rankFn = win.windowType === 'RANK_DENSE' ? 'DENSE_RANK'
+                       : win.windowType === 'RANK_UNIQUE' ? 'ROW_NUMBER'
+                       : 'RANK';
+          overSql = `${rankFn}() OVER (${windowSpec([partBy, `ORDER BY ${rankExpr} ${dir}`])})`;
+          break;
+        }
+        case 'INDEX': {
+          if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
+          overSql = `ROW_NUMBER() OVER (${windowSpec([partBy, orderBy])})`;
+          break;
+        }
+        case 'FIRST': {
+          if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
+          // Tableau FIRST() returns offset from partition start (negative number).
+          // Approximate as ROW_NUMBER()-1 negated.
+          overSql = `(1 - ROW_NUMBER() OVER (${windowSpec([partBy, orderBy])}))`;
+          break;
+        }
+        case 'LAST': {
+          if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
+          overSql = `(COUNT(*) OVER (${partBy}) - ROW_NUMBER() OVER (${windowSpec([partBy, orderBy])}))`;
+          break;
+        }
+        default:
+          return { ok: false, reason: 'unsupported window type ' + win.windowType };
+      }
+      rec.windowOverParts.push(`${overSql} AS ${windowAlias}`);
+      rec.windowAliases.add(windowAlias);
+      // Add a calc column referencing the alias
+      const calcId = sigmaShortId();
+      rec.element.columns.push({ id: calcId, formula: `[Custom SQL/${windowAlias}]` });
+      rec.element.order.push(calcId);
+      return { ok: true };
+    }
+
+    function _finalizeWindowHelpers(): void {
+      const fe = factEl as any;
+      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
+        ? fe.source.path.join('.')
+        : factTableName;
+      for (const key of Object.keys(windowHelpers)) {
+        const rec = windowHelpers[key];
+        const selectParts: string[] = [];
+        // Partition dims (passed through bare)
+        for (const d of rec.partitionDimNames) selectParts.push(d);
+        // Order dim (with optional DATE_TRUNC)
+        if (rec.orderDimRaw && rec.orderDimAlias) {
+          if (rec.orderDimDateTrunc) {
+            selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rec.orderDimRaw}) AS ${rec.orderDimAlias}`);
+          } else {
+            selectParts.push(`${rec.orderDimRaw} AS ${rec.orderDimAlias}`);
+          }
+        }
+        // Inner aggregates (e.g. SUM(SALES) AS SALES)
+        for (const k of Object.keys(rec.innerAggs)) {
+          const [aggFunc, exprSql] = k.split('::');
+          const a = rec.innerAggs[k];
+          let sqlFn = aggFunc;
+          if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${exprSql})`;
+          else sqlFn = `${sqlFn}(${exprSql})`;
+          selectParts.push(`${sqlFn} AS ${a.alias}`);
+        }
+        // Pre-aggregate happens in an inner subquery so OVER clauses see clean aliases.
+        const groupByCount = rec.partitionDimNames.length + (rec.orderDimRaw ? 1 : 0);
+        const groupByIdx = Array.from({ length: groupByCount }, (_, i) => i + 1).join(', ');
+        const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+
+        // Outer SELECT: pass through everything from the inner CTE plus the OVER aliases.
+        const innerProjection: string[] = [
+          ...rec.partitionDimNames,
+          ...(rec.orderDimAlias ? [rec.orderDimAlias] : []),
+          ...Object.values(rec.innerAggs).map((v: any) => v.alias),
+        ];
+        const outerProjection = innerProjection.concat(rec.windowOverParts);
+        rec.element.source.statement =
+          `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
+      }
+    }
+
     for (const col of asArray(ds.ds?.column || [])) {
       const rawName = attr(col, 'name') || '';
       const caption = attr(col, 'caption') || rawName.replace(/^\[|\]$/g, '');
@@ -945,6 +1379,85 @@ export function convertTableauToSigma(
           continue;
         }
 
+        // Check for table-calc / window expressions — lower to a kind:'sql' helper
+        const win = tableauParseWindow(formula);
+        if (win) {
+          // Determine partition + order from the worksheet view-context heuristic.
+          // Try the calc's own field-key first, then fall back to ANY worksheet
+          // context (first found with rows-dim + time-dim) so all calcs in a
+          // datasource share consistent partitioning even if they aren't all
+          // pinned to a shelf.
+          const fieldKeyUpper = fieldKey.toUpperCase();
+          let ctxList = windowWsIndex.byField.get(fieldKeyUpper) || [];
+          if (ctxList.length === 0) {
+            // Fallback: walk all indexed contexts and collect any with rows + dateDim
+            const all: WindowViewContext[] = [];
+            for (const v of windowWsIndex.byField.values()) {
+              for (const c of v) all.push(c);
+            }
+            ctxList = all;
+          }
+          let chosen: WindowViewContext | null = null;
+          for (const c of ctxList) {
+            if (c.rowsDims.length > 0 && c.dateDim) { chosen = c; break; }
+          }
+          if (!chosen) for (const c of ctxList) {
+            if (c.rowsDims.length > 0) { chosen = c; break; }
+          }
+          if (!chosen && ctxList.length > 0) chosen = ctxList[0];
+
+          let partitionDimNames: string[] = chosen ? chosen.rowsDims.slice() : [];
+          let orderDimRaw: string | null = chosen?.dateDim || null;
+          let orderDimDateTrunc: string | null = null;
+          if (chosen?.dateDim) {
+            // Heuristic: monthly grain is the most common Tableau view default
+            // when ORDER_DATE is on cols with mn: prefix. Use 'month'.
+            orderDimDateTrunc = 'month';
+          } else if (chosen && chosen.colsDims.length > 0) {
+            orderDimRaw = chosen.colsDims[0];
+          }
+
+          // Resolve partition dims to baseColIds for the relationship
+          const partitionResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
+          let allP = true;
+          for (const p of partitionDimNames) {
+            const r = _resolveDimDisplayName(p);
+            if (!r) { allP = false; break; }
+            partitionResolved.push(r);
+          }
+          if (!allP || partitionResolved.length === 0) {
+            warnings.push(`⚠ Window calc "${caption}" — no partition dims resolved on base; skipped`);
+            continue;
+          }
+
+          const relName = `Window ${partitionDimNames.join(', ')}`
+            + (orderDimRaw ? ` ORDER ${orderDimRaw}${orderDimDateTrunc ? `(${orderDimDateTrunc})` : ''}` : '');
+          const helperRes = _ensureWindowHelper(partitionResolved, orderDimRaw, orderDimDateTrunc, relName);
+          if (!helperRes) {
+            warnings.push(`⚠ Window calc "${caption}" — could not create helper element; skipped`);
+            continue;
+          }
+          // Register inner aggregate (e.g. SUM(SALES) → AS SALES) — even RANK()/INDEX() may not need one,
+          // but we still register the SUM if a measure column is present.
+          let innerAlias = '';
+          if (win.innerExprSql && win.innerAggFunc) {
+            innerAlias = _registerInnerAgg(helperRes.rec, win.innerAggFunc, win.innerExprSql);
+          }
+          const winAlias = _windowAlias(caption, windowUsedAliases);
+          // Ensure column carries the user-facing caption as `name`
+          const emitRes = _emitWindowOverClause(helperRes.rec, win, winAlias, innerAlias);
+          if (!emitRes.ok) {
+            warnings.push(`⚠ Window calc "${caption}" → ${win.windowType}: ${emitRes.reason}; skipped`);
+            // Pop placeholder column we may have added
+            continue;
+          }
+          // Patch the most recently-added column with the caption as name
+          const lastCol = helperRes.rec.element.columns[helperRes.rec.element.columns.length - 1];
+          if (lastCol && !lastCol.name) lastCol.name = caption;
+          warnings.push(`✅ Window "${caption}" (${win.windowType}) → helper "${helperRes.rec.element.name}" alias ${winAlias}`);
+          continue;
+        }
+
         // Regular calculated field
         const sigmaFormula = tableauFormulaToSigma(formula, warnings);
         if (!sigmaFormula || sigmaFormula.startsWith('/*')) continue;
@@ -969,6 +1482,16 @@ export function convertTableauToSigma(
 
     // Finalize LOD helper SQL statements now that all aggregates are registered
     _finalizeHelpers();
+    // Finalize window helper SQL statements
+    _finalizeWindowHelpers();
+
+    // Add window helper child elements first (then LOD)
+    for (const child of windowChildElements) {
+      elements.push(child);
+    }
+    if (windowChildElements.length > 0) {
+      warnings.push(`ℹ ${windowChildElements.length} window helper element(s) created (kind:sql)`);
+    }
 
     // Add LOD helper child elements
     for (const child of lodChildElements) {

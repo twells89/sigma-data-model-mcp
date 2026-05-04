@@ -59,6 +59,7 @@ That's it — no cloning, no building. Just connect and start converting.
 | `parse_lookml` | Parse LookML and return structured AST |
 | `get_sigma_data_model_schema` | Return the Sigma data model JSON schema reference |
 | `diagnose_sigma_save_error` | Pinpoint which Custom SQL element caused a Sigma save error |
+| `validate_dm_columns` | After save, surface any data-model columns where Sigma flagged the formula as `type.type === "error"` |
 | `format_sigma_display_name` | Convert SNAKE_CASE → Sigma Title Case |
 
 ## How It Works
@@ -122,9 +123,9 @@ DAX conversion tiers:
 - `schema` — Override schema name
 
 ### convert_tableau_to_sigma
-Converts Tableau workbooks (.twb) and data sources (.tds) to Sigma JSON. Parses data sources, joins/relationships, calculated fields with formula conversion, LOD FIXED expressions → child elements with groupings, parameters → controls.
+Converts Tableau workbooks (.twb) and data sources (.tds) to Sigma JSON. Parses data sources, joins/relationships, calculated fields with formula conversion, LOD FIXED/INCLUDE/EXCLUDE expressions → kind:sql helper elements + relationships, window/table calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK*, INDEX, FIRST, LAST, PREVIOUS_VALUE) → kind:sql helper elements with explicit OVER() clauses, parameters → controls.
 
-Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD → CountDistinct, DATEPART/DATETRUNC/DATEADD/DATEDIFF, LOD FIXED → child elements with groupings. LOD INCLUDE/EXCLUDE and table calculations generate warnings.
+Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD → CountDistinct, DATEPART/DATETRUNC/DATEADD/DATEDIFF, LOD FIXED/INCLUDE/EXCLUDE → kind:sql helpers (view dims from worksheet rows/cols), window calcs → kind:sql helpers with PARTITION BY (rows shelf) and ORDER BY (time-truncated cols shelf). After saving, call `validate_dm_columns` to surface any column-level errors (e.g. unknown function, arity mismatch).
 
 **Parameters:**
 - `xml_content` (required) — Tableau XML content (.twb or .tds)

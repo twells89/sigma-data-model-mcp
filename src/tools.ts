@@ -623,6 +623,72 @@ Returns:
     }
   );
 
+  // ── validate_dm_columns ──────────────────────────────────────────────────
+  // Surfaces type.type === "error" columns from a saved Sigma data model so the
+  // caller can detect silently-broken Sigma DM formulas (e.g. unknown function,
+  // arity mismatch). Common with Tableau window calcs that get lowered to
+  // CumulativeSum() / SumOver() / RankOver() etc — those formulas fail at the
+  // DM layer but the POST itself returns success.
+  server.tool(
+    'validate_dm_columns',
+    `Fetch the columns of a saved Sigma data model and surface any with type.type === "error".
+
+Use this immediately after a successful POST /v2/dataModels/spec to detect
+column-level errors that the POST itself reports as success but that fail at
+query time. Common causes:
+- Unknown DM formula function (e.g. SumOver, LagOver, RankOver — these are not
+  Sigma DM functions)
+- Arity mismatch (e.g. CumulativeSum([x], [y], [z]) — only takes 1 arg)
+- Reference to a column that doesn't exist in the element
+
+Returns the list of errored columns with their element ID, column name,
+formula, and Sigma's error message (when available).
+
+Required environment: SIGMA_BASE_URL (e.g. https://aws-api.sigmacomputing.com)
+and a Bearer token; pass the token explicitly via the access_token parameter.`,
+    {
+      data_model_id: z.string().describe('The data model ID (UUID) returned by POST /v2/dataModels/spec'),
+      access_token:  z.string().describe('A Bearer access token (obtained via POST /v2/auth/token grant_type=client_credentials)'),
+      base_url:      z.string().optional().describe('Sigma API base URL. Defaults to https://aws-api.sigmacomputing.com'),
+    },
+    async ({ data_model_id, access_token, base_url }) => {
+      try {
+        const baseUrl = base_url || 'https://aws-api.sigmacomputing.com';
+        const res = await fetch(`${baseUrl}/v2/dataModels/${data_model_id}/columns`, {
+          headers: { 'Authorization': `Bearer ${access_token}` },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          return {
+            content: [{ type: 'text' as const, text: `Error: HTTP ${res.status} — ${text.slice(0, 500)}` }],
+            isError: true,
+          };
+        }
+        const data: any = await res.json();
+        const entries = (data && (data.entries || data)) || [];
+        const errored = (Array.isArray(entries) ? entries : []).filter((c: any) =>
+          (c && c.type && c.type.type) === 'error'
+        );
+        const summary = {
+          dataModelId: data_model_id,
+          totalColumns: Array.isArray(entries) ? entries.length : 0,
+          erroredColumns: errored.length,
+          errors: errored.map((c: any) => ({
+            elementId: c.elementId || c.element_id,
+            name: c.name,
+            formula: c.formula,
+            error: (c.type && c.type.error) || null,
+          })),
+        };
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(summary, null, 2) }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── convert_thoughtspot_to_sigma ─────────────────────────────────────────
 
   server.tool(
