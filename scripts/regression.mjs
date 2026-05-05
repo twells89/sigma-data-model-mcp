@@ -97,8 +97,20 @@ async function loadConverters() {
     throw new Error(`build/ not found — run 'npm run build' first`);
   }
   const tableau = await import(join(BUILD_DIR, 'tableau.js'));
+  const lookml = await import(join(BUILD_DIR, 'lookml.js'));
+  const dbt = await import(join(BUILD_DIR, 'dbt.js'));
+  const cube = await import(join(BUILD_DIR, 'cube.js'));
+  const omni = await import(join(BUILD_DIR, 'omni.js'));
+  const alteryx = await import(join(BUILD_DIR, 'alteryx.js'));
+  const powerbi = await import(join(BUILD_DIR, 'powerbi.js'));
   return {
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
+    lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
+    dbt: dbt.convertDbtToSigma || dbt.default?.convertDbtToSigma,
+    cube: cube.convertCubeToSigma || cube.default?.convertCubeToSigma,
+    omni: omni.convertOmniToSigma || omni.default?.convertOmniToSigma,
+    alteryx: alteryx.convertAlteryxToSigma || alteryx.default?.convertAlteryxToSigma,
+    powerbi: powerbi.convertPowerBIToSigma || powerbi.default?.convertPowerBIToSigma,
   };
 }
 
@@ -169,9 +181,14 @@ async function runFixture(fx, converters) {
 
   const xml = await readFile(fx.inputFile, 'utf-8');
   const opts = fx.summary.convertOptions || {};
+  // multi-file converters take {name,content}[]
+  const fileBased = ['lookml', 'cube', 'omni'];
+  const arg = fileBased.includes(fx.fmt)
+    ? [{ name: basename(fx.inputFile), content: xml }]
+    : xml;
   let result;
   try {
-    result = fn(xml, opts);
+    result = fn(arg, opts);
   } catch (e) {
     return { id: fx.id, ok: false, reason: `converter threw: ${e.message}` };
   }
