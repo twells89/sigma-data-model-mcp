@@ -1,0 +1,1148 @@
+{
+  "parameters" : {
+    "parameters" : { }
+  },
+  "initialNodes" : [ "ecb3c2a5-dbe4-44c3-a190-6157fcedc588", "afcdfed5-0f92-4e48-a603-aa5bfdd1c868", "6592fd70-5f69-444c-8978-a814427fb99d", "9be1d3d3-4d2d-40ba-b497-c67d2eaab3d8" ],
+  "nodes" : {
+    "ecb3c2a5-dbe4-44c3-a190-6157fcedc588" : {
+      "nodeType" : ".v1.LoadSql",
+      "name" : "EMPLOYEES (CSA.EMPLOYEES)",
+      "id" : "ecb3c2a5-dbe4-44c3-a190-6157fcedc588",
+      "baseType" : "input",
+      "nextNodes" : [ ],
+      "serialize" : false,
+      "description" : null,
+      "connectionId" : "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6",
+      "connectionAttributes" : { },
+      "fields" : [ {
+        "name" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employee Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "First Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Last Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Email",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Department",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Role",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Location",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Hire Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Status",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Termination Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Termination Reason",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Manager Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "type" : "real",
+        "collation" : null,
+        "caption" : "Annual Salary",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employment Type",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Shift",
+        "ordinal" : null,
+        "isGenerated" : false
+      } ],
+      "actions" : [ {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "rename" : "Employee Id",
+        "name" : "renamed 1cfe8f3c-17d6-316a-ae44-90d8c94fc07d to Employee Id 1",
+        "id" : "4bde1432-cb4f-48f7-8f41-97cd42124c9a",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "rename" : "First Name",
+        "name" : "renamed a9acd10c-1f13-3387-92f7-65ae98af1870 to First Name 1",
+        "id" : "c1c7792b-d1fa-4479-922a-b84478b4c3d2",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "rename" : "Last Name",
+        "name" : "renamed e3af0fed-cb33-33ba-b0ee-4a5690c57b31 to Last Name 1",
+        "id" : "65fbe462-949c-473a-87f1-3f82d558ff93",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "rename" : "Email",
+        "name" : "renamed ed36eb0f-ce15-3ab1-ba20-5e690e980abd to Email 1",
+        "id" : "eff091f7-5071-4949-b1fe-e287620c5161",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "rename" : "Department",
+        "name" : "renamed 0feb1346-6673-380c-a70e-a39635be1610 to Department 1",
+        "id" : "1f403d66-ec89-4156-9512-e13ea59363a5",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "rename" : "Role",
+        "name" : "renamed a8401f84-0f92-3ccc-aa82-0edbcc85c31e to Role 1",
+        "id" : "9ac2740b-7516-4dce-b1e8-c3641ccaf5ab",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "rename" : "Location",
+        "name" : "renamed a1e10793-906e-3f00-adb1-df0a946cbf5d to Location 1",
+        "id" : "22d55d60-6042-43fc-a202-50fd2bdefe3f",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "rename" : "Hire Date",
+        "name" : "renamed cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3 to Hire Date 1",
+        "id" : "1c928e12-0550-49ee-8abd-a53c45ee0c87",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "rename" : "Status",
+        "name" : "renamed df9bf2a5-273e-3efe-9789-378c096489d0 to Status 1",
+        "id" : "e0d807b1-4a9f-4e09-a152-05a05ec14dc5",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "rename" : "Termination Date",
+        "name" : "renamed 9672cbee-4543-38b2-a7df-0a21aa0f2f5d to Termination Date 1",
+        "id" : "0d35f7b0-a957-4913-83a7-18bfc021f433",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "rename" : "Termination Reason",
+        "name" : "renamed eb8842fa-e323-3636-9d73-c9fc3c154661 to Termination Reason 1",
+        "id" : "dd3f7903-2da7-4922-ac04-7be9a41299a2",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "rename" : "Manager Id",
+        "name" : "renamed a696b936-0b0a-3d26-800b-1eeb2f9185e6 to Manager Id 1",
+        "id" : "1b1551b8-a0d0-4a81-bd95-1b0649f0c242",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "rename" : "Annual Salary",
+        "name" : "renamed 5dc3910e-0a3f-3aea-bfc2-bafea3c58e79 to Annual Salary 1",
+        "id" : "93d984f2-0d8d-441e-b64a-633434aadd37",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "rename" : "Employment Type",
+        "name" : "renamed ea7143cf-0ef8-38fc-967a-8c206b5e3bdb to Employment Type 1",
+        "id" : "56e30652-77cb-4bf5-98de-e876b24acea3",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "rename" : "Shift",
+        "name" : "renamed 69b0b71b-defb-3fff-88d2-ba53128b45b9 to Shift 1",
+        "id" : "cafad55a-a7cc-49f1-ac10-82d6a3eaf73d",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      } ],
+      "debugModeRowLimit" : 393216,
+      "originalDataTypes" : { },
+      "randomSampling" : null,
+      "updateTimestamp" : 1778011911363,
+      "restrictedFields" : { },
+      "userRenamedFields" : { },
+      "selectedFields" : null,
+      "samplingType" : null,
+      "groupByFields" : null,
+      "filters" : [ ],
+      "relation" : {
+        "type" : "table",
+        "table" : "[70b913c3-a73a-4d07-bf8e-63734d718a1d].[EMPLOYEES (CSA.EMPLOYEES)]"
+      }
+    },
+    "1d201d2d-05d0-48a1-9c85-a267c6590ebc" : {
+      "nodeType" : ".v2018_2_3.SuperJoin",
+      "name" : "Join 3",
+      "id" : "1d201d2d-05d0-48a1-9c85-a267c6590ebc",
+      "baseType" : "superNode",
+      "nextNodes" : [ {
+        "namespace" : "Default",
+        "nextNodeId" : "0c6c423b-82e2-4964-9655-ae98549e5d1a",
+        "nextNamespace" : "Default"
+      } ],
+      "serialize" : false,
+      "description" : null,
+      "beforeActionAnnotations" : [ ],
+      "afterActionAnnotations" : [ ],
+      "actionNode" : {
+        "nodeType" : ".v1.SimpleJoin",
+        "name" : "Join 3",
+        "id" : "74a7609c-bd46-4e11-9e3e-2cb827a71ad7",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null,
+        "conditions" : [ {
+          "leftExpression" : "[Employee Id]",
+          "rightExpression" : "[Employee Id]",
+          "comparator" : "=="
+        } ],
+        "joinType" : "inner"
+      }
+    },
+    "afcdfed5-0f92-4e48-a603-aa5bfdd1c868" : {
+      "nodeType" : ".v1.LoadSql",
+      "name" : "EMPLOYEES (CSA.EMPLOYEES)",
+      "id" : "afcdfed5-0f92-4e48-a603-aa5bfdd1c868",
+      "baseType" : "input",
+      "nextNodes" : [ ],
+      "serialize" : false,
+      "description" : null,
+      "connectionId" : "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6",
+      "connectionAttributes" : { },
+      "fields" : [ {
+        "name" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employee Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "First Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Last Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Email",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Department",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Role",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Location",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Hire Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Status",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Termination Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Termination Reason",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Manager Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "type" : "real",
+        "collation" : null,
+        "caption" : "Annual Salary",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employment Type",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Shift",
+        "ordinal" : null,
+        "isGenerated" : false
+      } ],
+      "actions" : [ {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "rename" : "Employee Id",
+        "name" : "renamed 1cfe8f3c-17d6-316a-ae44-90d8c94fc07d to Employee Id 2",
+        "id" : "7e840452-9ec4-4248-8ba8-014fed9fba54",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "rename" : "First Name",
+        "name" : "renamed a9acd10c-1f13-3387-92f7-65ae98af1870 to First Name 2",
+        "id" : "c0bde27b-9c6d-4607-a3d2-63d1b34c89ed",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "rename" : "Last Name",
+        "name" : "renamed e3af0fed-cb33-33ba-b0ee-4a5690c57b31 to Last Name 2",
+        "id" : "9a3471b5-5947-4259-af40-59179972b60b",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "rename" : "Email",
+        "name" : "renamed ed36eb0f-ce15-3ab1-ba20-5e690e980abd to Email 2",
+        "id" : "acdde424-8177-4e43-b035-4faec8ff8577",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "rename" : "Department",
+        "name" : "renamed 0feb1346-6673-380c-a70e-a39635be1610 to Department 2",
+        "id" : "5cd0e90b-e809-478a-8400-81fe34314a12",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "rename" : "Role",
+        "name" : "renamed a8401f84-0f92-3ccc-aa82-0edbcc85c31e to Role 2",
+        "id" : "4746ee1a-4fb9-49a4-a3e0-45b98acebf56",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "rename" : "Location",
+        "name" : "renamed a1e10793-906e-3f00-adb1-df0a946cbf5d to Location 2",
+        "id" : "c070d3b0-89a4-4776-9630-3e8ee2024909",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "rename" : "Hire Date",
+        "name" : "renamed cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3 to Hire Date 2",
+        "id" : "822d870e-26fe-4687-a87b-56389baf85ac",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "rename" : "Status",
+        "name" : "renamed df9bf2a5-273e-3efe-9789-378c096489d0 to Status 2",
+        "id" : "f5726c03-09f2-4e77-bacb-8e2751141c03",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "rename" : "Termination Date",
+        "name" : "renamed 9672cbee-4543-38b2-a7df-0a21aa0f2f5d to Termination Date 2",
+        "id" : "5cb95e8e-ba8f-443e-880d-7fcbfdfbb025",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "rename" : "Termination Reason",
+        "name" : "renamed eb8842fa-e323-3636-9d73-c9fc3c154661 to Termination Reason 2",
+        "id" : "9d7139a7-48e2-45e6-824b-2014d497a606",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "rename" : "Manager Id",
+        "name" : "renamed a696b936-0b0a-3d26-800b-1eeb2f9185e6 to Manager Id 2",
+        "id" : "e32023a9-3fa9-4d75-9d30-e92a0235bd75",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "rename" : "Annual Salary",
+        "name" : "renamed 5dc3910e-0a3f-3aea-bfc2-bafea3c58e79 to Annual Salary 2",
+        "id" : "aeae520c-381e-4eeb-94e5-48ca886fa580",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "rename" : "Employment Type",
+        "name" : "renamed ea7143cf-0ef8-38fc-967a-8c206b5e3bdb to Employment Type 2",
+        "id" : "94ccf0a2-2d22-4efc-bd7a-4148dcdb2287",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "rename" : "Shift",
+        "name" : "renamed 69b0b71b-defb-3fff-88d2-ba53128b45b9 to Shift 2",
+        "id" : "8722875a-3483-4fd8-ae61-72c0c575783b",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      } ],
+      "debugModeRowLimit" : 393216,
+      "originalDataTypes" : { },
+      "randomSampling" : null,
+      "updateTimestamp" : 1778011911833,
+      "restrictedFields" : { },
+      "userRenamedFields" : { },
+      "selectedFields" : null,
+      "samplingType" : null,
+      "groupByFields" : null,
+      "filters" : [ ],
+      "relation" : {
+        "type" : "table",
+        "table" : "[70b913c3-a73a-4d07-bf8e-63734d718a1d].[EMPLOYEES (CSA.EMPLOYEES)]"
+      }
+    },
+    "6592fd70-5f69-444c-8978-a814427fb99d" : {
+      "nodeType" : ".v1.LoadSql",
+      "name" : "ABSENCE_RECORDS (CSA.ABSENCE_RECORDS) 2",
+      "id" : "6592fd70-5f69-444c-8978-a814427fb99d",
+      "baseType" : "input",
+      "nextNodes" : [ {
+        "namespace" : "Default",
+        "nextNodeId" : "1d201d2d-05d0-48a1-9c85-a267c6590ebc",
+        "nextNamespace" : "Right"
+      } ],
+      "serialize" : false,
+      "description" : null,
+      "connectionId" : "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6",
+      "connectionAttributes" : { },
+      "fields" : [ {
+        "name" : "5294edf8-eeca-3487-bcf3-441b7bc202ff",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Absence Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "0a9106de-ed40-36f2-926f-3b5f763e3138",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employee Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "3545d6f3-31a7-3e83-b220-8e598e96356b",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "bb1503a3-0c74-3d35-a9f1-38d27ef767a0",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Absence Type",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "c926b0ec-6932-3beb-8e70-068aaab1ee9e",
+        "type" : "real",
+        "collation" : null,
+        "caption" : "Hours",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "555936a2-33ef-3bba-8eae-6d7b07b05484",
+        "type" : "boolean",
+        "collation" : null,
+        "caption" : "Approved",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "cc9b87fe-5b8c-3561-877d-71062309151e",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Day Of Week",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "d75ae92d-f998-381e-bd96-5bdcc08244fc",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Department",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "f9034411-3959-3632-a634-ce34293ab687",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Location",
+        "ordinal" : null,
+        "isGenerated" : false
+      } ],
+      "actions" : [ {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "5294edf8-eeca-3487-bcf3-441b7bc202ff",
+        "rename" : "Absence Id",
+        "name" : "renamed 5294edf8-eeca-3487-bcf3-441b7bc202ff to Absence Id 2",
+        "id" : "c9121170-474f-451f-9afc-a9e4efb15b08",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "0a9106de-ed40-36f2-926f-3b5f763e3138",
+        "rename" : "Employee Id",
+        "name" : "renamed 0a9106de-ed40-36f2-926f-3b5f763e3138 to Employee Id 2",
+        "id" : "784033ef-5ea5-4df0-8ba0-0b2b9d763847",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "3545d6f3-31a7-3e83-b220-8e598e96356b",
+        "rename" : "Date",
+        "name" : "renamed 3545d6f3-31a7-3e83-b220-8e598e96356b to Date 2",
+        "id" : "1d2b0067-266f-409a-b01a-4d84a683ada6",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "bb1503a3-0c74-3d35-a9f1-38d27ef767a0",
+        "rename" : "Absence Type",
+        "name" : "renamed bb1503a3-0c74-3d35-a9f1-38d27ef767a0 to Absence Type 2",
+        "id" : "bee81c76-2974-419d-88ad-cfcfc8e26384",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "c926b0ec-6932-3beb-8e70-068aaab1ee9e",
+        "rename" : "Hours",
+        "name" : "renamed c926b0ec-6932-3beb-8e70-068aaab1ee9e to Hours 2",
+        "id" : "c8898af8-b460-42d4-ba5d-3585696e39c2",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "555936a2-33ef-3bba-8eae-6d7b07b05484",
+        "rename" : "Approved",
+        "name" : "renamed 555936a2-33ef-3bba-8eae-6d7b07b05484 to Approved 2",
+        "id" : "154395bb-d4e1-4b9b-9d76-6ab191f14e2a",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "cc9b87fe-5b8c-3561-877d-71062309151e",
+        "rename" : "Day Of Week",
+        "name" : "renamed cc9b87fe-5b8c-3561-877d-71062309151e to Day Of Week 2",
+        "id" : "547739e5-63c7-4c96-a4ec-9351423e3c24",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "d75ae92d-f998-381e-bd96-5bdcc08244fc",
+        "rename" : "Department",
+        "name" : "renamed d75ae92d-f998-381e-bd96-5bdcc08244fc to Department 2",
+        "id" : "823b17ac-0634-492c-9830-16bcc279c6bd",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "f9034411-3959-3632-a634-ce34293ab687",
+        "rename" : "Location",
+        "name" : "renamed f9034411-3959-3632-a634-ce34293ab687 to Location 2",
+        "id" : "d8744dc6-0713-40c3-97ea-01d7ef7da2c2",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      } ],
+      "debugModeRowLimit" : 393216,
+      "originalDataTypes" : { },
+      "randomSampling" : null,
+      "updateTimestamp" : 1778011912188,
+      "restrictedFields" : { },
+      "userRenamedFields" : { },
+      "selectedFields" : null,
+      "samplingType" : null,
+      "groupByFields" : null,
+      "filters" : [ ],
+      "relation" : {
+        "type" : "table",
+        "table" : "[27539819-0bad-4dda-96ea-8da404341b25].[ABSENCE_RECORDS (CSA.ABSENCE_RECORDS)]"
+      }
+    },
+    "0c6c423b-82e2-4964-9655-ae98549e5d1a" : {
+      "nodeType" : ".v1.PublishExtract",
+      "name" : "Output",
+      "id" : "0c6c423b-82e2-4964-9655-ae98549e5d1a",
+      "baseType" : "output",
+      "nextNodes" : [ ],
+      "serialize" : false,
+      "description" : null,
+      "projectName" : "default",
+      "projectLuid" : "e1009e58-3493-43c9-a497-0e3cbe8b2850",
+      "datasourceName" : "Output",
+      "datasourceDescription" : "",
+      "serverUrl" : "https://10ay.online.tableau.com/#/site/dataflow"
+    },
+    "9be1d3d3-4d2d-40ba-b497-c67d2eaab3d8" : {
+      "nodeType" : ".v1.LoadSql",
+      "name" : "EMPLOYEES (CSA.EMPLOYEES)",
+      "id" : "9be1d3d3-4d2d-40ba-b497-c67d2eaab3d8",
+      "baseType" : "input",
+      "nextNodes" : [ {
+        "namespace" : "Default",
+        "nextNodeId" : "1d201d2d-05d0-48a1-9c85-a267c6590ebc",
+        "nextNamespace" : "Left"
+      } ],
+      "serialize" : false,
+      "description" : null,
+      "connectionId" : "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6",
+      "connectionAttributes" : { },
+      "fields" : [ {
+        "name" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employee Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "First Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Last Name",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Email",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Department",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Role",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Location",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Hire Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Status",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "type" : "date",
+        "collation" : null,
+        "caption" : "Termination Date",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Termination Reason",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Manager Id",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "type" : "real",
+        "collation" : null,
+        "caption" : "Annual Salary",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Employment Type",
+        "ordinal" : null,
+        "isGenerated" : false
+      }, {
+        "name" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "type" : "string",
+        "collation" : "binary",
+        "caption" : "Shift",
+        "ordinal" : null,
+        "isGenerated" : false
+      } ],
+      "actions" : [ {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d",
+        "rename" : "Employee Id",
+        "name" : "renamed 1cfe8f3c-17d6-316a-ae44-90d8c94fc07d to Employee Id 3",
+        "id" : "8a3a4ab1-56a3-4c60-a2dd-fdbec3cf4100",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a9acd10c-1f13-3387-92f7-65ae98af1870",
+        "rename" : "First Name",
+        "name" : "renamed a9acd10c-1f13-3387-92f7-65ae98af1870 to First Name 3",
+        "id" : "2e8694fd-d817-4de5-b28b-4810c2f0408d",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "e3af0fed-cb33-33ba-b0ee-4a5690c57b31",
+        "rename" : "Last Name",
+        "name" : "renamed e3af0fed-cb33-33ba-b0ee-4a5690c57b31 to Last Name 3",
+        "id" : "7ac1fe94-8b37-40c7-84c4-7a0b595f76b9",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ed36eb0f-ce15-3ab1-ba20-5e690e980abd",
+        "rename" : "Email",
+        "name" : "renamed ed36eb0f-ce15-3ab1-ba20-5e690e980abd to Email 3",
+        "id" : "d7cbe9ea-5c69-4548-8131-d2252e8ead7e",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "0feb1346-6673-380c-a70e-a39635be1610",
+        "rename" : "Department",
+        "name" : "renamed 0feb1346-6673-380c-a70e-a39635be1610 to Department 3",
+        "id" : "e0af4af1-1981-40f1-a1b0-58fe806c893b",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a8401f84-0f92-3ccc-aa82-0edbcc85c31e",
+        "rename" : "Role",
+        "name" : "renamed a8401f84-0f92-3ccc-aa82-0edbcc85c31e to Role 3",
+        "id" : "63ed0a67-6ae8-4d9d-a508-136659fbab51",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a1e10793-906e-3f00-adb1-df0a946cbf5d",
+        "rename" : "Location",
+        "name" : "renamed a1e10793-906e-3f00-adb1-df0a946cbf5d to Location 3",
+        "id" : "5b96f918-405d-4420-ad9d-63ce107056be",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3",
+        "rename" : "Hire Date",
+        "name" : "renamed cd62f0d0-2d99-3b46-923d-c6f91a7a8ba3 to Hire Date 3",
+        "id" : "1e3dc689-1ac7-4ad5-9176-0750ed3a291e",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "df9bf2a5-273e-3efe-9789-378c096489d0",
+        "rename" : "Status",
+        "name" : "renamed df9bf2a5-273e-3efe-9789-378c096489d0 to Status 3",
+        "id" : "8c6f1ec8-eeec-4d1b-9111-fd5cf7e46c4c",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "9672cbee-4543-38b2-a7df-0a21aa0f2f5d",
+        "rename" : "Termination Date",
+        "name" : "renamed 9672cbee-4543-38b2-a7df-0a21aa0f2f5d to Termination Date 3",
+        "id" : "705ca5c1-2e7a-4310-a1fa-9f57bb7cd549",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "eb8842fa-e323-3636-9d73-c9fc3c154661",
+        "rename" : "Termination Reason",
+        "name" : "renamed eb8842fa-e323-3636-9d73-c9fc3c154661 to Termination Reason 3",
+        "id" : "7baa445b-a950-4e1a-b272-8ed4c090020f",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "a696b936-0b0a-3d26-800b-1eeb2f9185e6",
+        "rename" : "Manager Id",
+        "name" : "renamed a696b936-0b0a-3d26-800b-1eeb2f9185e6 to Manager Id 3",
+        "id" : "b9500a67-6494-4e56-91a2-289680782076",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "5dc3910e-0a3f-3aea-bfc2-bafea3c58e79",
+        "rename" : "Annual Salary",
+        "name" : "renamed 5dc3910e-0a3f-3aea-bfc2-bafea3c58e79 to Annual Salary 3",
+        "id" : "374f3ed1-6936-447e-8eb5-25ceffa15679",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "ea7143cf-0ef8-38fc-967a-8c206b5e3bdb",
+        "rename" : "Employment Type",
+        "name" : "renamed ea7143cf-0ef8-38fc-967a-8c206b5e3bdb to Employment Type 3",
+        "id" : "f138418c-159d-4008-8ade-9f7e7fe4cbfe",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      }, {
+        "nodeType" : ".v1.RenameColumn",
+        "columnName" : "69b0b71b-defb-3fff-88d2-ba53128b45b9",
+        "rename" : "Shift",
+        "name" : "renamed 69b0b71b-defb-3fff-88d2-ba53128b45b9 to Shift 3",
+        "id" : "d0eabd05-a591-43e4-87eb-dba7cf68146a",
+        "baseType" : "transform",
+        "nextNodes" : [ ],
+        "serialize" : false,
+        "description" : null
+      } ],
+      "debugModeRowLimit" : 393216,
+      "originalDataTypes" : { },
+      "randomSampling" : null,
+      "updateTimestamp" : 1778011912424,
+      "restrictedFields" : { },
+      "userRenamedFields" : { },
+      "selectedFields" : null,
+      "samplingType" : null,
+      "groupByFields" : null,
+      "filters" : [ ],
+      "relation" : {
+        "type" : "table",
+        "table" : "[70b913c3-a73a-4d07-bf8e-63734d718a1d].[EMPLOYEES (CSA.EMPLOYEES)]"
+      }
+    }
+  },
+  "connections" : {
+    "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6" : {
+      "connectionType" : ".v1.SqlConnection",
+      "id" : "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6",
+      "name" : "New Virtual Connection",
+      "isPackaged" : false,
+      "connectionAttributes" : {
+        "server" : "https://10ay.online.tableau.com",
+        "resourceId" : "2f78ae9a-7d26-4522-8426-27dab352dee5",
+        "port" : "443",
+        "siteUrlName" : "dataflow",
+        "resourceName" : "New Virtual Connection",
+        "class" : "publishedConnection"
+      }
+    }
+  },
+  "dataConnections" : { },
+  "connectionIds" : [ "2f8594f1-752f-4cd9-a4e1-e38983f0d1c6" ],
+  "dataConnectionIds" : [ ],
+  "nodeProperties" : {
+    "ecb3c2a5-dbe4-44c3-a190-6157fcedc588" : {
+      "com.tableau.loom.doc.fileformat.v2019_1_3.PrimaryKey" : {
+        "nodePropertyType" : ".v2019_1_3.PrimaryKey",
+        "empty" : false,
+        "fieldNames" : [ "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d" ]
+      }
+    },
+    "1d201d2d-05d0-48a1-9c85-a267c6590ebc" : {
+      "com.tableau.loom.doc.fileformat.v2019_1_3.PrimaryKey" : {
+        "nodePropertyType" : ".v2019_1_3.PrimaryKey",
+        "empty" : false,
+        "fieldNames" : [ "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d", "5294edf8-eeca-3487-bcf3-441b7bc202ff" ]
+      }
+    },
+    "afcdfed5-0f92-4e48-a603-aa5bfdd1c868" : {
+      "com.tableau.loom.doc.fileformat.v2019_1_3.PrimaryKey" : {
+        "nodePropertyType" : ".v2019_1_3.PrimaryKey",
+        "empty" : false,
+        "fieldNames" : [ "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d" ]
+      }
+    },
+    "6592fd70-5f69-444c-8978-a814427fb99d" : {
+      "com.tableau.loom.doc.fileformat.v2019_1_3.PrimaryKey" : {
+        "nodePropertyType" : ".v2019_1_3.PrimaryKey",
+        "empty" : false,
+        "fieldNames" : [ "5294edf8-eeca-3487-bcf3-441b7bc202ff" ]
+      }
+    },
+    "9be1d3d3-4d2d-40ba-b497-c67d2eaab3d8" : {
+      "com.tableau.loom.doc.fileformat.v2019_1_3.PrimaryKey" : {
+        "nodePropertyType" : ".v2019_1_3.PrimaryKey",
+        "empty" : false,
+        "fieldNames" : [ "1cfe8f3c-17d6-316a-ae44-90d8c94fc07d" ]
+      }
+    }
+  },
+  "extensibility" : { },
+  "selection" : [ ],
+  "majorVersion" : 1,
+  "minorVersion" : 4,
+  "documentId" : "f7eb3d8c-05c9-4391-9726-803033453c69",
+  "obfuscatorId" : "a23269f9-dfe8-4b9e-a5e6-305eef282878"
+}

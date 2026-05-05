@@ -79,9 +79,10 @@ const FMT_TO_KEY = {
   omni:        'omni',
   powerbi:     'pbi',
   qlik:        'qlik',
+  prep:        'prep',
   tableau:     'tableau',
   thoughtspot: 'thoughtspot',
-  // Not yet covered by fixtures: contract (atlan), prep, snow, sql, ssas
+  // Not yet covered by fixtures: contract (atlan), snow, sql, ssas
 };
 
 // ── Sigma API helpers (mirrors regression.mjs) ────────────────────────────
@@ -561,6 +562,41 @@ async function driveOac(page, fx, opts) {
   return readOutput(page, 'oacJsonOutput');
 }
 
+// Drive Tableau Prep: load raw flow JSON via loadPrepFile (handles .json and .tfl
+// inputs the same way), set connection/db/schema, then call runPrepConversion.
+async function drivePrep(page, fx, opts) {
+  const text = await readFile(fx.inputFile, 'utf-8');
+  const fname = basename(fx.inputFile);
+  const result = await page.evaluate(async (txt, fileName, connId, db, schema) => {
+    try {
+      // Reset prior state across runs.
+      if (typeof _prepFlowJson !== 'undefined') { try { _prepFlowJson = null; } catch {} }
+      if (typeof _prepTdsFiles !== 'undefined') { try { _prepTdsFiles.length = 0; } catch {} }
+      // loadPrepFile inspects file.name extension. .flow.json matches the .json branch
+      // and reads via file.text() — exactly what we want for raw flow JSON.
+      const file = new File([txt], fileName, { type: 'application/json' });
+      await window.loadPrepFile(file, /*deferConvert*/ true);
+    } catch (e) { return { ok: false, error: 'ingest: ' + e.message }; }
+    const sel = document.getElementById('prepConnectionId');
+    if (sel) {
+      if (![...sel.options].some(o => o.value === connId)) {
+        const opt = document.createElement('option');
+        opt.value = connId; opt.textContent = connId;
+        sel.appendChild(opt);
+      }
+      sel.value = connId;
+    }
+    if (db) document.getElementById('prepDatabase').value = db;
+    if (schema) document.getElementById('prepSchema').value = schema;
+    try {
+      window.runPrepConversion();
+    } catch (e) { return { ok: false, error: 'run: ' + e.message }; }
+    return { ok: true };
+  }, text, fname, opts.connectionId || '<CONNECTION_ID>', opts.database || '', opts.schema || '');
+  if (!result.ok) return result;
+  return readOutput(page, 'prepJsonOutput');
+}
+
 // Read the output textarea, parse JSON.
 async function readOutput(page, outputId) {
   const v = await page.evaluate((id) => document.getElementById(id)?.value || '', outputId);
@@ -582,6 +618,7 @@ const DRIVERS = {
   oac:         driveOac,
   omni:        driveOmni,
   powerbi:     drivePbi,
+  prep:        drivePrep,
   qlik:        driveQlik,
   thoughtspot: driveThoughtSpot,
 };
