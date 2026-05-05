@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-izl repro. User's real Tableau Prep TJ Test flow with virtual-connection inputs (UUID field names, parens-annotated table labels, 3 sibling EMPLOYEES inputs).",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 3, "noErrorColumns": true }
+}
