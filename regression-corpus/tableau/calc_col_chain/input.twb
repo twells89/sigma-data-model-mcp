@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Superstore Orders' inline='true' name='federated.superstore' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0' />
+        </named-connections>
+        <relation connection='snowflake.0' name='SUPERSTORE_ORDERS' table='[TJ].[PUBLIC].[SUPERSTORE_ORDERS]' type='table'>
+          <columns>
+            <column datatype='string' name='ORDER_ID' ordinal='1' />
+            <column datatype='string' name='SEGMENT' ordinal='2' />
+            <column datatype='real' name='SALES' ordinal='3' />
+            <column datatype='real' name='PROFIT' ordinal='4' />
+          </columns>
+        </relation>
+      </connection>
+      <!-- Condition set: row-level boolean. Other calcs reference it by display name. -->
+      <column caption='High Value Orders' datatype='boolean' name='[High Value Orders]' role='set' type='nominal'>
+        <calculation class='categorical-set' formula='[SALES] &gt; 500' />
+      </column>
+      <!-- Calculated field that references the set above by display name (the chain). -->
+      <column caption='Order Value Tier' datatype='string' name='[Order Value Tier]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='IF [High Value Orders] THEN &quot;Premium&quot; ELSE &quot;Standard&quot; END' />
+      </column>
+      <!-- Second chained calc to exercise multi-set ref. -->
+      <column caption='Profitable Orders' datatype='boolean' name='[Profitable Orders]' role='set' type='nominal'>
+        <calculation class='categorical-set' formula='[PROFIT] &gt; 0' />
+      </column>
+      <column caption='High Value Profitable' datatype='boolean' name='[High Value Profitable]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='[High Value Orders] AND [Profitable Orders]' />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>

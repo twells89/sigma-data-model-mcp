@@ -1,0 +1,12 @@
+{
+  "description": "beads-sigma-lcv regression: calc col formulas referencing OTHER local calc cols on the same element. Two condition sets ('High Value Orders', 'Profitable Orders') plus two calc cols ('Order Value Tier' refs the first set, 'High Value Profitable' refs both). Before the fix, sets were skipped, so chained calcs resolved to type:error 'Unknown name: [High Value Orders]'. Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "TJ",
+    "schema": "PUBLIC"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

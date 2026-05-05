@@ -1646,9 +1646,65 @@ export function convertTableauToSigma(
           _emitTopNHelper(topN);
           continue;
         }
-        // Non-Top-N set (member/condition) — let the converter skip it for now;
-        // the SMM/tableau-local browser tools handle these as boolean columns.
-        warnings.push(`ℹ Set "${caption}": non-Top-N set ignored (handled by browser tools).`);
+        // Condition/member-based set → boolean calc column on factEl so other
+        // calcs that reference it by name (e.g. `If([High Value Orders], ...)`)
+        // resolve. Mirrors the smm browser tool's set-handling path.
+        const setFormula = (attr(calcEl, 'formula') || '').trim();
+        let sigmaSetFormula: string | null = null;
+        if (setFormula) {
+          // Condition-based set — formula attribute holds a row predicate
+          sigmaSetFormula = tableauFormulaToSigma(setFormula, warnings);
+        } else {
+          // Member-based set — <groupfilter function="member"> children list values
+          const memberFilters: any[] = [];
+          const collectMembers = (node: any) => {
+            if (!node || typeof node !== 'object') return;
+            for (const k of Object.keys(node)) {
+              if (k === 'groupfilter') {
+                for (const gf of asArray(node[k])) {
+                  if (attr(gf, 'function') === 'member') memberFilters.push(gf);
+                  collectMembers(gf);
+                }
+              } else if (typeof node[k] === 'object') {
+                collectMembers(node[k]);
+              }
+            }
+          };
+          collectMembers(calcEl);
+          if (memberFilters.length > 0) {
+            const membersByField: Record<string, string[]> = {};
+            for (const gf of memberFilters) {
+              const level = (attr(gf, 'level') || '').replace(/^\[|\]$/g, '');
+              const val = (attr(gf, 'member') || '').replace(/^"|"$/g, '');
+              if (!level || !val) continue;
+              (membersByField[level] || (membersByField[level] = [])).push(val);
+            }
+            const conditions = Object.entries(membersByField).map(([f, vals]) => {
+              const dn = sigmaDisplayName(f);
+              return vals.length === 1
+                ? `[${dn}] = "${vals[0]}"`
+                : vals.map(v => `[${dn}] = "${v}"`).map(c => `(${c})`).join(' Or ');
+            });
+            sigmaSetFormula = conditions.length === 1
+              ? conditions[0]
+              : conditions.map(c => `(${c})`).join(' And ');
+          }
+        }
+        if (!sigmaSetFormula) {
+          warnings.push(`⚠ Set "${caption}": unrecognised set definition — skipped.`);
+          continue;
+        }
+        const _setColId = sigmaShortId();
+        const _setFmt = inferSigmaFormat(String(sigmaSetFormula), caption);
+        const _setCol: any = { id: _setColId, formula: String(sigmaSetFormula), name: caption };
+        if (_setFmt) _setCol.format = _setFmt;
+        factEl.columns.push(_setCol);
+        factEl.order.push(_setColId);
+        // Track the set as a known display name so cross-element link rewrites
+        // (and chained calcs) can resolve [<caption>] as a local column.
+        displayNameMap[caption.toUpperCase()] = { colId: _setColId, el: factEl };
+        globalColMap[caption.toUpperCase()] = { elId: factEl.id, displayName: caption };
+        warnings.push(`✅ Set "${caption}" → boolean column: ${String(sigmaSetFormula).slice(0, 80)}`);
         continue;
       }
 
@@ -1934,52 +1990,46 @@ export function convertTableauToSigma(
     }
   }
 
-  // ── Auto-fix cross-element column references with - link/ syntax ────────
-  const gColMap: Record<string, { elId: string; displayName: string }> = {};
+  // ── Pull cross-element calc cols off source elements (moved to derived) ─
+  // Calc cols whose formula references a related-table column by display name
+  // cannot resolve on the source warehouse-table element — Sigma doesn't see
+  // those names in scope. The smm browser tool's `buildDerivedElementsAndMoveCalcs`
+  // pass moves them to the derived "<Table> View" element where the related
+  // columns are surfaced via [SRC/REL/Field] formulas, then rewrites bare [X]
+  // refs to that 3-segment form.
+  const crossElCalcsByElId: Record<string, any[]> = {};
   for (const el of elements) {
-    for (const c of (el.columns || [])) {
-      const fm = c.formula.match(/\[([^\/\]]+)\/([^\]]+)\]$/);
-      if (fm) gColMap[fm[2].toUpperCase()] = { elId: el.id, displayName: fm[2] };
-    }
-  }
-  for (const el of elements) {
+    if (el.source?.kind !== 'warehouse-table') continue;
+    if (!(el as any).relationships?.length) continue;
+
     const localNames = new Set<string>();
     for (const c of (el.columns || [])) {
+      if (!c.formula) continue;
+      const m = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+      if (m) localNames.add(m[1].toUpperCase());
       if (c.name) localNames.add(c.name.toUpperCase());
-      const fm = c.formula.match(/\/([^\]]+)\]$/);
-      if (fm) localNames.add(fm[1].toUpperCase());
     }
-    const relFkLookup: Record<string, string> = {};
-    const elTbl = el.source?.path?.[el.source.path.length - 1] || 'UNKNOWN';
-    for (const rel of ((el as any).relationships || [])) {
-      const fkCol = (el.columns || []).find(c => c.id === rel.keys[0]?.sourceColumnId);
-      if (fkCol) {
-        const fkM = fkCol.formula.match(/\/([^\]]+)\]$/);
-        if (fkM) relFkLookup[rel.targetElementId] = fkM[1].replace(/\s+/g, '_').toUpperCase();
-      }
-    }
+
+    const crossEl: any[] = [];
+    const keep: any[] = [];
     for (const c of (el.columns || [])) {
-      if (!c.name || !c.formula) continue;
-      if (c.formula.match(/^\[[\w_]+\//)) continue;
-      if (c.formula.includes('- link/')) continue;
+      if (!c.name || !c.formula) { keep.push(c); continue; }
+      if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
       const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
-      let fixedFormula = c.formula;
-      let wasFixed = false;
-      for (const ref of refs) {
-        const rn = ref.replace(/^\[|\]$/g, '');
-        if (localNames.has(rn.toUpperCase()) || rn.toUpperCase() === 'TRUE' || rn.toUpperCase() === 'FALSE') continue;
-        const ge = gColMap[rn.toUpperCase()];
-        if (ge && relFkLookup[ge.elId]) {
-          fixedFormula = fixedFormula.replace(ref, `[${elTbl}/${relFkLookup[ge.elId]} - link/${ge.displayName}]`);
-          wasFixed = true;
-        }
-      }
-      if (wasFixed) {
-        c.formula = fixedFormula;
-        warnings.push(`✅ "${c.name}" → linked column: ${fixedFormula.slice(0, 100)}`);
-        warnings.push(`   ⚠ Note: Sigma API may not round-trip linked columns correctly yet.`);
+      const hasCross = refs.some(ref => {
+        const n = ref.replace(/^\[|\]$/g, '');
+        return !/^(true|false|null)$/i.test(n) && !localNames.has(n.toUpperCase());
+      });
+      if (hasCross) {
+        const oi = (el.order || []).indexOf(c.id);
+        if (oi >= 0) (el.order as string[]).splice(oi, 1);
+        crossEl.push(c);
+      } else {
+        keep.push(c);
       }
     }
+    el.columns = keep;
+    if (crossEl.length) crossElCalcsByElId[el.id] = crossEl;
   }
 
   // ── Parameters → Controls ───────────────────────────────────────────────
@@ -2024,7 +2074,59 @@ export function convertTableauToSigma(
   }
 
   // ── Derived elements (fact tables with relationships) ───────────────────
-  for (const de of buildDerivedElements(elements)) elements.push(de);
+  const derivedEls = buildDerivedElements(elements);
+  for (const de of derivedEls) elements.push(de);
+
+  // Place cross-element calc cols (pulled from source above) onto their
+  // matching derived element, rewriting bare [X] refs to [SRC/REL/X] form.
+  const placedSrcElIds: Record<string, boolean> = {};
+  for (const de of derivedEls) {
+    if (de.source?.kind !== 'table' || !(de.source as any).elementId) continue;
+    const srcElId = (de.source as any).elementId;
+    const calcs = crossElCalcsByElId[srcElId];
+    if (!calcs?.length) continue;
+    const srcEl = elements.find(e => e.id === srcElId);
+    if (!srcEl) continue;
+    const srcBaseName = (srcEl as any).name || srcEl.source?.path?.[srcEl.source.path.length - 1] || '';
+    const relatedNameMap: Record<string, string> = {};
+    if (srcEl && (srcEl as any).relationships && srcBaseName) {
+      for (const rel of ((srcEl as any).relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl = elements.find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          if (!(dispName in relatedNameMap)) {
+            relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+        }
+      }
+    }
+    for (const c of calcs) {
+      if (c.formula && Object.keys(relatedNameMap).length) {
+        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      (de.columns as any[]).push(c);
+      (de.order as string[]).push(c.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) moved to derived "${(de as any).name}" (cross-element refs)`);
+    placedSrcElIds[srcElId] = true;
+  }
+  // Drop calcs that referenced cross-element cols but had no derived element
+  for (const elId of Object.keys(crossElCalcsByElId)) {
+    if (placedSrcElIds[elId]) continue;
+    for (const c of crossElCalcsByElId[elId]) {
+      warnings.push(`⚠ "${c.name}" cross-element refs but no derived element — column dropped`);
+    }
+  }
 
   // ── Build output ────────────────────────────────────────────────────────
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
