@@ -1,0 +1,12 @@
+{
+  "description": "beads-sigma-fw6 repro. qlik converter dumps all calc dims on elements[0] regardless of ref scope. Cross-table calc must land on its source's derived element with [SRC/REL/Field] form.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "noErrorColumns": true
+  }
+}

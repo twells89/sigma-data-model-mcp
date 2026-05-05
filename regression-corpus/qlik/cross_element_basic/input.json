@@ -1,0 +1,32 @@
+{
+  "appName": "Retail Analytics Repro",
+  "qAppId": "qlik-cross-element-basic",
+  "qtr": [
+    {
+      "qName": "ORDER_FACT",
+      "qNoOfRows": 1000,
+      "qFields": [
+        { "qName": "ORDER_ID",      "qnTotalDistinctValues": 1000, "qnRows": 1000 },
+        { "qName": "CUSTOMER_KEY",  "qnTotalDistinctValues": 100,  "qnRows": 1000 },
+        { "qName": "GROSS_REVENUE", "qnTotalDistinctValues": 950,  "qnRows": 1000 },
+        { "qName": "NET_REVENUE",   "qnTotalDistinctValues": 940,  "qnRows": 1000 }
+      ]
+    },
+    {
+      "qName": "CUSTOMER_DIM",
+      "qNoOfRows": 100,
+      "qFields": [
+        { "qName": "CUSTOMER_KEY",     "qnTotalDistinctValues": 100, "qnRows": 100 },
+        { "qName": "CUSTOMER_SEGMENT", "qnTotalDistinctValues": 3,   "qnRows": 100 },
+        { "qName": "REGION",           "qnTotalDistinctValues": 4,   "qnRows": 100 }
+      ]
+    }
+  ],
+  "masterMeasures": [],
+  "masterDimensions": [
+    {
+      "title": "VIP Order Tier",
+      "fieldDef": "=If([CUSTOMER_SEGMENT]='Enterprise' and [GROSS_REVENUE]>1000 and [NET_REVENUE]>0, 'VIP', 'Reg')"
+    }
+  ]
+}

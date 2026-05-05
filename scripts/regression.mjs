@@ -103,6 +103,7 @@ async function loadConverters() {
   const omni = await import(join(BUILD_DIR, 'omni.js'));
   const alteryx = await import(join(BUILD_DIR, 'alteryx.js'));
   const powerbi = await import(join(BUILD_DIR, 'powerbi.js'));
+  const qlik = await import(join(BUILD_DIR, 'qlik.js'));
   return {
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
@@ -111,6 +112,7 @@ async function loadConverters() {
     omni: omni.convertOmniToSigma || omni.default?.convertOmniToSigma,
     alteryx: alteryx.convertAlteryxToSigma || alteryx.default?.convertAlteryxToSigma,
     powerbi: powerbi.convertPowerBIToSigma || powerbi.default?.convertPowerBIToSigma,
+    qlik: qlik.convertQlikToSigma || qlik.default?.convertQlikToSigma,
   };
 }
 
@@ -183,8 +185,8 @@ async function runFixture(fx, converters) {
   const opts = fx.summary.convertOptions || {};
   // multi-file converters take {name,content}[]
   const fileBased = ['lookml', 'cube', 'omni'];
-  // powerbi takes a parsed JSON object (not a raw string)
-  const jsonBased = ['powerbi'];
+  // powerbi and qlik take a parsed JSON object (not a raw string)
+  const jsonBased = ['powerbi', 'qlik'];
   const arg = fileBased.includes(fx.fmt)
     ? [{ name: basename(fx.inputFile), content: xml }]
     : jsonBased.includes(fx.fmt)

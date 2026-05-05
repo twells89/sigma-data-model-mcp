@@ -44,6 +44,11 @@ export function convertQlikToSigma(
     const columns: SigmaColumn[] = [];
     const order: string[] = [];
     const colMap: Record<string, { colId: string; displayName: string }> = {};
+    // Sigma resolves a warehouse-table element's identifier from the path-tail
+    // uppercase when no explicit `name` is set. We deliberately do NOT set
+    // `name` on base elements so the prefix in column formulas (also path-tail
+    // uppercase) matches the resolver.
+    const tablePrefix = t.name.toUpperCase();
 
     const visibleFields = (t.fields || []).filter((f: any) =>
       f.name && !f.isSystem && !f.isHidden && !f.name.startsWith('$')
@@ -52,7 +57,7 @@ export function convertQlikToSigma(
     for (const f of visibleFields) {
       const displayName = sigmaDisplayName(f.name);
       const colId = sigmaShortId();
-      columns.push({ id: colId, formula: `[${t.name}/${displayName}]` });
+      columns.push({ id: colId, formula: `[${tablePrefix}/${displayName}]` });
       order.push(colId);
       colMap[f.name] = { colId, displayName };
     }
@@ -60,11 +65,10 @@ export function convertQlikToSigma(
     const pathParts: string[] = [];
     if (dbOverride)  pathParts.push(dbOverride);
     if (schOverride) pathParts.push(schOverride);
-    pathParts.push(t.name.toUpperCase());
+    pathParts.push(tablePrefix);
 
     const element: SigmaElement = {
       id: elementId, kind: 'table',
-      name: sigmaDisplayName(t.name),
       source: { connectionId, kind: 'warehouse-table', path: pathParts },
       columns, order,
     };
@@ -191,7 +195,71 @@ export function convertQlikToSigma(
     if (metrics?.length) el.metrics = metrics;
   }
 
-  // Pass 4: Calculated master dimensions → columns
+  // Build derived elements up front so calc dims with cross-element refs can
+  // be placed on a derived "<Table> View" and rewritten to [SRC/REL/Field] form.
+  const derivedEls = buildDerivedElements(elements);
+  for (const de of derivedEls) elements.push(de);
+
+  // Display-name → element-id reverse map (for warehouse-table elements only)
+  // Built from each element's column formulas of form [TABLE/Display Name].
+  const displayNameToElementIds: Record<string, Set<string>> = {};
+  for (const el of elements) {
+    if (el.source?.kind !== 'warehouse-table') continue;
+    for (const c of (el.columns || [])) {
+      if (!c.formula) continue;
+      const m = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+      if (!m) continue;
+      const dn = m[1].toUpperCase();
+      if (!displayNameToElementIds[dn]) displayNameToElementIds[dn] = new Set();
+      displayNameToElementIds[dn].add(el.id);
+    }
+  }
+  // Also map raw qlik field names → element ids (parsing happens before display rewrite)
+  const qlikNameToElementIds: Record<string, Set<string>> = {};
+  for (const [tableName, info] of Object.entries(tableElementMap)) {
+    void tableName;
+    for (const fieldName of Object.keys(info.colMap)) {
+      const k = fieldName.toUpperCase();
+      if (!qlikNameToElementIds[k]) qlikNameToElementIds[k] = new Set();
+      qlikNameToElementIds[k].add(info.elementId);
+    }
+  }
+
+  // Build per-source-element maps of related-column display name → REL name,
+  // for rewriting bare [X] refs to [SRC/REL/X] triple form.
+  const relatedNameMapBySrc: Record<string, Record<string, string>> = {};
+  for (const srcEl of elements) {
+    if (srcEl.source?.kind !== 'warehouse-table') continue;
+    if (!(srcEl as any).relationships?.length) continue;
+    const srcPath = srcEl.source.path || [];
+    const srcBaseName = (srcEl as any).name || srcPath[srcPath.length - 1] || '';
+    if (!srcBaseName) continue;
+    const map: Record<string, string> = {};
+    for (const rel of ((srcEl as any).relationships || [])) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      for (const tc of (tgtEl.columns || [])) {
+        if (!tc.formula || tc.formula.startsWith('/*')) continue;
+        const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const s = inner.lastIndexOf('/');
+        const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        if (!(dispName in map)) map[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+      }
+    }
+    relatedNameMapBySrc[srcEl.id] = map;
+  }
+
+  // Helper: find a derived element backed by a source element id.
+  const derivedBySrc: Record<string, SigmaElement> = {};
+  for (const de of derivedEls) {
+    const srcId = (de.source as any)?.elementId;
+    if (srcId) derivedBySrc[srcId] = de;
+  }
+
+  // Pass 4: Calculated master dimensions → columns (placed by ref scope)
   for (const d of masterDimensions) {
     const title: string = d.title || d.qTitle || 'Dimension';
     const exprRaw: string = d.fieldDef || d.qFieldDef || d.expr || d.expression || '';
@@ -200,20 +268,64 @@ export function convertQlikToSigma(
     if (!isCalc) continue;
     let sigmaFormula = qlikExprToSigma(exprRaw, warnings, title);
     if (!sigmaFormula) continue;
+
+    // Resolve which element each ref belongs to BEFORE rewriting names — we
+    // need both the raw qlik names and post-rewrite display names to count.
+    const refsRaw = (sigmaFormula.match(/\[([^\]\/]+)\]/g) || [])
+      .map(r => r.slice(1, -1))
+      .filter(r => !/^(true|false|null)$/i.test(r));
+    const elementHits: Record<string, number> = {};
+    for (const ref of refsRaw) {
+      const upper = ref.toUpperCase();
+      const ids = qlikNameToElementIds[upper] ||
+        displayNameToElementIds[upper] || new Set<string>();
+      for (const id of ids) elementHits[id] = (elementHits[id] || 0) + 1;
+    }
+
     sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) =>
       qlikColToDisplayName[colName] ? `[${qlikColToDisplayName[colName]}]` : _m
     );
-    const targetEl = elements[0];
-    if (!targetEl) continue;
+
+    const distinctElIds = Object.keys(elementHits);
     const colId = sigmaShortId();
     const fmt: any = inferSigmaFormat(sigmaFormula, title);
     const col: any = { id: colId, formula: sigmaFormula, name: title };
     if (fmt) col.format = fmt;
-    targetEl.columns.push(col);
-    (targetEl.order as string[]).push(colId);
-  }
 
-  for (const de of buildDerivedElements(elements)) elements.push(de);
+    if (distinctElIds.length === 1) {
+      // All refs resolve to one element → place directly.
+      const targetEl = elements.find(e => e.id === distinctElIds[0]);
+      if (!targetEl) continue;
+      targetEl.columns.push(col);
+      (targetEl.order as string[]).push(colId);
+    } else if (distinctElIds.length > 1) {
+      // Refs span elements → place on derived view of the element with most refs
+      // and rewrite cross-element refs to [SRC/REL/Field] triple form.
+      const srcElId = distinctElIds.sort((a, b) =>
+        (elementHits[b] || 0) - (elementHits[a] || 0))[0];
+      const de = derivedBySrc[srcElId];
+      const srcEl = elements.find(e => e.id === srcElId);
+      const relMap = relatedNameMapBySrc[srcElId] || {};
+      if (!de) {
+        warnings.push(`⚠ Calc dimension "${title}" has cross-element refs but no derived element exists for ${srcEl ? (srcEl as any).name : srcElId} — column dropped`);
+        continue;
+      }
+      // Rewrite refs: anything in relMap → triple form. Local refs stay bare.
+      col.formula = (col.formula as string).replace(/\[([^\]\/]+)\]/g, (m: string, refName: string) => {
+        return relMap[refName] ? `[${relMap[refName]}]` : m;
+      });
+      (de.columns as any[]).push(col);
+      (de.order as string[]).push(colId);
+      warnings.push(`ℹ Calc dimension "${title}" placed on derived "${(de as any).name}" (cross-element refs)`);
+    } else {
+      // No refs resolved (e.g. literal-only formula or unknown fields) → fall
+      // back to elements[0] to preserve existing behaviour.
+      const targetEl = elements.find(e => e.source?.kind === 'warehouse-table');
+      if (!targetEl) continue;
+      targetEl.columns.push(col);
+      (targetEl.order as string[]).push(colId);
+    }
+  }
 
   const stats = {
     elements: elements.length,
