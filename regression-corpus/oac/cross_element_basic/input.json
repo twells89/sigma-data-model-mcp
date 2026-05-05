@@ -1,0 +1,76 @@
+[
+  {
+    "name": "Order Fact",
+    "logicalTableSources": [
+      {
+        "name": "OrderFactSource",
+        "tableMapping": { "tables": ["CSA.TJ.ORDER_FACT"] }
+      }
+    ],
+    "logicalColumns": [
+      {
+        "name": "Order ID",
+        "logicalColumnSource": {
+          "physicalMappings": [
+            { "physicalExpression": { "text": "\"CSA\".\"TJ\".\"ORDER_FACT\".\"ORDER_ID\"" } }
+          ]
+        }
+      },
+      {
+        "name": "Customer Key",
+        "logicalColumnSource": {
+          "physicalMappings": [
+            { "physicalExpression": { "text": "\"CSA\".\"TJ\".\"ORDER_FACT\".\"CUSTOMER_KEY\"" } }
+          ]
+        }
+      },
+      {
+        "name": "Gross Revenue",
+        "aggregation": { "rule": "SUM" },
+        "logicalColumnSource": {
+          "physicalMappings": [
+            { "physicalExpression": { "text": "\"CSA\".\"TJ\".\"ORDER_FACT\".\"GROSS_REVENUE\"" } }
+          ]
+        }
+      },
+      {
+        "name": "Segmented Revenue",
+        "logicalColumnSource": {
+          "logicalExpression": {
+            "text": "CASE WHEN \"Customer Dim\".\"Customer Segment\" = 'Enterprise' THEN \"Order Fact\".\"Gross Revenue\" * 1.1 ELSE \"Order Fact\".\"Gross Revenue\" END"
+          }
+        }
+      }
+    ],
+    "joins": [
+      { "rightTable": "Customer Dim" }
+    ]
+  },
+  {
+    "name": "Customer Dim",
+    "logicalTableSources": [
+      {
+        "name": "CustomerDimSource",
+        "tableMapping": { "tables": ["CSA.TJ.CUSTOMER_DIM"] }
+      }
+    ],
+    "logicalColumns": [
+      {
+        "name": "Customer Key",
+        "logicalColumnSource": {
+          "physicalMappings": [
+            { "physicalExpression": { "text": "\"CSA\".\"TJ\".\"CUSTOMER_DIM\".\"CUSTOMER_KEY\"" } }
+          ]
+        }
+      },
+      {
+        "name": "Customer Segment",
+        "logicalColumnSource": {
+          "physicalMappings": [
+            { "physicalExpression": { "text": "\"CSA\".\"TJ\".\"CUSTOMER_DIM\".\"CUSTOMER_SEGMENT\"" } }
+          ]
+        }
+      }
+    ]
+  }
+]

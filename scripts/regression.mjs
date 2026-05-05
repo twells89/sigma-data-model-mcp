@@ -105,6 +105,7 @@ async function loadConverters() {
   const powerbi = await import(join(BUILD_DIR, 'powerbi.js'));
   const qlik = await import(join(BUILD_DIR, 'qlik.js'));
   const thoughtspot = await import(join(BUILD_DIR, 'thoughtspot.js'));
+  const oac = await import(join(BUILD_DIR, 'oac.js'));
   return {
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
@@ -115,6 +116,7 @@ async function loadConverters() {
     powerbi: powerbi.convertPowerBIToSigma || powerbi.default?.convertPowerBIToSigma,
     qlik: qlik.convertQlikToSigma || qlik.default?.convertQlikToSigma,
     thoughtspot: thoughtspot.convertThoughtSpotToSigma || thoughtspot.default?.convertThoughtSpotToSigma,
+    oac: oac.convertOacToSigma || oac.default?.convertOacToSigma,
   };
 }
 
@@ -194,8 +196,9 @@ async function runFixture(fx, converters) {
   const opts = fx.summary.convertOptions || {};
   // multi-file converters take {name,content}[]
   const fileBased = ['lookml', 'cube', 'omni'];
-  // powerbi and qlik take a parsed JSON object (not a raw string)
-  const jsonBased = ['powerbi', 'qlik'];
+  // powerbi/qlik take a parsed JSON object; oac takes a parsed JSON array.
+  // JSON.parse handles both shapes, so a single list is sufficient.
+  const jsonBased = ['powerbi', 'qlik', 'oac'];
   let arg;
   if (fx.inputFiles && fx.inputFiles.length) {
     const parts = await Promise.all(fx.inputFiles.map(async fp => ({
