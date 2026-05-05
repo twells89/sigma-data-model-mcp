@@ -1,0 +1,8 @@
+explores:
+  - name: order_fact
+    from: order_fact
+    joins:
+      - name: customer_dim
+        from: customer_dim
+        relationship: many_to_one
+        sql_on: ${order_fact.customer_key} = ${customer_dim.customer_key}

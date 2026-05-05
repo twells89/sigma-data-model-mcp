@@ -133,10 +133,12 @@ export function convertOmniToSigma(
       }
 
       sourceTable = path[path.length - 1] || tableName;
+      // No element.name — Sigma defaults to last path segment (e.g.
+      // CUSTOMER_DIM), which matches `[CUSTOMER_DIM/Col]` formula refs.
+      // Setting a display-cased name (e.g. "Customer Dim") breaks resolution.
       element = {
         id:     elementId,
         kind:   'table',
-        name:   displayName,
         source: { connectionId, kind: 'warehouse-table', path },
         columns: [],
         metrics: [],
@@ -344,10 +346,15 @@ export function convertOmniToSigma(
         tgtColId = toEntry.pkColId;
       }
 
+      // Relationship name = uppercase target table name (matches dbt/derived
+      // element convention: cross-element refs are [SRC/REL_NAME/Col]).
+      const tgtTableName = toEntry.element.source?.kind === 'warehouse-table'
+        ? (toEntry.element.source.path[toEntry.element.source.path.length - 1] || toViewName.toUpperCase())
+        : toViewName.toUpperCase();
       const rel: any = {
         id:               sigmaShortId(),
         targetElementId:  toEntry.elementId,
-        name:             `${sigmaDisplayName(fromViewName)} to ${sigmaDisplayName(toViewName)}`,
+        name:             tgtTableName,
         relationshipType: join.relationship === 'one_to_many' ? '1:N' : 'N:1',
       };
       if (srcColId && tgtColId) {
@@ -357,6 +364,114 @@ export function convertOmniToSigma(
       }
 
       (fromEntry.element.relationships ??= []).push(rel);
+    }
+  }
+
+  // ── Pull cross-view calc cols off source elements (moved to derived) ────
+  // A computed dim like `${other_view.field}` is translated to a bare [Field]
+  // ref on the source warehouse-table element where Sigma can't resolve it.
+  // Mirror the tableau converter: detect refs that don't match any local col,
+  // pull them off the source, then place onto the derived element with
+  // [SrcTable/REL_NAME/Field] triple-form refs.  (See tableau.ts:1993-2129.)
+  const crossElCalcsByElId: Record<string, any[]> = {};
+  for (const el of elements as any[]) {
+    if (el.source?.kind !== 'warehouse-table') continue;
+    if (!el.relationships?.length) continue;
+
+    // Local names = display names of own physical pass-through cols. Calc
+    // cols (those with `name`) are NOT counted because their bare [X] refs
+    // could be cross-view themselves (the bug we're fixing).
+    const localNames = new Set<string>();
+    for (const c of (el.columns || [])) {
+      if (!c.formula || c.name) continue;
+      const m = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+      if (m) localNames.add(m[1].toUpperCase());
+      const m2 = c.formula.match(/^\[([^\]\/]+)\]$/);
+      if (m2) localNames.add(m2[1].toUpperCase());
+    }
+
+    const crossEl: any[] = [];
+    const keep: any[] = [];
+    for (const c of (el.columns || [])) {
+      if (!c.name || !c.formula) { keep.push(c); continue; }
+      // Pure [TABLE/Col] passthrough — keep on source
+      if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
+      // Pure [Col] passthrough that resolves locally — keep
+      const single = c.formula.match(/^\[([^\]\/]+)\]$/);
+      if (single && localNames.has(single[1].toUpperCase())) { keep.push(c); continue; }
+      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      const hasCross = refs.some((ref: string) => {
+        const n = ref.replace(/^\[|\]$/g, '');
+        return !/^(true|false|null)$/i.test(n) && !localNames.has(n.toUpperCase());
+      });
+      if (hasCross) {
+        const oi = (el.order || []).indexOf(c.id);
+        if (oi >= 0) (el.order as string[]).splice(oi, 1);
+        crossEl.push(c);
+      } else {
+        keep.push(c);
+      }
+    }
+    el.columns = keep;
+    if (crossEl.length) crossElCalcsByElId[el.id] = crossEl;
+  }
+
+  // Build derived elements per source element with relationships and surface
+  // joined cols via [SrcTable/REL_NAME/Field] cross-element refs. Then place
+  // pulled cross-view calcs onto matching derived element, rewriting bare
+  // [X] refs to triple-form.
+  const derivedEls = buildDerivedElementsForOmni(elements as any[]);
+  for (const de of derivedEls) (elements as any[]).push(de);
+
+  const placedSrcElIds: Record<string, boolean> = {};
+  for (const de of derivedEls) {
+    if (de.source?.kind !== 'table' || !de.source.elementId) continue;
+    const srcElId = de.source.elementId;
+    const calcs = crossElCalcsByElId[srcElId];
+    if (!calcs?.length) continue;
+    const srcEl: any = (elements as any[]).find(e => e.id === srcElId);
+    if (!srcEl) continue;
+    const srcBaseName: string = srcEl.name
+      || (srcEl.source?.path?.[srcEl.source.path.length - 1] ?? '');
+    const relatedNameMap: Record<string, string> = {};
+    if (srcEl.relationships && srcBaseName) {
+      for (const rel of (srcEl.relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl: any = (elements as any[]).find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          if (tc.name && !(tc.name in relatedNameMap)) {
+            relatedNameMap[tc.name] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+          if (!(dispName in relatedNameMap)) {
+            relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+        }
+      }
+    }
+    for (const c of calcs) {
+      if (c.formula && Object.keys(relatedNameMap).length) {
+        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      (de.columns as any[]).push(c);
+      (de.order as string[]).push(c.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) moved to derived "${de.name}" (cross-view refs)`);
+    placedSrcElIds[srcElId] = true;
+  }
+  for (const elId of Object.keys(crossElCalcsByElId)) {
+    if (placedSrcElIds[elId]) continue;
+    for (const c of crossElCalcsByElId[elId]) {
+      warnings.push(`⚠ "${c.name}" cross-view refs but no derived element — column dropped`);
     }
   }
 
@@ -388,6 +503,66 @@ export function convertOmniToSigma(
       totalMeasures,
     },
   };
+}
+
+/**
+ * Build derived (browsable) elements for each source element with relationships.
+ * Surfaces own warehouse cols + joined dim cols via [SrcTable/REL_NAME/Col] refs.
+ * Mirrors lookml.ts:buildDerivedElements; required for cross-view calc col placement.
+ */
+function buildDerivedElementsForOmni(elements: any[]): any[] {
+  const derived: any[] = [];
+  for (const srcEl of elements) {
+    if (!srcEl.relationships?.length) continue;
+    if (srcEl.source?.kind !== 'warehouse-table') continue;
+
+    const srcPath = srcEl.source.path as string[];
+    const srcTableName = srcEl.name || srcPath[srcPath.length - 1];
+
+    const viewCols: Array<{ id: string; formula: string }> = [];
+    const viewOrder: string[] = [];
+
+    // Own warehouse columns (no name = physical pass-through; computed cols
+    // with bare [Col] refs won't resolve here).
+    for (const col of srcEl.columns ?? []) {
+      if (!col.formula || col.formula.startsWith('/*')) continue;
+      if (col.name) continue;
+      const cId = sigmaShortId();
+      viewCols.push({ id: cId, formula: col.formula });
+      viewOrder.push(cId);
+    }
+
+    // Joined dim cols via [SrcTable/REL_NAME/Col] cross-element refs.
+    for (const rel of srcEl.relationships ?? []) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      for (const col of tgtEl.columns ?? []) {
+        if (!col.formula || col.formula.startsWith('/*')) continue;
+        if (col.name) continue;
+        const fm = col.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const slashIdx = inner.lastIndexOf('/');
+        const dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        const cId = sigmaShortId();
+        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewOrder.push(cId);
+      }
+    }
+
+    if (viewCols.length > 0) {
+      derived.push({
+        id: sigmaShortId(),
+        kind: 'table',
+        name: `${srcTableName} View`,
+        source: { kind: 'table', elementId: srcEl.id },
+        columns: viewCols,
+        order: viewOrder,
+      });
+    }
+  }
+  return derived;
 }
 
 // ── Formula translation ──────────────────────────────────────────────────────

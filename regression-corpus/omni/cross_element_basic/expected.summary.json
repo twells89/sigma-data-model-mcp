@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-5v7 repro. order_fact has a calc dim referencing customer_dim.customer_segment via cross-view ref — must move to derived element with [SRC/REL/Field] form.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 2, "noErrorColumns": true }
+}

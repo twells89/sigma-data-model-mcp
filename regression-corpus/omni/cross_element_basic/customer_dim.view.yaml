@@ -1,0 +1,11 @@
+view: customer_dim
+sql_table_name: CSA.TJ.CUSTOMER_DIM
+
+dimensions:
+  - name: customer_key
+    primary_key: true
+    sql: ${TABLE}.CUSTOMER_KEY
+  - name: customer_segment
+    sql: ${TABLE}.CUSTOMER_SEGMENT
+  - name: loyalty_tier
+    sql: ${TABLE}.LOYALTY_TIER

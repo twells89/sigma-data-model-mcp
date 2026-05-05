@@ -1,0 +1,14 @@
+view: order_fact
+sql_table_name: CSA.TJ.ORDER_FACT
+
+dimensions:
+  - name: order_id
+    primary_key: true
+    sql: ${TABLE}.ORDER_ID
+  - name: customer_key
+    sql: ${TABLE}.CUSTOMER_KEY
+  - name: gross_revenue
+    sql: ${TABLE}.GROSS_REVENUE
+  - name: customer_segment_alias
+    label: Customer Segment Alias
+    sql: ${customer_dim.customer_segment}

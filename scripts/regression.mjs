@@ -156,16 +156,24 @@ async function discoverFixtures(filter) {
       if (!(await stat(fxDir)).isDirectory()) continue;
       const id = `${fmt}/${name}`;
       if (filter && id !== filter && fmt !== filter) continue;
-      // find input.* file
+      // find input file(s). Single-file: input.*  Multi-file: any non-summary file.
       const files = await readdir(fxDir);
-      const input = files.find(f => f.startsWith('input.'));
-      if (!input) continue;
+      const single = files.find(f => f.startsWith('input.'));
+      const multi = ['lookml', 'cube', 'omni'].includes(fmt) && !single
+        ? files.filter(f => f !== 'expected.summary.json' && !f.startsWith('expected.') && !f.startsWith('.'))
+        : null;
+      if (!single && (!multi || multi.length === 0)) continue;
       let summary = {};
       const summaryPath = join(fxDir, 'expected.summary.json');
       if (existsSync(summaryPath)) {
         summary = JSON.parse(await readFile(summaryPath, 'utf-8'));
       }
-      fixtures.push({ id, fmt, name, dir: fxDir, inputFile: join(fxDir, input), summary });
+      fixtures.push({
+        id, fmt, name, dir: fxDir,
+        inputFile: single ? join(fxDir, single) : null,
+        inputFiles: multi ? multi.map(f => join(fxDir, f)) : null,
+        summary,
+      });
     }
   }
   return fixtures;
@@ -181,17 +189,25 @@ async function runFixture(fx, converters) {
   const fn = converters[fx.fmt];
   if (!fn) return { id: fx.id, ok: false, reason: `no converter for format ${fx.fmt}` };
 
-  const xml = await readFile(fx.inputFile, 'utf-8');
   const opts = fx.summary.convertOptions || {};
   // multi-file converters take {name,content}[]
   const fileBased = ['lookml', 'cube', 'omni'];
   // powerbi and qlik take a parsed JSON object (not a raw string)
   const jsonBased = ['powerbi', 'qlik'];
-  const arg = fileBased.includes(fx.fmt)
-    ? [{ name: basename(fx.inputFile), content: xml }]
-    : jsonBased.includes(fx.fmt)
-      ? JSON.parse(xml)
-      : xml;
+  let arg;
+  if (fx.inputFiles && fx.inputFiles.length) {
+    const parts = await Promise.all(fx.inputFiles.map(async fp => ({
+      name: basename(fp), content: await readFile(fp, 'utf-8'),
+    })));
+    arg = fileBased.includes(fx.fmt) ? parts : parts.map(p => p.content).join('\n');
+  } else {
+    const xml = await readFile(fx.inputFile, 'utf-8');
+    arg = fileBased.includes(fx.fmt)
+      ? [{ name: basename(fx.inputFile), content: xml }]
+      : jsonBased.includes(fx.fmt)
+        ? JSON.parse(xml)
+        : xml;
+  }
   let result;
   try {
     result = fn(arg, opts);
