@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-v67 repro. Alteryx workflow has a calc col on ORDER_FACT referencing CUSTOMER_DIM.CUSTOMER_SEGMENT. Pre-fix this calc was dropped with a warning; post-fix it should move to the derived element with [SRC/REL/Field] form.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 2, "noErrorColumns": true }
+}

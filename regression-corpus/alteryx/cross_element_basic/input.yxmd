@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AlteryxDocument yxmdVer="2024.1">
+  <Nodes>
+    <!-- DbFileInput: ORDER_FACT -->
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Passwords/>
+          <File OutputFileName="" RecordLimit="" SearchSubDirs="False" FileFormat="0">odbc:DSN=Snowflake;UID=svc_alteryx;DATABASE=CSA;SCHEMA=TJ|||"CSA"."TJ"."ORDER_FACT"</File>
+          <FormatSpecificOptions/>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name/>
+          <DefaultAnnotationText>ORDER_FACT</DefaultAnnotationText>
+          <Left value="False"/>
+        </Annotation>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="ORDER_ID" size="50" source="File: CSA.TJ.ORDER_FACT" type="V_WString"/>
+            <Field name="CUSTOMER_KEY" source="File: CSA.TJ.ORDER_FACT" type="Int32"/>
+            <Field name="GROSS_REVENUE" source="File: CSA.TJ.ORDER_FACT" type="Double"/>
+            <Field name="DISCOUNT_AMOUNT" source="File: CSA.TJ.ORDER_FACT" type="Double"/>
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- DbFileInput: CUSTOMER_DIM -->
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="198"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Passwords/>
+          <File OutputFileName="" RecordLimit="" SearchSubDirs="False" FileFormat="0">odbc:DSN=Snowflake;UID=svc_alteryx;DATABASE=CSA;SCHEMA=TJ|||"CSA"."TJ"."CUSTOMER_DIM"</File>
+          <FormatSpecificOptions/>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name/>
+          <DefaultAnnotationText>CUSTOMER_DIM</DefaultAnnotationText>
+          <Left value="False"/>
+        </Annotation>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="CUSTOMER_KEY" source="File: CSA.TJ.CUSTOMER_DIM" type="Int32"/>
+            <Field name="FIRST_NAME" size="100" source="File: CSA.TJ.CUSTOMER_DIM" type="V_WString"/>
+            <Field name="CUSTOMER_SEGMENT" size="50" source="File: CSA.TJ.CUSTOMER_DIM" type="V_WString"/>
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- Join: ORDER_FACT (Left=1) + CUSTOMER_DIM (Right=2) on CUSTOMER_KEY -->
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="252" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration joinByRecordPos="False">
+          <JoinInfo connection="Left">
+            <Field field="CUSTOMER_KEY"/>
+          </JoinInfo>
+          <JoinInfo connection="Right">
+            <Field field="CUSTOMER_KEY"/>
+          </JoinInfo>
+          <SelectConfiguration>
+            <SelectFields>
+              <SelectField field="ORDER_ID" selected="True"/>
+              <SelectField field="CUSTOMER_KEY" selected="True"/>
+              <SelectField field="GROSS_REVENUE" selected="True"/>
+              <SelectField field="DISCOUNT_AMOUNT" selected="True"/>
+              <SelectField field="Right_CUSTOMER_KEY" selected="False"/>
+              <SelectField field="FIRST_NAME" selected="True"/>
+              <SelectField field="CUSTOMER_SEGMENT" selected="True"/>
+            </SelectFields>
+          </SelectConfiguration>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="ORDER_ID" size="50" type="V_WString"/>
+            <Field name="CUSTOMER_KEY" type="Int32"/>
+            <Field name="GROSS_REVENUE" type="Double"/>
+            <Field name="DISCOUNT_AMOUNT" type="Double"/>
+            <Field name="FIRST_NAME" size="100" type="V_WString"/>
+            <Field name="CUSTOMER_SEGMENT" size="50" type="V_WString"/>
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxJoin"/>
+    </Node>
+
+    <!-- Formula: a calc col on ORDER_FACT that references a CUSTOMER_DIM column.
+         Pre-fix this gets dropped with a warning; post-fix it should land on
+         the derived "ORDER_FACT View" element with [ORDER_FACT/CUSTOMER_DIM/Customer Segment] form. -->
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
+        <Position x="450" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression='IIF([CUSTOMER_SEGMENT] = "Premium", [GROSS_REVENUE] * 1.1, [GROSS_REVENUE])' field="SEGMENT_ADJUSTED_REVENUE" size="8" type="Double"/>
+          </FormulaFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="ORDER_ID" size="50" type="V_WString"/>
+            <Field name="CUSTOMER_KEY" type="Int32"/>
+            <Field name="GROSS_REVENUE" type="Double"/>
+            <Field name="DISCOUNT_AMOUNT" type="Double"/>
+            <Field name="FIRST_NAME" size="100" type="V_WString"/>
+            <Field name="CUSTOMER_SEGMENT" size="50" type="V_WString"/>
+            <Field name="SEGMENT_ADJUSTED_REVENUE" type="Double"/>
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+  </Nodes>
+
+  <Connections>
+    <Connection>
+      <Origin ToolID="1" Connection="Output"/>
+      <Destination ToolID="3" Connection="Left"/>
+    </Connection>
+    <Connection>
+      <Origin ToolID="2" Connection="Output"/>
+      <Destination ToolID="3" Connection="Right"/>
+    </Connection>
+    <Connection>
+      <Origin ToolID="3" Connection="Join"/>
+      <Destination ToolID="4" Connection="Input"/>
+    </Connection>
+  </Connections>
+
+  <Properties>
+    <Memory default="512"/>
+    <GlobalRecordLimit value="0"/>
+    <TempFiles default=""/>
+    <Annotation on="1" includeToolName="0"/>
+    <ConversionErrorLimit value="10"/>
+    <CancelOnError value="False"/>
+    <DisableBrowse value="False"/>
+    <EnablePerformanceProfiling value="False"/>
+    <LayoutType>Horizontal</LayoutType>
+  </Properties>
+</AlteryxDocument>

@@ -70,6 +70,10 @@ export function convertAlteryxToSigma(
   const elements: SigmaElement[] = [];
   const elementMap: Record<string, { element: SigmaElement; colIdMap: Record<string, string>; tableName: string; toolId: string }> = {};
   const emptyMeta = new Set<string>(); // inputs whose MetaInfo had no fields
+  // Cross-element calc cols pulled from source elements; placed onto derived
+  // elements after `buildDerivedElements`. Hoisted here so step 7 (inside
+  // `if (factEl)`) and the post-derived placement loop share the same dict.
+  const crossElCalcsByElId: Record<string, any[]> = {};
 
   // 1. Build elements from Input Data tools
   for (const inp of inputs) {
@@ -280,7 +284,15 @@ export function convertAlteryxToSigma(
       if (expr) warnings.push(`Filter: ${String(expr).trim().slice(0, 80)} — consider adding as RLS`);
     }
 
-    // 7. Remove calculated columns/metrics referencing cross-element columns
+    // 7. Pull cross-element calc cols off source elements (moved to derived).
+    //    Calc cols whose formula references a related-table column by display
+    //    name cannot resolve on the source warehouse-table element — Sigma
+    //    doesn't see those names in scope. Mirror the Tableau converter's
+    //    `buildDerivedElementsAndMoveCalcs` pattern: lift the calc onto the
+    //    derived "<Table> View" element where related columns are surfaced
+    //    via [SRC/REL/Field] formulas, then rewrite bare [X] refs to that
+    //    3-segment form. Metrics still get removed (Sigma metrics live on the
+    //    base element, derived elements don't host them).
     const globalColMap: Record<string, { elId: string; displayName: string }> = {};
     elements.forEach(el => {
       (el.columns || []).forEach(c => {
@@ -311,17 +323,18 @@ export function convertAlteryxToSigma(
         return false;
       };
 
+      const cross: any[] = [];
       for (let i = (el.columns?.length || 0) - 1; i >= 0; i--) {
         const c = el.columns[i];
         if (c.name && hasCrossRef(c.formula)) {
-          warnings.push(`Removed "${c.name}" — references columns from related tables. Add manually in Sigma UI.`);
-          const colId = c.id;
           el.columns.splice(i, 1);
-          const oi = (el.order as string[]).indexOf(colId);
+          const oi = (el.order as string[]).indexOf(c.id);
           if (oi >= 0) (el.order as string[]).splice(oi, 1);
           localNames.delete(c.name.toUpperCase());
+          cross.push(c);
         }
       }
+      if (cross.length) crossElCalcsByElId[el.id] = cross.reverse();
       if (el.metrics) {
         for (let i = el.metrics.length - 1; i >= 0; i--) {
           if (hasCrossRef(el.metrics[i].formula)) {
@@ -344,7 +357,63 @@ export function convertAlteryxToSigma(
     return aR === bR ? 0 : aR ? 1 : -1;
   });
 
-  for (const de of buildDerivedElements(elements)) elements.push(de);
+  const derivedEls = buildDerivedElements(elements);
+  for (const de of derivedEls) elements.push(de);
+
+  // Place cross-element calc cols (pulled from source above) onto their
+  // matching derived element, rewriting bare [X] refs to [SRC/REL/X] form.
+  // The triple form `[BaseElement/REL_NAME/Field]` is the only form Sigma
+  // resolves on a derived "<Table> View" element. Mirrors Tableau converter.
+  const placedSrcElIds: Record<string, boolean> = {};
+  for (const de of derivedEls) {
+    if (de.source?.kind !== 'table' || !(de.source as any).elementId) continue;
+    const srcElId = (de.source as any).elementId;
+    const calcs = crossElCalcsByElId[srcElId];
+    if (!calcs?.length) continue;
+    const srcEl = elements.find(e => e.id === srcElId);
+    if (!srcEl) continue;
+    // Alteryx warehouse-table elements don't set `name`; baseName is the
+    // path-tail (matches buildDerivedElements' resolution).
+    const srcPath: string[] = (srcEl.source as any)?.path || [];
+    const srcBaseName = (srcEl as any).name || srcPath[srcPath.length - 1] || '';
+    const relatedNameMap: Record<string, string> = {};
+    if (srcBaseName && (srcEl as any).relationships) {
+      for (const rel of ((srcEl as any).relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl = elements.find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          if (!(dispName in relatedNameMap)) {
+            relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+        }
+      }
+    }
+    for (const c of calcs) {
+      if (c.formula && Object.keys(relatedNameMap).length) {
+        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      (de.columns as any[]).push(c);
+      (de.order as string[]).push(c.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) moved to derived "${(de as any).name}" (cross-element refs)`);
+    placedSrcElIds[srcElId] = true;
+  }
+  for (const elId of Object.keys(crossElCalcsByElId)) {
+    if (placedSrcElIds[elId]) continue;
+    for (const c of crossElCalcsByElId[elId]) {
+      warnings.push(`⚠ "${c.name}" cross-element refs but no derived element — column dropped`);
+    }
+  }
 
   const finalName = nameOverride || 'Alteryx Workflow';
   const stats = {
