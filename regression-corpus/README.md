@@ -99,15 +99,42 @@ Exit code:
 - Shape regressions (helper element dedup breaking, relationships disappearing, etc.) via the `minXxx` asserts.
 - Cross-element move pass coherence (folder-scrub + formula rewrite) via `customer_retail_real_tds` and `setsbug_cross_element`.
 
+## Surface matrix
+
+Each fixture is run against TWO surfaces. Both must pass for a green merge.
+
+| Surface | Command | What it tests |
+| --- | --- | --- |
+| MCP | `npm run regression` | The TypeScript converters in `build/` (`convertTableauToSigma`, `convertLookMLToSigma`, …). Direct function call. |
+| smm browser | `npm run regression:browser` | Same fixtures driven through the `index.html` browser tool via Puppeteer — the same code path real users hit. |
+
+`npm run regression:all` runs both sequentially and exits 0 only if both surfaces pass every fixture.
+
+## smm browser runner (`npm run regression:browser`)
+
+Uses Puppeteer to:
+
+1. Launch headless Chromium and load `file:///Users/tjwells/sigma-data-model-manager/index.html`.
+2. Connect to Sigma via the UI (fills `#apiRegion`/`#clientId`/`#clientSecret`, clicks `#connectBtn`).
+3. For each fixture: switch the converter tab via `#converterFormat`, feed the fixture's input through the converter's own UI handler (`ingestTableauXml`, `processOmniFiles`, `runDbtConversion`, etc.), set the connection / database / schema, run the conversion, and read the generated JSON from the converter's output textarea.
+4. POST the JSON to Sigma's `/v2/dataModels/spec`, scan for error columns (same hard gate as the MCP runner), then DELETE the model.
+5. Print a per-fixture pass/fail matrix and exit 0/1.
+
+Why we run both: the smm browser tool and the MCP converters share family resemblance but were forked at points and have diverged. A converter can pass MCP and fail smm (and vice-versa) — for example, several smm converters omit the required `schemaVersion: 1` at the model root, which is invisible inside the smm Save modal (which adds it on save) but breaks any direct POST. The browser runner catches that whole class of bug.
+
 ## Roadmap
 
-v1 (this commit):
-- Tableau format only
-- MCP converter only (smm + tableau-local browser tools not yet exercised)
-- 3 seed fixtures
+v1 (initial):
+- Tableau format only.
+- MCP converter only.
+- 3 seed fixtures.
 
-v2 (future):
-- Browser-tool variant via Puppeteer (runs same fixtures against `index.html` and `tableau-local.html`, asserts identical specs across surfaces)
-- LookML, dbt, Power BI, etc. fixtures
-- Optional `expected.query.json` (SQL + expected rows) for numeric drift detection
-- Pre-push git hook + GitHub Actions wiring
+v2 (this commit):
+- Puppeteer browser variant added for the smm browser tool (`npm run regression:browser`).
+- 10 new cross-element fixtures (alteryx, cube, dbt, lookml, oac, omni, powerbi, qlik, thoughtspot) covering the bug class identified in the 2026-05-04 sweep.
+- Surface matrix: every fixture exercised against both MCP and smm browser surfaces.
+
+v3 (future):
+- `tableau-local.html` browser variant.
+- Optional `expected.query.json` (SQL + expected rows) for numeric drift detection.
+- Pre-push git hook + GitHub Actions wiring.

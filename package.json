@@ -14,7 +14,9 @@
     "dev:local": "tsx src/index.ts",
     "test": "node --import tsx/esm --test src/lookml.test.ts",
     "test:integration": "node --import tsx/esm --test src/lookml.integration.test.ts",
-    "regression": "node scripts/regression.mjs"
+    "regression": "node scripts/regression.mjs",
+    "regression:browser": "node scripts/regression-browser.mjs",
+    "regression:all": "node scripts/regression.mjs && node scripts/regression-browser.mjs"
   },
   "files": [
     "build"
