@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-7mh repro. order_fact has DAX measure RELATED('customer_dim'[CUSTOMER_SEGMENT]) which must move to derived element with [SRC/REL/Field] triple-form refs.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 2, "minRelationships": 1, "noErrorColumns": true }
+}

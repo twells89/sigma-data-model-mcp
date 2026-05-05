@@ -14,6 +14,7 @@
 
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
+  buildDerivedElements,
   type SigmaElement, type SigmaColumn, type ConversionResult,
 } from './sigma-ids.js';
 
@@ -116,11 +117,16 @@ export function pbiDaxToSigma(
   f = f.replace(/\bMIN\s*\(/gi, 'Min(');
   f = f.replace(/\bMAX\s*\(/gi, 'Max(');
   f = f.replace(/\bCOUNT\s*\(/gi, 'Count(');
-  // RELATED([Col]) → just [Col], but warn that cross-table reference may need review
+  // RELATED('table'[Col]) — the inner 'table'[Col] is normalized below to
+  // [Col]; we strip the RELATED wrapper after that. The bare ref is
+  // intentional: the post-conversion cross-element move pass detects calc
+  // cols whose refs aren't local, pulls them off the source warehouse-table,
+  // and places them on the derived "<Table> View" element with refs
+  // rewritten to the triple form [SRC/REL/Col] — the only form Sigma
+  // resolves for cross-element refs.
   const hadRelated = /\bRELATED\s*\(/i.test(f);
-  f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
   if (hadRelated && warnings) {
-    warnings.push(`⚠ Calculated column "${measureName}": uses RELATED() — cross-table reference may not resolve. Review and update to use Sigma cross-element syntax: [SRC_TABLE/REL_NAME/Column].`);
+    warnings.push(`ℹ Calculated column "${measureName}": uses RELATED() — column will be moved to a derived "<Table> View" element with cross-element refs rewritten to [SRC/REL/Col] form.`);
   }
   f = f.replace(/\bRELATEDTABLE\s*\([^)]*\)/gi, '/* RELATEDTABLE - use relationship */');
   // Logical
@@ -178,6 +184,11 @@ export function pbiDaxToSigma(
   f = f.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]');
   // Also handle unquoted: Table[Column] → [Column]
   f = f.replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+
+  // Strip RELATED([col]) → [col] AFTER table-prefix normalization, so that
+  // RELATED('dim'[X]) (which the line 121 regex couldn't match because of
+  // the quoted prefix) gets unwrapped here.
+  f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
 
   return f.trim();
 }
@@ -270,6 +281,23 @@ export function convertPowerBIToSigma(
     }
   }
 
+  // Pre-pass: map every table's column PBI-name → Sigma display name across
+  // the entire model so calc col formulas referencing related-table columns
+  // (e.g. RELATED('dim'[COL_X]) → bare [COL_X]) can be normalized to the
+  // display-name form before the cross-element move pass runs.
+  for (const t of model.tables) {
+    if (calcGroupTables.has(t.name)) continue;
+    if (t.name.startsWith('LocalDateTable_') || t.name.startsWith('DateTableTemplate_')) continue;
+    for (const c of (t.columns || [])) {
+      if (c.type === 'rowNumber' || c.isGenerated) continue;
+      const sourceCol = c.sourceColumn || c.name;
+      if (!sourceCol) continue;
+      if (!(c.name in allPbiToSigmaNames)) {
+        allPbiToSigmaNames[c.name] = sigmaDisplayName(sourceCol);
+      }
+    }
+  }
+
   // ── Convert tables to Sigma elements ────────────────────────────────────────
   for (const t of model.tables) {
     if (measureOnlyTables.has(t.name)) continue;
@@ -316,6 +344,7 @@ export function convertPowerBIToSigma(
 
     for (const c of (t.columns || [])) {
       if (c.type === 'rowNumber' || c.isGenerated) continue;
+      if (c.type === 'calculated') continue;
       const sourceCol = c.sourceColumn || c.name;
       const displayName = sigmaDisplayName(sourceCol);
       const colId = sigmaInodeId(sourceCol.toUpperCase().replace(/\s+/g, '_'));
@@ -335,9 +364,14 @@ export function convertPowerBIToSigma(
       if (c.type !== 'calculated') continue;
       let sigmaFormula = pbiDaxToSigma(c.expression, warnings, c.name);
       if (sigmaFormula) {
-        // Rewrite PBI column names → Sigma display names
+        // Rewrite PBI column names → Sigma display names. Try local table
+        // first, fall back to the global map so cross-table refs (e.g. from
+        // RELATED('dim'[COL])) get a usable display name that the post-pass
+        // cross-element move can map back to a triple-form ref.
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) => {
-          return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
+          if (pbiToSigmaName[colName]) return `[${pbiToSigmaName[colName]}]`;
+          if (allPbiToSigmaNames[colName]) return `[${allPbiToSigmaNames[colName]}]`;
+          return `[${colName}]`;
         });
         const colId = sigmaShortId();
         tableColMap[tableName][c.name] = colId;
@@ -455,52 +489,51 @@ export function convertPowerBIToSigma(
     }
   }
 
-  // ── Auto-fix cross-element column references → [SRC/REL_NAME/Field] form ──
-  const pbiGlobalColMap: Record<string, { elId: string; displayName: string }> = {};
+  // ── Pull cross-element calc cols off source warehouse-table elements ─────
+  // A calc col on a warehouse-table whose formula references columns that
+  // aren't on that element (e.g. RELATED('dim'[Field]) DAX → bare [Field])
+  // cannot resolve there — Sigma doesn't see the related-table columns in
+  // scope. We pull these calcs off the source, build derived "<Table> View"
+  // elements via buildDerivedElements (which surfaces related cols via
+  // [SRC/REL/Field]), then place the calcs on the derived element with
+  // their bare [X] refs rewritten to the same triple form.
+  // Mirrors tableau.ts buildDerivedElementsAndMoveCalcs Steps 1+3.
+  const pbiCrossElCalcsByElId: Record<string, any[]> = {};
   for (const el of elements) {
-    for (const c of (el.columns || [])) {
-      const fm = c.formula.match(/\[([^\/\]]+)\/([^\]]+)\]$/);
-      if (fm) pbiGlobalColMap[fm[2].toUpperCase()] = { elId: el.id, displayName: fm[2] };
-    }
-  }
-  for (const el of elements) {
+    if (el.source?.kind !== 'warehouse-table') continue;
+    if (!(el as any).relationships?.length) continue;
+
     const localNames = new Set<string>();
     for (const c of (el.columns || [])) {
       if (c.name) localNames.add(c.name.toUpperCase());
-      const fm = c.formula.match(/\/([^\]]+)\]$/);
+      if (!c.formula) continue;
+      const fm = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
       if (fm) localNames.add(fm[1].toUpperCase());
     }
-    // Map target-element-id → relationship name. Cross-element refs use the
-    // form [SRC/REL_NAME/Field] where REL_NAME = the relationship.name we
-    // emitted earlier (= target table name uppercase). The dash-link form
-    // [SRC/FK_COL - link/Field] does NOT resolve via the API.
-    const relNameLookup: Record<string, string> = {};
-    const elTbl = el.source?.path?.[el.source.path.length - 1] || 'UNKNOWN';
-    for (const rel of (el.relationships || [])) {
-      if (rel.name && rel.targetElementId) relNameLookup[rel.targetElementId] = rel.name;
-    }
-    for (const c of (el.columns || [])) {
-      if (!c.name || !c.formula) continue;
-      if (c.formula.match(/^\[[\w_]+\//)) continue;
+
+    const cross: any[] = [];
+    const keep: any[] = [];
+    for (const c of (el.columns || []) as any[]) {
+      if (!c.name || !c.formula) { keep.push(c); continue; }
+      // already-rewritten triple-segment formula (single-ref view col)
+      if (/^\[[^\]\/]+\/[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
+      // simple 2-seg [Table/Field] passthrough column — keep
+      if (/^\[[^\]\/]+\/[^\]\/]+\]$/.test(c.formula)) { keep.push(c); continue; }
       const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
-      let fixedFormula = c.formula;
-      let wasFixed = false;
-      for (const ref of refs) {
+      const hasCross = refs.some((ref: string) => {
         const rn = ref.replace(/^\[|\]$/g, '');
-        if (localNames.has(rn.toUpperCase()) || rn.toUpperCase() === 'TRUE' || rn.toUpperCase() === 'FALSE') continue;
-        const ge = pbiGlobalColMap[rn.toUpperCase()];
-        if (ge && relNameLookup[ge.elId]) {
-          fixedFormula = fixedFormula.replace(ref, `[${elTbl}/${relNameLookup[ge.elId]}/${ge.displayName}]`);
-          wasFixed = true;
-        } else {
-          warnings.push(`⚠ "${c.name}" references [${rn}] — no matching relationship found. Fix manually in Sigma UI.`);
-        }
-      }
-      if (wasFixed) {
-        c.formula = fixedFormula;
-        warnings.push(`✅ "${c.name}" → cross-element ref: ${fixedFormula.slice(0, 100)}`);
+        return !/^(true|false|null)$/i.test(rn) && !localNames.has(rn.toUpperCase());
+      });
+      if (hasCross) {
+        const oi = ((el as any).order || []).indexOf(c.id);
+        if (oi >= 0) ((el as any).order as string[]).splice(oi, 1);
+        cross.push(c);
+      } else {
+        keep.push(c);
       }
     }
+    (el as any).columns = keep;
+    if (cross.length) pbiCrossElCalcsByElId[el.id] = cross;
   }
 
   // ── Calculation groups → derived metric stubs ────────────────────────────
@@ -593,6 +626,66 @@ export function convertPowerBIToSigma(
       } else {
         el.folders.push({ id: sigmaShortId(), name: groupName, items: folderItems });
       }
+    }
+  }
+
+  // ── Derived "<Table> View" elements + place pulled-off calc cols ────────
+  // buildDerivedElements creates a derived element per warehouse-table that
+  // has outgoing relationships, exposing own + related cols via [SRC/REL/X]
+  // formulas. We then rewrite any pulled-off calc col's bare [X] refs to
+  // the same triple form (using the relationship.name as REL segment) and
+  // append onto the derived element. Mirrors tableau.ts Step 3.
+  const pbiDerivedEls = buildDerivedElements(elements);
+  for (const de of pbiDerivedEls) elements.push(de);
+
+  const pbiPlacedSrcElIds: Record<string, boolean> = {};
+  for (const de of pbiDerivedEls) {
+    if (de.source?.kind !== 'table' || !(de.source as any).elementId) continue;
+    const srcElId = (de.source as any).elementId;
+    const calcs = pbiCrossElCalcsByElId[srcElId];
+    if (!calcs?.length) continue;
+    const srcEl = elements.find(e => e.id === srcElId);
+    if (!srcEl) continue;
+    const srcBaseName = (srcEl as any).name
+      || srcEl.source?.path?.[srcEl.source.path.length - 1]
+      || '';
+
+    // Build map: bare related-col display name → triple-form path.
+    const relatedNameMap: Record<string, string> = {};
+    for (const rel of ((srcEl as any).relationships || [])) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      for (const tc of (tgtEl.columns || [])) {
+        if (!tc.formula || tc.formula.startsWith('/*')) continue;
+        const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const s = inner.lastIndexOf('/');
+        const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        if (!(dispName in relatedNameMap)) {
+          relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+        }
+      }
+    }
+
+    for (const c of calcs) {
+      if (c.formula && Object.keys(relatedNameMap).length) {
+        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      ((de as any).columns as any[]).push(c);
+      ((de as any).order as string[]).push(c.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) moved to derived "${(de as any).name}" (cross-element refs)`);
+    pbiPlacedSrcElIds[srcElId] = true;
+  }
+  for (const elId of Object.keys(pbiCrossElCalcsByElId)) {
+    if (pbiPlacedSrcElIds[elId]) continue;
+    for (const c of pbiCrossElCalcsByElId[elId]) {
+      warnings.push(`⚠ "${c.name}" cross-element refs but no derived element — column dropped`);
     }
   }
 

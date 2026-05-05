@@ -183,9 +183,13 @@ async function runFixture(fx, converters) {
   const opts = fx.summary.convertOptions || {};
   // multi-file converters take {name,content}[]
   const fileBased = ['lookml', 'cube', 'omni'];
+  // powerbi takes a parsed JSON object (not a raw string)
+  const jsonBased = ['powerbi'];
   const arg = fileBased.includes(fx.fmt)
     ? [{ name: basename(fx.inputFile), content: xml }]
-    : xml;
+    : jsonBased.includes(fx.fmt)
+      ? JSON.parse(xml)
+      : xml;
   let result;
   try {
     result = fn(arg, opts);
