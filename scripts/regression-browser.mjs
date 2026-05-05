@@ -21,11 +21,38 @@
 
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, dirname, basename, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
-const PUPPETEER_PATH = '/Users/tjwells/sigma-data-model-manager/tableau-local/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
-const SMM_HTML = 'file:///Users/tjwells/sigma-data-model-manager/index.html';
+// Path resolution for the smm browser tool (index.html) and puppeteer.
+// Order of precedence:
+//   1. SMM_INDEX_PATH env var (filesystem path) — used in CI
+//   2. Default: ~/sigma-data-model-manager/index.html — local dev convenience
+//
+//   1. SMM_PUPPETEER_PATH env var (filesystem path to puppeteer.js entry)
+//   2. require.resolve('puppeteer') — works when puppeteer is a normal dep
+//   3. Default: tableau-local node_modules path — local dev convenience
+const DEFAULT_SMM_INDEX     = '/Users/tjwells/sigma-data-model-manager/index.html';
+const DEFAULT_PUPPETEER     = '/Users/tjwells/sigma-data-model-manager/tableau-local/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
+
+function resolveSmmHtml() {
+  const p = process.env.SMM_INDEX_PATH || DEFAULT_SMM_INDEX;
+  return pathToFileURL(p).href;
+}
+
+function resolvePuppeteerPath() {
+  if (process.env.SMM_PUPPETEER_PATH) return process.env.SMM_PUPPETEER_PATH;
+  try {
+    const require = createRequire(import.meta.url);
+    return require.resolve('puppeteer');
+  } catch {
+    return DEFAULT_PUPPETEER;
+  }
+}
+
+const PUPPETEER_PATH = resolvePuppeteerPath();
+const SMM_HTML = resolveSmmHtml();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT      = resolve(__dirname, '..');
@@ -653,8 +680,12 @@ async function runFixture(page, fx) {
   console.log(`Test folder: ${TEST_FOLDER_ID}`);
   console.log(`Test connection: ${TEST_CONN_ID}`);
 
-  // Launch puppeteer
-  const puppeteer = (await import(PUPPETEER_PATH)).default;
+  // Launch puppeteer. Accept either a bare module specifier ('puppeteer')
+  // or an absolute filesystem path (legacy local-dev convenience).
+  const puppeteerSpec = PUPPETEER_PATH.startsWith('/')
+    ? pathToFileURL(PUPPETEER_PATH).href
+    : PUPPETEER_PATH;
+  const puppeteer = (await import(puppeteerSpec)).default;
   const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
   const page = await browser.newPage();
   await page.setViewport({ width: 1400, height: 900 });
