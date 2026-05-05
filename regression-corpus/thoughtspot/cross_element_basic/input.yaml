@@ -1,0 +1,54 @@
+worksheet:
+  name: Order Customer Cross Element
+  description: Repro for beads-sigma-j6u — formula references columns on a related table.
+  tables:
+    - name: ORDER_FACT
+      db: CSA
+      schema: TJ
+    - name: CUSTOMER_DIM
+      db: CSA
+      schema: TJ
+  table_paths:
+    - id: order_fact_1
+      table: ORDER_FACT
+      join_path:
+        - {}
+    - id: customer_dim_1
+      table: CUSTOMER_DIM
+      join_path:
+        - join: order_to_customer
+  joins:
+    - name: order_to_customer
+      source: ORDER_FACT
+      destination: CUSTOMER_DIM
+      type: INNER
+      is_one_to_one: false
+      on: "[order_fact_1::CUSTOMER_KEY] = [customer_dim_1::CUSTOMER_KEY]"
+  formulas:
+    - id: revenue_per_lifetime_order
+      name: Revenue Per Lifetime Order
+      expr: "safe_divide(sum(net_revenue), sum(lifetime_order_count))"
+  worksheet_columns:
+    - name: Order Id
+      column_id: order_fact_1::ORDER_ID
+      type: ATTRIBUTE
+    - name: Customer Key
+      column_id: order_fact_1::CUSTOMER_KEY
+      type: ATTRIBUTE
+    - name: Net Revenue
+      column_id: order_fact_1::NET_REVENUE
+      type: MEASURE
+      aggregation: SUM
+    - name: Customer Key (Dim)
+      column_id: customer_dim_1::CUSTOMER_KEY
+      type: ATTRIBUTE
+    - name: Customer Segment
+      column_id: customer_dim_1::CUSTOMER_SEGMENT
+      type: ATTRIBUTE
+    - name: Lifetime Order Count
+      column_id: customer_dim_1::LIFETIME_ORDER_COUNT
+      type: MEASURE
+      aggregation: SUM
+    - name: Revenue Per Lifetime Order
+      formula_id: revenue_per_lifetime_order
+      type: MEASURE

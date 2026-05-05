@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-j6u repro. thoughtspot converter places all formulas on elements[0]. Cross-table formula must move to per-formula host with [SRC/REL/Field] form.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 2, "noErrorColumns": true }
+}

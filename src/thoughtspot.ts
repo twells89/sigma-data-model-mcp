@@ -157,20 +157,29 @@ export function convertThoughtSpotToSigma(
     elementByTable[tableName] = element;
   }
 
-  // Attach formula-derived columns to first element
-  if (formulaCols.length > 0 && elements.length > 0) {
-    const hostEl = elements[0];
-    for (const { col, formulaExpr } of formulaCols) {
-      const dispName: string = col.name || 'Calculated';
-      const sigmaFormula = tsFormulaToSigma(formulaExpr, elementByTable);
-      const colId = sigmaShortId();
-      let fmt: any = inferSigmaFormat(sigmaFormula, dispName);
-      if (fmt?.formatString === ',.2%') fmt = { kind: 'number', formatString: ',.2f', suffix: '%' };
-      const colObj: any = { id: colId, name: dispName, formula: sigmaFormula };
-      if (fmt) colObj.format = fmt;
-      hostEl.columns.push(colObj);
+  // Build a map: display name (uppercased) → owning element id. Used to
+  // determine which element a formula's column refs belong to so we can place
+  // each calc col on its proper host (and pull cross-element calcs onto a
+  // derived view with rewritten [Base/REL/Field] refs).
+  const dispNameToElId: Record<string, string> = {};
+  for (const el of elements) {
+    for (const c of (el.columns || [])) {
+      // Physical column formula form: [TABLE/PHYS_COL] → display name = sigmaDisplayName(PHYS_COL).
+      const fm = c.formula?.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
+      if (fm) {
+        const disp = sigmaDisplayName(fm[2]);
+        if (!dispNameToElId[disp.toUpperCase()]) dispNameToElId[disp.toUpperCase()] = el.id;
+      } else if (c.name) {
+        if (!dispNameToElId[c.name.toUpperCase()]) dispNameToElId[c.name.toUpperCase()] = el.id;
+      }
     }
   }
+
+  // Bucketing of formula calcs by host element happens AFTER joins are
+  // processed (so we can prefer hosts with outgoing relationships).
+  type PendingCalc = { col: any; formulaExpr: string; sigmaFormula: string; dispName: string };
+  const sameElCalcsByElId: Record<string, PendingCalc[]> = {};
+  const crossElCalcsByElId: Record<string, PendingCalc[]> = {};
 
   // Build relationships from joins
   const joinOnRe = /\[([^\]:]+)::([^\]]+)\]\s*=\s*\[([^\]:]+)::([^\]]+)\]/;
@@ -214,11 +223,129 @@ export function convertThoughtSpotToSigma(
     warnings.push('No joins defined in TML — relationships will need to be configured manually in Sigma');
   }
 
+  // ── Bucket formula calc cols by host element ──────────────────────────────
+  // A formula whose refs all resolve to a single element is placed there. A
+  // formula referencing >1 element is "cross-element" — defer placement until
+  // after derived elements are built, then attach to the host's derived view
+  // with [Base/REL/Field] refs. Mirrors src/tableau.ts:1993-2129.
+  if (formulaCols.length > 0 && elements.length > 0) {
+    for (const { col, formulaExpr } of formulaCols) {
+      const dispName: string = col.name || 'Calculated';
+      const sigmaFormula = tsFormulaToSigma(formulaExpr, elementByTable);
+      const refs = sigmaFormula.match(/\[([^\]\/]+)\]/g) || [];
+      const refElIds = new Set<string>();
+      for (const ref of refs) {
+        const inner = ref.replace(/^\[|\]$/g, '');
+        const elId = dispNameToElId[inner.toUpperCase()];
+        if (elId) refElIds.add(elId);
+      }
+      // Choose host element. For cross-element formulas we prefer the
+      // element that has outgoing relationships — that's the fact-table
+      // host whose derived view can expose related-table columns via
+      // [Base/REL/Field] refs. For single-element formulas, the only
+      // referenced element. Fall back to elements[0] when nothing resolves.
+      let hostElId: string;
+      if (refElIds.size === 0) {
+        hostElId = elements[0].id;
+      } else if (refElIds.size === 1) {
+        hostElId = Array.from(refElIds)[0];
+      } else {
+        const candidates = Array.from(refElIds);
+        const withRels = candidates.find(id => {
+          const el: any = elements.find(e => e.id === id);
+          return el?.relationships?.length > 0;
+        });
+        hostElId = withRels || candidates[0];
+      }
+      const pending: PendingCalc = { col, formulaExpr, sigmaFormula, dispName };
+      if (refElIds.size > 1) {
+        (crossElCalcsByElId[hostElId] ||= []).push(pending);
+      } else {
+        (sameElCalcsByElId[hostElId] ||= []).push(pending);
+      }
+    }
+  }
+
+  // Place same-element calcs directly on their host element.
+  for (const elId of Object.keys(sameElCalcsByElId)) {
+    const hostEl = elements.find(e => e.id === elId);
+    if (!hostEl) continue;
+    for (const p of sameElCalcsByElId[elId]) {
+      const colId = sigmaShortId();
+      let fmt: any = inferSigmaFormat(p.sigmaFormula, p.dispName);
+      if (fmt?.formatString === ',.2%') fmt = { kind: 'number', formatString: ',.2f', suffix: '%' };
+      const colObj: any = { id: colId, name: p.dispName, formula: p.sigmaFormula };
+      if (fmt) colObj.format = fmt;
+      hostEl.columns.push(colObj);
+    }
+  }
+
   // Strip transient helper maps
   for (const el of elements) { delete (el as any)._colPhysIdMap; }
 
   // Add derived join-view elements
-  for (const de of buildDerivedElements(elements)) elements.push(de);
+  const derivedEls = buildDerivedElements(elements);
+  for (const de of derivedEls) elements.push(de);
+
+  // Place cross-element calc cols onto their host's derived view, rewriting
+  // bare [X] refs to the [Base/REL/X] triple-form Sigma needs to resolve a
+  // related-table column. Mirrors tableau.ts:2080-2129. Calcs whose host has
+  // no derived view fall back to the host element with a warning.
+  for (const elId of Object.keys(crossElCalcsByElId)) {
+    const calcs = crossElCalcsByElId[elId];
+    if (!calcs?.length) continue;
+    const srcEl = elements.find(e => e.id === elId);
+    if (!srcEl) continue;
+    const de = derivedEls.find(d => (d.source as any)?.elementId === elId);
+    const srcBaseName = (srcEl as any).name
+      || srcEl.source?.path?.[srcEl.source.path.length - 1] || '';
+
+    // Build name → [Base/REL/Name] map from this host's relationships.
+    const relatedNameMap: Record<string, string> = {};
+    if (srcBaseName && (srcEl as any).relationships?.length) {
+      for (const rel of ((srcEl as any).relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl = elements.find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          // The trailing segment of a `[TABLE/Display Name]` warehouse-column
+          // formula is already the display name — do NOT re-apply
+          // sigmaDisplayName (it lowercases multi-word names like "Customer
+          // Key" → "Customer key").
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          if (!(dispName in relatedNameMap)) {
+            relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+        }
+      }
+    }
+
+    const placeOn = de || srcEl;
+    for (const p of calcs) {
+      let formula = p.sigmaFormula;
+      if (Object.keys(relatedNameMap).length) {
+        formula = formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      const colId = sigmaShortId();
+      let fmt: any = inferSigmaFormat(formula, p.dispName);
+      if (fmt?.formatString === ',.2%') fmt = { kind: 'number', formatString: ',.2f', suffix: '%' };
+      const colObj: any = { id: colId, name: p.dispName, formula };
+      if (fmt) colObj.format = fmt;
+      (placeOn.columns as any[]).push(colObj);
+      if (placeOn.order) (placeOn.order as string[]).push(colId);
+    }
+    if (!de) {
+      warnings.push(`⚠ ${calcs.length} cross-element calc(s) had no derived view for "${srcBaseName}" — placed on source element with bare refs (may error)`);
+    }
+  }
 
   const stats = {
     elements: elements.length,
@@ -255,8 +382,7 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
       const sigmaFn = tsAggMap[fn.toLowerCase()] || fn;
       return `${sigmaFn}(${tsWrapColumnRefs(arg.trim())})`;
     });
-  s = s.replace(/\bsafe_divide\s*\(([^,)]+),([^)]+)\)/gi,
-    (_, a, b) => `If(IsNull(${b.trim()}) or ${b.trim()} = 0, Null(), ${a.trim()} / ${b.trim()})`);
+  s = tsRewriteSafeDivide(s);
   s = s.replace(/\bisnull\s*\(/gi, 'IsNull(');
   s = s.replace(/\bnot\s*\(/gi, 'Not(');
   s = s.replace(/\btoday\s*\(\s*\)/gi, 'Today()');
@@ -264,6 +390,42 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
   s = s.replace(/\bdatediff\s*\(/gi, 'DateDiff(');
   s = tsWrapColumnRefs(s);
   return s;
+}
+
+// Paren-balanced rewrite of `safe_divide(a, b)` → `If(IsNull(b) or b = 0, Null(), a / b)`.
+// The simple regex form (`[^,)]+,[^)]+`) doesn't match when args contain nested
+// parens like `safe_divide(sum(x), sum(y))`.
+function tsRewriteSafeDivide(s: string): string {
+  let out = '';
+  let i = 0;
+  const re = /\bsafe_divide\s*\(/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(i, m.index);
+    let depth = 1;
+    let j = re.lastIndex;
+    let commaIdx = -1;
+    while (j < s.length && depth > 0) {
+      const ch = s[j];
+      if (ch === '(') depth++;
+      else if (ch === ')') { depth--; if (depth === 0) break; }
+      else if (ch === ',' && depth === 1 && commaIdx === -1) commaIdx = j;
+      j++;
+    }
+    if (depth !== 0 || commaIdx === -1) {
+      // unbalanced or single-arg — bail out, leave the original token
+      out += m[0];
+      i = re.lastIndex;
+      continue;
+    }
+    const a = s.slice(re.lastIndex, commaIdx).trim();
+    const b = s.slice(commaIdx + 1, j).trim();
+    out += `If(IsNull(${b}) or ${b} = 0, null, ${a} / ${b})`;
+    i = j + 1;
+    re.lastIndex = i;
+  }
+  out += s.slice(i);
+  return out;
 }
 
 function tsConvertIfThenElse(s: string): string {

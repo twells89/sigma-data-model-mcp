@@ -104,6 +104,7 @@ async function loadConverters() {
   const alteryx = await import(join(BUILD_DIR, 'alteryx.js'));
   const powerbi = await import(join(BUILD_DIR, 'powerbi.js'));
   const qlik = await import(join(BUILD_DIR, 'qlik.js'));
+  const thoughtspot = await import(join(BUILD_DIR, 'thoughtspot.js'));
   return {
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
@@ -113,6 +114,7 @@ async function loadConverters() {
     alteryx: alteryx.convertAlteryxToSigma || alteryx.default?.convertAlteryxToSigma,
     powerbi: powerbi.convertPowerBIToSigma || powerbi.default?.convertPowerBIToSigma,
     qlik: qlik.convertQlikToSigma || qlik.default?.convertQlikToSigma,
+    thoughtspot: thoughtspot.convertThoughtSpotToSigma || thoughtspot.default?.convertThoughtSpotToSigma,
   };
 }
 
