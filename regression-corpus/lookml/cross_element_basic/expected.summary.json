@@ -1,0 +1,12 @@
+{
+  "description": "beads-sigma-3d8 triage. order_fact has a cross-element calc col customer_segment_label that references customer_dim.customer_segment via the explore join. Without the buildDerivedElementsAndMoveCalcs port, this column resolves to a bare [Customer Segment] ref on the order_fact warehouse-table element, which Sigma can't resolve → type:error column.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "noErrorColumns": true
+  }
+}

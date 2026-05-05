@@ -7,7 +7,7 @@ import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   type SigmaElement, type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, lookConvertExpression, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
 
 // ── LookML Parser ────────────────────────────────────────────────────────────
 
@@ -482,6 +482,22 @@ function lookConvertView(
       colIdMap[colName] = colId;
       const expandedSql = expandFieldRefs(d.sql || '');
       let sigmaFormula = lookSqlToSigmaRules(expandedSql);
+      if (!sigmaFormula) {
+        // Fallback: pre-strip ${TABLE}. and ${view.field} refs to bare uppercase
+        // identifiers, then run the generic expression converter. Required so
+        // function-call formulas like CONCAT('x', ${other_view.field}) emit a
+        // working Sigma formula (Concat("x", [Other Field])) — these calc cols
+        // are then moved to a derived element by the cross-element pass below.
+        const stripped = expandedSql
+          .replace(/\$\{TABLE\}\./gi, '')
+          .replace(/\$\{[^.}]+\.([^}]+)\}/g, (_: string, f: string) => f.toUpperCase())
+          .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_: string, n: string) => n.toUpperCase())
+          .replace(/[\r\n]+\s*/g, ' ')
+          .trim();
+        if (/^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(stripped)) {
+          sigmaFormula = lookConvertExpression(stripped);
+        }
+      }
       if (sigmaFormula) {
         element.columns.push({ id: colId, formula: sigmaFormula, name: d.label || sigmaDisplayName(d._name) });
         element.order.push(colId);
@@ -948,11 +964,106 @@ export function convertLookMLToSigma(
 
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
+  // ── Pull cross-element calc cols off source elements (moved to derived) ─
+  // Calc cols whose formula references a related-table column by display name
+  // cannot resolve on the source warehouse-table element — Sigma doesn't see
+  // those names in scope. Mirror the smm browser tool's
+  // buildDerivedElementsAndMoveCalcs pass: pull them off the fact element
+  // here, then re-place them on the derived "<Table> View" element with
+  // [BaseElement/REL_NAME/Field] cross-element refs after buildDerivedElements.
+  // (Reference: src/tableau.ts:1993-2129 — beads-sigma-047 port.)
+  const crossElCalcsByElId: Record<string, any[]> = {};
+  for (const el of allElements) {
+    if (el.source?.kind !== 'warehouse-table') continue;
+    if (!(el as any).relationships?.length) continue;
+
+    const localNames = new Set<string>();
+    for (const c of (el.columns || [])) {
+      if (!c.formula) continue;
+      const m = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+      if (m) localNames.add(m[1].toUpperCase());
+      if ((c as any).name) localNames.add((c as any).name.toUpperCase());
+    }
+
+    const crossEl: any[] = [];
+    const keep: any[] = [];
+    for (const c of (el.columns || [])) {
+      if (!(c as any).name || !c.formula) { keep.push(c); continue; }
+      if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
+      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      const hasCross = refs.some(ref => {
+        const n = ref.replace(/^\[|\]$/g, '');
+        return !/^(true|false|null)$/i.test(n) && !localNames.has(n.toUpperCase());
+      });
+      if (hasCross) {
+        const oi = (el.order || []).indexOf((c as any).id);
+        if (oi >= 0) (el.order as string[]).splice(oi, 1);
+        crossEl.push(c);
+      } else {
+        keep.push(c);
+      }
+    }
+    el.columns = keep;
+    if (crossEl.length) crossElCalcsByElId[el.id] = crossEl;
+  }
+
   // Build derived (browsable) elements for each fact element that has relationships.
   // Each derived element sources from the fact warehouse element and surfaces all
   // its own columns plus cross-element [TABLE/REL_NAME/Col] refs for joined dims.
   const derivedElements = buildDerivedElements(allElements);
   allElements = [...allElements, ...derivedElements];
+
+  // Place cross-element calc cols (pulled from source above) onto their
+  // matching derived element, rewriting bare [X] refs to [SRC/REL/X] form.
+  const placedSrcElIds: Record<string, boolean> = {};
+  for (const de of derivedElements) {
+    if (de.source?.kind !== 'table' || !(de.source as any).elementId) continue;
+    const srcElId = (de.source as any).elementId;
+    const calcs = crossElCalcsByElId[srcElId];
+    if (!calcs?.length) continue;
+    const srcEl = allElements.find(e => e.id === srcElId);
+    if (!srcEl) continue;
+    const srcPath = (srcEl.source?.kind === 'warehouse-table' ? (srcEl.source.path as string[]) : []) || [];
+    const srcBaseName = (srcEl as any).name || (srcPath.length ? srcPath[srcPath.length - 1] : '');
+    const relatedNameMap: Record<string, string> = {};
+    if (srcEl && (srcEl as any).relationships && srcBaseName) {
+      for (const rel of ((srcEl as any).relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl = allElements.find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          if (!(dispName in relatedNameMap)) {
+            relatedNameMap[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+          }
+        }
+      }
+    }
+    for (const c of calcs) {
+      if (c.formula && Object.keys(relatedNameMap).length) {
+        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      (de.columns as any[]).push(c);
+      (de.order as string[]).push(c.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) moved to derived "${(de as any).name}" (cross-element refs)`);
+    placedSrcElIds[srcElId] = true;
+  }
+  // Drop calcs that referenced cross-element cols but had no derived element
+  for (const elId of Object.keys(crossElCalcsByElId)) {
+    if (placedSrcElIds[elId]) continue;
+    for (const c of crossElCalcsByElId[elId]) {
+      warnings.push(`⚠ "${c.name}" cross-element refs but no derived element — column dropped`);
+    }
+  }
 
   const sigmaModel = {
     name: sigmaDisplayName(exploreName),
