@@ -1,0 +1,32 @@
+cubes:
+  - name: order_fact
+    sql_table: ORDER_FACT
+    joins:
+      - name: customer_dim
+        relationship: many_to_one
+        sql: "${CUBE}.customer_key = ${customer_dim.customer_key}"
+    dimensions:
+      - name: order_id
+        sql: "${CUBE}.order_id"
+        type: string
+        primary_key: true
+      - name: customer_key
+        sql: "${CUBE}.customer_key"
+        type: number
+      - name: net_revenue
+        sql: "${CUBE}.net_revenue"
+        type: number
+      - name: customer_segment_passthrough
+        sql: "${customer_dim.customer_segment}"
+        type: string
+
+  - name: customer_dim
+    sql_table: CUSTOMER_DIM
+    dimensions:
+      - name: customer_key
+        sql: "${CUBE}.customer_key"
+        type: number
+        primary_key: true
+      - name: customer_segment
+        sql: "${CUBE}.customer_segment"
+        type: string

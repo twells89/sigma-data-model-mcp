@@ -16,6 +16,11 @@ import {
   type SigmaElement, type ConversionResult,
 } from './sigma-ids.js';
 
+// Reserved Sigma function/keyword tokens that may appear as bare identifiers
+// inside a formula but are NOT column refs. Used by the cross-element move pass
+// to avoid misclassifying them as cross-cube refs.
+const SIGMA_RESERVED = new Set(['true', 'false', 'null']);
+
 // ── Public interface ─────────────────────────────────────────────────────────
 
 export interface CubeFile {
@@ -367,6 +372,149 @@ export function convertCubeToSigma(
       (fromEntry.element.relationships ??= []).push(rel);
       totalRels++;
     }
+  }
+
+  // ── Cross-element calc col move (beads-sigma-yec) ───────────────────────────
+  // Calc cols on a cube element whose formula references a joined cube's field
+  // (translated to bare `[Field]`) cannot resolve on the source warehouse-table
+  // element — Sigma doesn't see those names in scope. Move the calc col onto a
+  // derived "view" element where the joined columns are surfaced via the
+  // [SRC/REL_NAME/Field] cross-element form, and rewrite each bare ref to that
+  // 3-segment form. Mirrors the Tableau converter's pass at tableau.ts:1993.
+  const crossElCalcsByElId: Record<string, Array<{ col: any }>> = {};
+  for (const [, entry] of cubeRegistry) {
+    const el = entry.element;
+    if (el.source?.kind !== 'warehouse-table') continue;
+    if (!(el as any).relationships?.length) continue;
+
+    // Build the set of names that resolve locally on this element. For
+    // warehouse-table cubes, legitimate columns are always `[Table/Field]` form.
+    // Bare `[Field]` refs are NOT locally resolvable (they're the symptom of
+    // the cross-cube bug), so we don't seed them as locals.
+    const localNames = new Set<string>();
+    for (const c of (el.columns || [])) {
+      if (!c.formula) continue;
+      const m = c.formula.match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+      if (m) localNames.add(m[1].toUpperCase());
+      if (c.name) localNames.add(c.name.toUpperCase());
+    }
+
+    const crossEl: any[] = [];
+    const keep: any[] = [];
+    for (const c of (el.columns || [])) {
+      if (!c.formula) { keep.push(c); continue; }
+      // `[Table/Col]` table-qualified passthroughs always resolve locally.
+      if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
+      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      const hasCross = refs.some((ref: string) => {
+        const n = ref.replace(/^\[|\]$/g, '');
+        if (SIGMA_RESERVED.has(n.toLowerCase())) return false;
+        return !localNames.has(n.toUpperCase());
+      });
+      if (hasCross) {
+        const oi = (el.order || []).indexOf(c.id);
+        if (oi >= 0) (el.order as string[]).splice(oi, 1);
+        crossEl.push(c);
+      } else {
+        keep.push(c);
+      }
+    }
+    el.columns = keep;
+    if (crossEl.length) crossElCalcsByElId[el.id] = crossEl.map(col => ({ col }));
+  }
+
+  // For each source cube with cross-element calcs, build a derived view element
+  // (or reuse one if already built), surface the source's own + joined columns
+  // with [Base/Field] and [Base/REL/Field] formulas, and place the moved calc
+  // cols there with their bare `[X]` refs rewritten to `[Base/REL/X]`.
+  let movedCalcElements = 0;
+  for (const [, entry] of cubeRegistry) {
+    const calcs = crossElCalcsByElId[entry.elementId];
+    if (!calcs?.length) continue;
+    const srcEl = entry.element;
+    const baseName = srcEl.name || entry.sourceTable;
+
+    // Build the related-name → triple-form lookup table.
+    const relatedNameMap: Record<string, string> = {};
+    for (const rel of ((srcEl as any).relationships || [])) {
+      if (!rel.name) continue;
+      const tgtEl = elements.find(e => e.id === rel.targetElementId);
+      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      for (const tc of (tgtEl.columns || [])) {
+        if (!tc.formula || tc.formula.startsWith('/*')) continue;
+        const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+        if (!fm) continue;
+        const inner = fm[1];
+        const s = inner.lastIndexOf('/');
+        const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        const labelName = tc.name;
+        if (dispName && !(dispName in relatedNameMap)) {
+          relatedNameMap[dispName] = `${baseName}/${rel.name}/${dispName}`;
+        }
+        if (labelName && !(labelName in relatedNameMap)) {
+          relatedNameMap[labelName] = `${baseName}/${rel.name}/${dispName}`;
+        }
+      }
+    }
+
+    // Build (or augment) a per-cube derived view element.
+    const derivedName = `${baseName} View`;
+    let derived = elements.find(e =>
+      e.source?.kind === 'table' && (e.source as any).elementId === srcEl.id && (e as any).name === derivedName
+    );
+    if (!derived) {
+      derived = {
+        id: sigmaShortId(),
+        kind: 'table',
+        name: derivedName,
+        source: { kind: 'table', elementId: srcEl.id },
+        columns: [],
+        order: [],
+      };
+      // Surface the source's own columns as [Base/Field] passthroughs.
+      for (const col of (srcEl.columns || [])) {
+        if (!col.formula || col.formula.startsWith('/*')) continue;
+        const fm = col.formula.match(/^\[([^\]\/]+)\/([^\]]+)\]$/);
+        if (!fm) continue;
+        const dispName = fm[2];
+        const cId = sigmaShortId();
+        derived.columns!.push({ id: cId, formula: `[${baseName}/${dispName}]` });
+        (derived.order as string[]).push(cId);
+      }
+      // Surface joined cube columns as [Base/REL/Field].
+      for (const rel of ((srcEl as any).relationships || [])) {
+        if (!rel.name) continue;
+        const tgtEl = elements.find(e => e.id === rel.targetElementId);
+        if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+        for (const tc of (tgtEl.columns || [])) {
+          if (!tc.formula || tc.formula.startsWith('/*')) continue;
+          const fm = tc.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const s = inner.lastIndexOf('/');
+          const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          const cId = sigmaShortId();
+          derived.columns!.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
+          (derived.order as string[]).push(cId);
+        }
+      }
+      elements.push(derived);
+      movedCalcElements++;
+    }
+
+    // Rewrite bare `[X]` refs in the moved calc col formulas to `[Base/REL/X]`,
+    // then attach the cols to the derived element.
+    for (const { col } of calcs) {
+      if (col.formula && Object.keys(relatedNameMap).length) {
+        col.formula = col.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+          const rewritten = relatedNameMap[refName];
+          return rewritten ? `[${rewritten}]` : match;
+        });
+      }
+      derived.columns!.push(col);
+      (derived.order as string[]).push(col.id);
+    }
+    warnings.push(`ℹ ${calcs.length} calc col(s) on "${baseName}" moved to derived "${derivedName}" (cross-cube refs)`);
   }
 
   // ── Build view elements ─────────────────────────────────────────────────────

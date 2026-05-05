@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-yec repro. order_fact has a calc dim whose SQL is ${customer_dim.customer_segment} — must move to the cube's view element with rewritten [SRC/REL/Field] form.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 2, "noErrorColumns": true }
+}
