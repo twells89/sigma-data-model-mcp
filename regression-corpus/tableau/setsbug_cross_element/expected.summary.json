@@ -1,0 +1,12 @@
+{
+  "description": "Repro for beads-sigma-6o3 (folder.items[] dangling ref) and beads-sigma-k2r (formula rewrite when calc col moves cross-element). 3 sets, one of which references a cross-element column. The cross-element set must move to the derived element AND its formula must use [Base/REL/Field] form AND the original element's Sets folder must NOT contain the moved column ID. NOTE: this fixture targets the smm browser tool's buildDerivedElementsAndMoveCalcs; the MCP doesn't have that pass, so when run against the MCP this fixture validates only the basic LOD/Set conversion path (the cross-element move logic is index.html-only per beads-sigma-3d8).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

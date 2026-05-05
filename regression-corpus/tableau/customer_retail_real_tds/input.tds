@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='utf-8'?>
+<datasource caption="Retail Analytics (Sets Test)" inline="true" name="federated.retail_analytics_sets" version="18.1">
+  <connection class="snowflake" dbname="CSA" schema="TJ" server="xy12345.snowflakecomputing.com" username="svc_tableau">
+    <relation join="left" type="join">
+      <clause type="join">
+        <expression op="=">
+          <expression op="[Order Fact].[PROMO_KEY]" />
+          <expression op="[Promo Dim].[PROMO_KEY]" />
+        </expression>
+      </clause>
+      <relation join="left" type="join">
+        <clause type="join">
+          <expression op="=">
+            <expression op="[Order Fact].[ORDER_STORE_KEY]" />
+            <expression op="[Store Dim].[STORE_KEY]" />
+          </expression>
+        </clause>
+        <relation join="left" type="join">
+          <clause type="join">
+            <expression op="=">
+              <expression op="[Order Fact].[PRODUCT_KEY]" />
+              <expression op="[Product Dim].[PRODUCT_KEY]" />
+            </expression>
+          </clause>
+          <relation join="left" type="join">
+            <clause type="join">
+              <expression op="=">
+                <expression op="[Order Fact].[CUSTOMER_KEY]" />
+                <expression op="[Customer Dim].[CUSTOMER_KEY]" />
+              </expression>
+            </clause>
+            <relation name="Order Fact" table="[TJ].[ORDER_FACT]" type="table">
+              <columns header="yes" outcome="20">
+                <column datatype="string" name="ORDER_ID" ordinal="0" />
+                <column datatype="integer" name="ORDER_LINE" ordinal="1" />
+                <column datatype="integer" name="CUSTOMER_KEY" ordinal="2" />
+                <column datatype="integer" name="PRODUCT_KEY" ordinal="3" />
+                <column datatype="integer" name="ORDER_STORE_KEY" ordinal="4" />
+                <column datatype="integer" name="PROMO_KEY" ordinal="5" />
+                <column datatype="string" name="ORDER_CHANNEL" ordinal="6" />
+                <column datatype="string" name="ORDER_STATUS" ordinal="7" />
+                <column datatype="integer" name="QUANTITY_ORDERED" ordinal="8" />
+                <column datatype="real" name="UNIT_PRICE" ordinal="9" />
+                <column datatype="real" name="DISCOUNT_AMOUNT" ordinal="10" />
+                <column datatype="real" name="GROSS_REVENUE" ordinal="11" />
+                <column datatype="real" name="NET_REVENUE" ordinal="12" />
+                <column datatype="real" name="GROSS_PROFIT" ordinal="13" />
+                <column datatype="integer" name="IS_FIRST_ORDER" ordinal="14" />
+                <column datatype="integer" name="IS_RETURNED" ordinal="15" />
+                <column datatype="integer" name="IS_CANCELLED" ordinal="16" />
+                <column datatype="integer" name="DAYS_TO_SHIP" ordinal="17" />
+              </columns>
+            </relation>
+            <relation name="Customer Dim" table="[TJ].[CUSTOMER_DIM]" type="table">
+              <columns header="yes" outcome="8">
+                <column datatype="integer" name="CUSTOMER_KEY" ordinal="0" />
+                <column datatype="string" name="CUSTOMER_SEGMENT" ordinal="1" />
+                <column datatype="string" name="LOYALTY_TIER" ordinal="2" />
+                <column datatype="string" name="REGION" ordinal="3" />
+                <column datatype="string" name="ACQUISITION_CHANNEL" ordinal="4" />
+                <column datatype="real" name="LIFETIME_REVENUE" ordinal="5" />
+                <column datatype="integer" name="LIFETIME_ORDER_COUNT" ordinal="6" />
+                <column datatype="integer" name="IS_ACTIVE" ordinal="7" />
+              </columns>
+            </relation>
+          </relation>
+          <relation name="Product Dim" table="[TJ].[PRODUCT_DIM]" type="table">
+            <columns header="yes" outcome="6">
+              <column datatype="integer" name="PRODUCT_KEY" ordinal="0" />
+              <column datatype="string" name="PRODUCT_NAME" ordinal="1" />
+              <column datatype="string" name="CATEGORY" ordinal="2" />
+              <column datatype="string" name="BRAND" ordinal="3" />
+              <column datatype="real" name="UNIT_PRICE" ordinal="4" />
+              <column datatype="real" name="UNIT_COST" ordinal="5" />
+            </columns>
+          </relation>
+        </relation>
+        <relation name="Store Dim" table="[TJ].[STORE_DIM]" type="table">
+          <columns header="yes" outcome="5">
+            <column datatype="integer" name="STORE_KEY" ordinal="0" />
+            <column datatype="string" name="STORE_TYPE" ordinal="1" />
+            <column datatype="string" name="REGION" ordinal="2" />
+            <column datatype="integer" name="IS_ACTIVE" ordinal="3" />
+            <column datatype="real" name="ANNUAL_LEASE_COST" ordinal="4" />
+          </columns>
+        </relation>
+      </relation>
+      <relation name="Promo Dim" table="[TJ].[PROMO_DIM]" type="table">
+        <columns header="yes" outcome="5">
+          <column datatype="integer" name="PROMO_KEY" ordinal="0" />
+          <column datatype="string" name="PROMO_TYPE" ordinal="1" />
+          <column datatype="string" name="CHANNEL" ordinal="2" />
+          <column datatype="real" name="DISCOUNT_PCT" ordinal="3" />
+          <column datatype="integer" name="IS_STACKABLE" ordinal="4" />
+        </columns>
+      </relation>
+    </relation>
+  </connection>
+
+  <!-- ── Calculated fields ─────────────────────────────────────────── -->
+  <column caption="Total Net Revenue" datatype="real" name="[Total Net Revenue]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="SUM([NET_REVENUE])" />
+  </column>
+  <column caption="Total Gross Profit" datatype="real" name="[Total Gross Profit]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="SUM([GROSS_PROFIT])" />
+  </column>
+  <column caption="Order Count" datatype="integer" name="[Order Count]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="COUNTD([ORDER_ID])" />
+  </column>
+  <column caption="Avg Order Value" datatype="real" name="[Avg Order Value]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="AVG([NET_REVENUE])" />
+  </column>
+  <column caption="Order Size Band" datatype="string" name="[Order Size Band]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IF [GROSS_REVENUE] &gt; 1000 THEN 'Large' ELSEIF [GROSS_REVENUE] &gt; 250 THEN 'Medium' ELSE 'Small' END" />
+  </column>
+
+  <!-- ── Sets ──────────────────────────────────────────────────────── -->
+
+  <!-- 1. Condition set: row-level boolean predicate -->
+  <column caption="High Value Orders" datatype="boolean" name="[High Value Orders]" role="set" type="nominal">
+    <calculation class="categorical-set" formula="[GROSS_REVENUE] &gt; 500" />
+  </column>
+
+  <!-- 2. Condition set: multi-condition -->
+  <column caption="Profitable Completed Orders" datatype="boolean" name="[Profitable Completed Orders]" role="set" type="nominal">
+    <calculation class="categorical-set" formula="[GROSS_PROFIT] &gt; 0 AND [ORDER_STATUS] = 'Complete'" />
+  </column>
+
+  <!-- 3. Member set: specific dimension values -->
+  <column caption="Key Customer Segments" datatype="boolean" name="[Key Customer Segments]" role="set" type="nominal">
+    <calculation class="categorical-set">
+      <groupfilter function="union">
+        <groupfilter function="member" level="[CUSTOMER_SEGMENT]" member="&quot;Enterprise&quot;" />
+        <groupfilter function="member" level="[CUSTOMER_SEGMENT]" member="&quot;Mid-Market&quot;" />
+      </groupfilter>
+    </calculation>
+  </column>
+
+  <!-- 4. Member set: multiple members across same field -->
+  <column caption="Digital Channels" datatype="boolean" name="[Digital Channels]" role="set" type="nominal">
+    <calculation class="categorical-set">
+      <groupfilter function="union">
+        <groupfilter function="member" level="[ORDER_CHANNEL]" member="&quot;Online&quot;" />
+        <groupfilter function="member" level="[ORDER_CHANNEL]" member="&quot;Mobile&quot;" />
+      </groupfilter>
+    </calculation>
+  </column>
+
+  <!-- 5. Top N set: should skip with warning -->
+  <column caption="Top 10 Products by Revenue" datatype="boolean" name="[Top 10 Products]" role="set" type="nominal">
+    <calculation class="categorical-set">
+      <groupfilter count="-1" end="top" function="end" units="records">
+        <groupfilter field="[SUM:NET_REVENUE:ok]" function="sum" />
+        <groupfilter field="[PRODUCT_NAME]" function="level" level="[PRODUCT_NAME]" />
+      </groupfilter>
+    </calculation>
+  </column>
+
+  <!-- 6. Calculated field that references a set by name -->
+  <column caption="Order Value Tier" datatype="string" name="[Order Value Tier]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IF [High Value Orders] THEN 'Premium' ELSE 'Standard' END" />
+  </column>
+
+  <!-- 7. Calculated field combining two sets -->
+  <column caption="High Value Digital" datatype="boolean" name="[High Value Digital]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="[High Value Orders] AND [Digital Channels]" />
+  </column>
+
+</datasource>

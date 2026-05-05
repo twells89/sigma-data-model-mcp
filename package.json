@@ -13,9 +13,12 @@
     "dev": "tsx src/server.ts",
     "dev:local": "tsx src/index.ts",
     "test": "node --import tsx/esm --test src/lookml.test.ts",
-    "test:integration": "node --import tsx/esm --test src/lookml.integration.test.ts"
+    "test:integration": "node --import tsx/esm --test src/lookml.integration.test.ts",
+    "regression": "node scripts/regression.mjs"
   },
-  "files": ["build"],
+  "files": [
+    "build"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "express": "^4.21.0",

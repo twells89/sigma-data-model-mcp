@@ -1,0 +1,68 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.2.0' source-platform='mac' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Order Analysis' inline='true' name='federated.setsbug01' version='18.1'>
+      <connection class='snowflake' dbname='CSA' schema='TJ' server='xy12345.snowflakecomputing.com'>
+        <relation join='left' type='join'>
+          <clause type='join'>
+            <expression op='='>
+              <expression op='[Order Fact].[CUSTOMER_KEY]' />
+              <expression op='[Customer Dim].[CUSTOMER_KEY]' />
+            </expression>
+          </clause>
+          <relation name='Order Fact' table='[TJ].[ORDER_FACT]' type='table'>
+            <columns header='yes' outcome='6'>
+              <column datatype='integer' name='ORDER_ID' ordinal='0' />
+              <column datatype='integer' name='CUSTOMER_KEY' ordinal='1' />
+              <column datatype='real' name='GROSS_REVENUE' ordinal='2' />
+              <column datatype='real' name='NET_REVENUE' ordinal='3' />
+              <column datatype='real' name='GROSS_PROFIT' ordinal='4' />
+              <column datatype='date' name='ORDER_DATE_KEY' ordinal='5' />
+            </columns>
+          </relation>
+          <relation name='Customer Dim' table='[TJ].[CUSTOMER_DIM]' type='table'>
+            <columns header='yes' outcome='4'>
+              <column datatype='integer' name='CUSTOMER_KEY' ordinal='0' />
+              <column datatype='string' name='CUSTOMER_SEGMENT' ordinal='1' />
+              <column datatype='string' name='REGION' ordinal='2' />
+              <column datatype='string' name='LOYALTY_TIER' ordinal='3' />
+            </columns>
+          </relation>
+        </relation>
+      </connection>
+      <aliases enabled='yes' />
+      <!-- Sets that DO NOT cross-reference: stay on Order Fact -->
+      <column caption='High Revenue Orders' datatype='boolean' name='[Set High Revenue]' role='dimension' type='nominal'>
+        <calculation class='categorical-set' formula='[GROSS_REVENUE] &gt; 1000' />
+      </column>
+      <column caption='Profitable Orders' datatype='boolean' name='[Set Profitable]' role='dimension' type='nominal'>
+        <calculation class='categorical-set' formula='[GROSS_PROFIT] &gt; 0' />
+      </column>
+      <!-- THE BUG REPRO: Set referencing CUSTOMER_SEGMENT (lives on CUSTOMER_DIM, NOT Order Fact).
+           Converter detects the cross-element ref and moves the calc col to derived element.
+           Without the fix, the source folder.items[] still references the moved column id. -->
+      <column caption='Key Customer Segments' datatype='boolean' name='[Set Key Segments]' role='dimension' type='nominal'>
+        <calculation class='categorical-set' formula='In([CUSTOMER_SEGMENT], &quot;Enterprise&quot;, &quot;Mid-Market&quot;)' />
+      </column>
+      <!-- Plain calc cols on Order Fact -->
+      <column caption='Gross Margin Pct' datatype='real' name='[Gross Margin Pct]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([GROSS_PROFIT]) / SUM([GROSS_REVENUE])' />
+      </column>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sales by Segment'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Order Analysis' name='federated.setsbug01' />
+          </datasources>
+        </view>
+        <style />
+        <panes>
+          <pane><view><breakdown value='auto' /></view><mark class='Bar' /></pane>
+        </panes>
+      </table>
+    </worksheet>
+  </worksheets>
+</workbook>

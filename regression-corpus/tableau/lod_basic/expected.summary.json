@@ -1,0 +1,13 @@
+{
+  "description": "LOD INCLUDE/EXCLUDE/FIXED + helper dedup. 4 LOD calcs (INCLUDE customer-name, EXCLUDE order-date, FIXED region avg-ratio, FIXED region sum-profit) → 2 helper elements (1 by REGION+CUSTOMER_NAME, 1 by REGION). Confirms LOD pattern + dedup.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "TJ",
+    "schema": "PUBLIC"
+  },
+  "asserts": {
+    "minElements": 4,
+    "minRelationships": 2,
+    "noErrorColumns": true
+  }
+}

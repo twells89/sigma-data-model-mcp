@@ -1,0 +1,13 @@
+{
+  "description": "Real customer TDS (retail_analytics_sets_tableau.tds) that hit beads-sigma-6o3 and beads-sigma-k2r in production on 2026-05-05. Targets CSA.TJ schema with multiple dim joins to ORDER_FACT plus 3 sets and several local calcs. The cross-element set 'Key Customer Segments' (formula references Customer Segment from CUSTOMER_DIM) is the canary — if the converter ever produces a folder.items[] dangling ref or a bare-formula on the moved calc, this fixture catches it.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 5,
+    "minRelationships": 4,
+    "noErrorColumns": true
+  }
+}
