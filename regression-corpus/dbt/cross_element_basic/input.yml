@@ -1,0 +1,41 @@
+semantic_models:
+  - name: customer_dim
+    model: ref('customer_dim')
+    node_relation:
+      schema_name: TJ
+      database: CSA
+      alias: CUSTOMER_DIM
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_key
+    dimensions:
+      - name: customer_segment
+        type: categorical
+        expr: customer_segment
+
+  - name: order_fact
+    model: ref('order_fact')
+    node_relation:
+      schema_name: TJ
+      database: CSA
+      alias: ORDER_FACT
+    entities:
+      - name: order
+        type: primary
+        expr: order_id
+      - name: customer
+        type: foreign
+        expr: customer_key
+    dimensions:
+      - name: gross_revenue
+        type: categorical
+        expr: gross_revenue
+      # Cross-element calc col: references customer.customer_segment via the foreign entity
+      - name: is_pro_segment
+        type: categorical
+        expr: 'CASE WHEN customer_segment = "Pro" THEN 1 ELSE 0 END'
+    measures:
+      - name: total_revenue
+        agg: sum
+        expr: gross_revenue

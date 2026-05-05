@@ -1,0 +1,12 @@
+{
+  "description": "beads-sigma-3d8 triage. order_fact has a cross-element calc col customer_segment_label whose expr references customer_segment from the customer_dim semantic model (via foreign entity 'customer'). Without a buildDerivedElementsAndMoveCalcs port, the formula resolves to bare [Customer Segment] on order_fact element which can't resolve → type:error column.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "noErrorColumns": true
+  }
+}
