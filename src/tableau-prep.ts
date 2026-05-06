@@ -206,6 +206,36 @@ export function convertTableauPrepToSigma(
     }
   }
 
+  // ── Step 2b: prune orphan input nodes (closes beads-sigma-4pv) ───────────
+  // Tableau Prep flows accumulate dead input nodes when users delete a downstream
+  // branch — the input remains in flow.nodes with nextNodes:[] and no other node
+  // referencing it. Walk the graph BACKWARD from every output node through the
+  // `incoming` (reverse-edge) map; whatever's reachable contributes to a published
+  // result. Anything not reachable is dead and must be skipped, otherwise the
+  // converter emits noise elements. If the flow has no output nodes at all
+  // (intermediate-only authoring), fall back to keeping every node.
+  const outputNodeIds: string[] = [];
+  for (const [nid, n] of Object.entries(flatNodes)) {
+    const nt = n.nodeType || '';
+    if (n.baseType === 'output' || nt.includes('Publish') || nt.includes('Write')) {
+      outputNodeIds.push(nid);
+    }
+  }
+  let reachable: Set<string> | null = null; // null = no pruning (lenient fallback)
+  if (outputNodeIds.length > 0) {
+    reachable = new Set<string>();
+    const stack = [...outputNodeIds];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (reachable.has(cur)) continue;
+      reachable.add(cur);
+      for (const p of (incoming.get(cur) || [])) {
+        if (!reachable.has(p.from)) stack.push(p.from);
+      }
+    }
+  }
+  const isReachable = (id: string) => reachable === null || reachable.has(id);
+
   // ── Step 3: walk DAG, process each node, emit Sigma elements ─────────────
 
   const elements: SigmaElement[] = [];
@@ -216,11 +246,20 @@ export function convertTableauPrepToSigma(
 
   // Seed with initial (input) nodes
   for (const id of (flow.initialNodes || [])) {
-    if (flatNodes[id]) queue.push(id);
+    if (flatNodes[id] && isReachable(id)) queue.push(id);
   }
   // Also include any input nodes not in initialNodes (defensive)
   for (const [nid, n] of Object.entries(flatNodes)) {
-    if (n.baseType === 'input' && !queue.includes(nid)) queue.push(nid);
+    if (n.baseType === 'input' && isReachable(nid) && !queue.includes(nid)) queue.push(nid);
+  }
+  const prunedOrphans: string[] = [];
+  for (const [nid, n] of Object.entries(flatNodes)) {
+    if (n.baseType === 'input' && !isReachable(nid)) {
+      prunedOrphans.push(n.name || nid);
+    }
+  }
+  if (prunedOrphans.length > 0) {
+    warnings.push(`ℹ Pruned ${prunedOrphans.length} orphan input node(s) not reachable from any output: ${prunedOrphans.join(', ')}`);
   }
 
   while (queue.length > 0) {
