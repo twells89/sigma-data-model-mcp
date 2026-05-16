@@ -1,0 +1,20 @@
+version: 2
+semantic_models:
+  - name: customer_dim
+    description: Customer dim — descriptions on entity, dimensions, measure, and top-level metric
+    model: ref('CUSTOMER_DIM')
+    node_relation: {database: CSA, schema: TJ, alias: CUSTOMER_DIM}
+    entities:
+      - {name: customer, type: primary, expr: customer_key, description: Unique customer key}
+    dimensions:
+      - {name: customer_id, type: categorical, expr: customer_id, description: Customer business identifier}
+      - {name: region, type: categorical, expr: region, description: Customer region}
+      - {name: customer_segment, type: categorical, expr: customer_segment, description: Customer segment classification}
+    measures:
+      - {name: customer_count_measure, agg: count, expr: customer_key, description: Count of customers based on customer key}
+metrics:
+  - name: customer_count
+    description: Count of customers
+    type: simple
+    label: Customer Count
+    type_params: {measure: customer_count_measure}
