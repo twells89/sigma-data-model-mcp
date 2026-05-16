@@ -1,0 +1,35 @@
+version: 2
+models:
+  - name: order_fact
+    description: OLCM-style model-level YAML — repro for customer feedback 2026-05-16
+    semantic_model:
+      enabled: true
+      name: order_fact
+      primary_entity: order
+      agg_time_dimension: order_placed_date
+    columns:
+      - name: ORDER_ID
+        entity: {type: primary, name: order}
+        description: Order surrogate key
+      - name: CUSTOMER_KEY
+        entity: {type: foreign, name: customer}
+      - name: PRODUCT_KEY
+        entity: {type: foreign, name: product}
+      - name: ORDER_CHANNEL
+        dimension: {type: categorical}
+        description: Sales channel
+      - name: ORDER_STATUS
+        dimension: {type: categorical}
+    metrics:
+      - name: gross_revenue
+        label: Gross Revenue
+        description: Sum of GROSS_REVENUE
+        type: simple
+        agg: sum
+        expr: GROSS_REVENUE
+      - name: order_count
+        label: Order Count
+        description: Count of orders
+        type: simple
+        agg: count
+        expr: ORDER_ID

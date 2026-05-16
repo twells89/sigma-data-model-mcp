@@ -1,0 +1,12 @@
+{
+  "description": "Customer feedback 2026-05-16. The newer dbt model-level YAML form (models[].semantic_model + columns[] with inline entity/dimension/measure + nested metrics) must be accepted. Before the fix, dbtNormalizeModelLevelYaml didn't exist and the converter said 'No semantic models found'.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

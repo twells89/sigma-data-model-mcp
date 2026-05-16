@@ -1,0 +1,16 @@
+version: 2
+semantic_models:
+  - name: order_fact
+    description: Order fact only — no dim YAML supplied. FK columns must still be materialized.
+    model: ref('ORDER_FACT')
+    node_relation: {database: CSA, schema: TJ, alias: ORDER_FACT}
+    entities:
+      - {name: ORDER_ID, type: primary, expr: ORDER_ID, description: Order PK}
+      - {name: CUSTOMER_KEY, type: foreign, expr: CUSTOMER_KEY}
+      - {name: PRODUCT_KEY, type: foreign, expr: PRODUCT_KEY}
+    dimensions:
+      - {name: ORDER_CHANNEL, type: categorical, expr: ORDER_CHANNEL, description: Sales channel}
+    measures:
+      - {name: ORDER_COUNT, agg: count, expr: ORDER_ID, description: Count of orders}
+metrics:
+  - {name: total_orders, description: Total orders, type: simple, type_params: {measure: {name: ORDER_COUNT}}}
