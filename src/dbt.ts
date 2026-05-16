@@ -53,6 +53,8 @@ interface DbtSemanticModel {
 interface DbtMetric {
   name: string;
   type: string;
+  description?: string;
+  label?: string;
   type_params?: {
     measure?: string | { name: string };
     numerator?: string | { name: string };
@@ -87,6 +89,79 @@ function preBracketKnownNames(expr: string, knownNames: Set<string>): string {
     });
   }
   return parts.join('');
+}
+
+/**
+ * Normalize dbt "model-level YAML" (newer form: `models[].semantic_model` + `columns[]`
+ * + nested `metrics[]`) into the standard `semantic_models[]` + top-level `metrics[]`
+ * shape. No-op when the input is already in the standard form. Inline-aggregation
+ * metrics (with `agg`+`expr` and no `type_params.measure`) are hoisted into the
+ * model's `measures[]` so descriptions flow through correctly.
+ */
+function dbtNormalizeModelLevelYaml(parsed: any): any {
+  if (!parsed || !Array.isArray(parsed.models)) return parsed;
+  const semanticModels: any[] = [];
+  const liftedMetrics: any[] = [];
+  for (const model of parsed.models) {
+    const sm = model.semantic_model;
+    if (!sm) continue;
+    const entities: any[] = [];
+    const dimensions: any[] = [];
+    const measures: any[] = [];
+    for (const col of (model.columns || [])) {
+      if (col.entity) {
+        entities.push({
+          name: col.entity.name || col.name,
+          type: col.entity.type,
+          expr: col.name,
+          ...(col.description ? { description: col.description } : {}),
+        });
+      } else if (col.dimension) {
+        dimensions.push({
+          name: col.name,
+          type: col.dimension.type,
+          ...(col.dimension.type_params ? { type_params: col.dimension.type_params } : {}),
+          expr: col.name,
+          ...(col.description ? { description: col.description } : {}),
+        });
+      } else if (col.measure) {
+        measures.push({
+          name: col.measure.name || col.name,
+          agg: col.measure.agg,
+          expr: col.name,
+          ...(col.description ? { description: col.description } : {}),
+          ...(col.measure.filter ? { filter: col.measure.filter } : {}),
+        });
+      }
+    }
+    for (const m of (model.metrics || [])) {
+      if (m.agg && (m.expr || m.measure)) {
+        measures.push({
+          name: m.name,
+          agg: m.agg,
+          expr: m.expr || m.measure,
+          ...(m.description ? { description: m.description } : {}),
+          ...(m.filter ? { filter: m.filter } : {}),
+        });
+      } else {
+        liftedMetrics.push(m);
+      }
+    }
+    semanticModels.push({
+      name: sm.name || model.name,
+      ...(model.description ? { description: model.description } : (sm.description ? { description: sm.description } : {})),
+      model: model.model || `ref('${model.name}')`,
+      ...(sm.agg_time_dimension ? { defaults: { agg_time_dimension: sm.agg_time_dimension } } : {}),
+      entities,
+      dimensions,
+      measures,
+    });
+  }
+  if (semanticModels.length) {
+    parsed.semantic_models = (parsed.semantic_models || []).concat(semanticModels);
+    if (liftedMetrics.length) parsed.metrics = (parsed.metrics || []).concat(liftedMetrics);
+  }
+  return parsed;
 }
 
 function convertDbtSemanticModel(
@@ -198,8 +273,8 @@ function convertDbtMetrics(
   metrics: DbtMetric[],
   allMeasuresByModel: Record<string, { agg: string; exprId: string }>,
   elements: SigmaElement[]
-): { targetElementId: string; metric: { id: string; formula: string; name: string } }[] {
-  const result: { targetElementId: string; metric: { id: string; formula: string; name: string } }[] = [];
+): { targetElementId: string; metric: { id: string; formula: string; name: string; description?: string } }[] {
+  const result: { targetElementId: string; metric: { id: string; formula: string; name: string; description?: string } }[] = [];
   for (const metric of metrics || []) {
     const tp = metric.type_params || {};
     const name = sigmaDisplayName(metric.name);
@@ -229,7 +304,9 @@ function convertDbtMetrics(
     }
 
     if (formula && elements[0]) {
-      result.push({ targetElementId: elements[0].id, metric: { id: sigmaShortId(), formula, name } });
+      const m: { id: string; formula: string; name: string; description?: string } = { id: sigmaShortId(), formula, name };
+      if (metric.description) m.description = metric.description;
+      result.push({ targetElementId: elements[0].id, metric: m });
     }
   }
   return result;
@@ -251,7 +328,7 @@ export function convertDbtToSigma(
 
   let parsed: any;
   try {
-    parsed = yaml.load(yamlText);
+    parsed = dbtNormalizeModelLevelYaml(yaml.load(yamlText));
   } catch (e: any) {
     throw new Error('YAML parse error: ' + e.message);
   }
@@ -331,17 +408,13 @@ export function convertDbtToSigma(
         if (found) { targetEntity = found; return true; }
         return false;
       });
-      if (targetIdx < 0 || !elements[targetIdx]) {
-        warnings.push(`Foreign entity "${entity.name}" on "${model.name}" — no matching primary entity found`);
-        continue;
-      }
 
-      const targetEl = elements[targetIdx];
+      // Materialize FK column on the source element unconditionally — even when
+      // the target dim isn't loaded. The FK is a real warehouse column whether or
+      // not a Sigma relationship can be wired; gating addCol on a found target
+      // silently drops FK columns when users upload a single fact-table YAML
+      // without its dim files.
       const srcTableName = (element.source?.path?.[2] || model.name).toUpperCase();
-      const tgtTableName = (targetEl.source?.path?.[2] || semanticModels[targetIdx].name).toUpperCase();
-      // Target column key: the target entity's physical expr (column on the dim table)
-      const tgtColKey = (targetEntity?.expr || targetEntity?.name || logicalName).toUpperCase();
-
       let srcColId = elementColIdMaps[i][physicalFk];
       if (!srcColId) {
         srcColId = sigmaInodeId(physicalFk);
@@ -349,6 +422,16 @@ export function convertDbtToSigma(
         element.order.push(srcColId);
         elementColIdMaps[i][physicalFk] = srcColId;
       }
+
+      if (targetIdx < 0 || !elements[targetIdx]) {
+        warnings.push(`Foreign entity "${entity.name}" on "${model.name}" — no matching primary entity found; FK column added without relationship wiring`);
+        continue;
+      }
+
+      const targetEl = elements[targetIdx];
+      const tgtTableName = (targetEl.source?.path?.[2] || semanticModels[targetIdx].name).toUpperCase();
+      // Target column key: the target entity's physical expr (column on the dim table)
+      const tgtColKey = (targetEntity?.expr || targetEntity?.name || logicalName).toUpperCase();
 
       const tgtColId = elementColIdMaps[targetIdx][tgtColKey];
       if (!tgtColId) {

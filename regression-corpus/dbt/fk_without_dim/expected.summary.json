@@ -1,0 +1,12 @@
+{
+  "description": "Customer feedback 2026-05-16. When a fact-table YAML is uploaded alone (no dim YAML for its foreign entities), the FK source columns must still appear in the spec — previously they were silently dropped because addCol was gated on a found target. The relationship is omitted with a warning, but the column persists.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

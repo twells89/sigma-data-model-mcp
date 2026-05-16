@@ -1,0 +1,12 @@
+{
+  "description": "Customer feedback 2026-05-16. dbt metric.description fields (top-level metrics block) were silently dropped — convertDbtMetrics built {id, formula, name} only. Fix: copy metric.description onto the emitted Sigma metric. This fixture exercises descriptions on entity, dimensions, measure, and top-level metric — all must round-trip.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
