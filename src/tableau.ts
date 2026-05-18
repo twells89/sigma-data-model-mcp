@@ -1073,7 +1073,7 @@ export function convertTableauToSigma(
       const groupDimColIds: string[] = [];
       for (const d of dimResolved) {
         const colId = sigmaShortId();
-        helperCols.push({ id: colId, formula: `[Custom SQL/${d.dimUpper}]`, name: d.displayName });
+        helperCols.push({ id: colId, formula: `[${d.dimUpper}]`, name: d.displayName });
         helperOrder.push(colId);
         groupDimColIds.push(colId);
       }
@@ -1138,7 +1138,7 @@ export function convertTableauToSigma(
       const calcId = sigmaShortId();
       rec.aggsByExpr[dedupKey] = { alias, aggFunc, aggExpr, calcId, caption };
       // Add the calc column referencing the SQL alias; column name = user-facing caption
-      rec.element.columns.push({ id: calcId, formula: `[Custom SQL/${alias}]`, name: caption });
+      rec.element.columns.push({ id: calcId, formula: `[${alias}]`, name: caption });
       rec.element.order.push(calcId);
       return { alias, caption };
     }
@@ -1243,23 +1243,23 @@ export function convertTableauToSigma(
       //   RNK (rank int)
       //   IS_TOP_N (bool — uses RANK() result; conditional on N which may be a control ref)
       const keyColId = sigmaShortId();
-      cols.push({ id: keyColId, formula: `[Custom SQL/${keyResolved.dimUpper}]`, name: keyResolved.displayName });
+      cols.push({ id: keyColId, formula: `[${keyResolved.dimUpper}]`, name: keyResolved.displayName });
       order.push(keyColId);
 
       const partColIds: string[] = [];
       for (const p of partResolved) {
         const pid = sigmaShortId();
-        cols.push({ id: pid, formula: `[Custom SQL/${p.dimUpper}]`, name: p.displayName });
+        cols.push({ id: pid, formula: `[${p.dimUpper}]`, name: p.displayName });
         order.push(pid);
         partColIds.push(pid);
       }
 
       // TOTAL & RNK come straight from SQL aliases
       const totalColId = sigmaShortId();
-      cols.push({ id: totalColId, formula: '[Custom SQL/TOTAL]', name: `${top.caption} Total` });
+      cols.push({ id: totalColId, formula: '[TOTAL]', name: `${top.caption} Total` });
       order.push(totalColId);
       const rnkColId = sigmaShortId();
-      cols.push({ id: rnkColId, formula: '[Custom SQL/RNK]', name: `${top.caption} Rank` });
+      cols.push({ id: rnkColId, formula: '[RNK]', name: `${top.caption} Rank` });
       order.push(rnkColId);
 
       // IS_TOP_N column. Two emit modes:
@@ -1278,7 +1278,7 @@ export function convertTableauToSigma(
         isTopNFormula = `[${rankColName}] <= [${controlId}]`;
       } else {
         // Literal — emit boolean in SQL and reference via [Custom SQL/IS_TOP_N]
-        isTopNFormula = '[Custom SQL/IS_TOP_N]';
+        isTopNFormula = '[IS_TOP_N]';
         emitIsTopNInSql = true;
       }
       cols.push({ id: isTopNColId, formula: isTopNFormula, name: isTopNName });
@@ -1400,7 +1400,7 @@ export function convertTableauToSigma(
       const partitionDimColIds: string[] = [];
       for (const d of partitionDims) {
         const colId = sigmaShortId();
-        cols.push({ id: colId, formula: `[Custom SQL/${d.dimUpper}]`, name: d.displayName });
+        cols.push({ id: colId, formula: `[${d.dimUpper}]`, name: d.displayName });
         order.push(colId);
         partitionDimColIds.push(colId);
       }
@@ -1417,7 +1417,7 @@ export function convertTableauToSigma(
         const oid = sigmaShortId();
         cols.push({
           id: oid,
-          formula: `[Custom SQL/${orderDimAlias}]`,
+          formula: `[${orderDimAlias}]`,
           name: sigmaDisplayName(orderDimAlias),
         });
         order.push(oid);
@@ -1568,7 +1568,7 @@ export function convertTableauToSigma(
       rec.windowAliases.add(windowAlias);
       // Add a calc column referencing the alias
       const calcId = sigmaShortId();
-      rec.element.columns.push({ id: calcId, formula: `[Custom SQL/${windowAlias}]` });
+      rec.element.columns.push({ id: calcId, formula: `[${windowAlias}]` });
       rec.element.order.push(calcId);
       return { ok: true };
     }
