@@ -1,0 +1,5 @@
+{
+  "description": "Repro for the 'dax.trim is not a function' crash. TMSL/BIM serializes multi-line DAX expressions as a string[] (one entry per line). pbiDaxToSigma assumed string and threw on any measure or calculated column whose expression spanned multiple lines. Fix normalizes array → joined string at the function entry.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}
