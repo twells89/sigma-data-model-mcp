@@ -215,10 +215,14 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     const srcPath: string[] = srcEl.source.path || [];
     const srcTableName: string = srcPath[srcPath.length - 1] || '';
-    // The base prefix in formulas must match what Sigma resolves the base element as:
-    //   - if the element has an explicit `name` field, that is its identifier
-    //   - otherwise Sigma falls back to the warehouse-table path-tail uppercase
-    const baseName: string = srcEl.name || srcTableName;
+    // baseName must match how the base element addresses its OWN columns.
+    // Warehouse-table elements always reference their columns by the
+    // path-tail (e.g. [SUPERSTORE_ORDERS/Order Id]) and their columns
+    // carry no explicit `name` field, so cross-element refs on a derived
+    // child must use the same path-tail prefix — using the element's
+    // display name (e.g. [Superstore Orders/Order Id]) fails because
+    // Sigma's resolver can't match "Order Id" against unnamed columns.
+    const baseName: string = srcTableName;
     // Derived element NAME must differ from the base so [<base>/Field] is unambiguous.
     const derivedName = `${srcEl.name || sigmaDisplayName(srcTableName)} View`;
     const viewCols: Array<{ id: string; formula: string }> = [];
