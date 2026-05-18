@@ -23,12 +23,10 @@
             <column datatype='string' name='CATEGORY' ordinal='13' />
             <column datatype='string' name='SUB_CATEGORY' ordinal='14' />
             <column datatype='string' name='MANUFACTURER' ordinal='15' />
-            <column datatype='string' name='RETURNED' ordinal='16' />
-            <column datatype='string' name='REGIONAL_MANAGER' ordinal='17' />
-            <column datatype='real' name='SALES' ordinal='18' />
-            <column datatype='integer' name='QUANTITY' ordinal='19' />
-            <column datatype='real' name='DISCOUNT' ordinal='20' />
-            <column datatype='real' name='PROFIT' ordinal='21' />
+            <column datatype='real' name='SALES' ordinal='16' />
+            <column datatype='integer' name='QUANTITY' ordinal='17' />
+            <column datatype='real' name='DISCOUNT' ordinal='18' />
+            <column datatype='real' name='PROFIT' ordinal='19' />
           </columns>
         </relation>
       </connection>
