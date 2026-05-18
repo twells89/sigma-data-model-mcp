@@ -1,0 +1,85 @@
+{
+  "compatibilityLevel": 1567,
+  "model": {
+    "culture": "en-US",
+    "tables": [
+      {
+        "name": "ORDER_FACT",
+        "lineageTag": "table-order_fact",
+        "columns": [
+          {
+            "name": "ORDER_ID",
+            "dataType": "string",
+            "sourceColumn": "ORDER_ID",
+            "lineageTag": "order_fact-order_id-000"
+          },
+          {
+            "name": "CUSTOMER_KEY",
+            "dataType": "int64",
+            "sourceColumn": "CUSTOMER_KEY",
+            "lineageTag": "order_fact-customer_key-001",
+            "formatString": "0"
+          },
+          {
+            "name": "GROSS_REVENUE",
+            "dataType": "double",
+            "sourceColumn": "GROSS_REVENUE",
+            "lineageTag": "order_fact-gross_revenue-002",
+            "formatString": "\\$#,##0.00"
+          },
+          {
+            "name": "Discounted Revenue",
+            "type": "calculated",
+            "expression": [
+              "IF(",
+              "  [GROSS_REVENUE] > 1000,",
+              "  [GROSS_REVENUE] * 0.9,",
+              "  [GROSS_REVENUE]",
+              ")"
+            ],
+            "dataType": "double",
+            "lineageTag": "order_fact-discounted-revenue-calc"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "ORDER_FACT",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "  Source = Snowflake.Databases(\"xy12345.snowflakecomputing.com\", \"COMPUTE_WH\"),",
+                "  CSA = Source{[Name=\"CSA\"]}[Data],",
+                "  TJ = CSA{[Name=\"TJ\"]}[Data],",
+                "  ORDER_FACT = TJ{[Name=\"ORDER_FACT\"]}[Data]",
+                "in",
+                "  ORDER_FACT"
+              ]
+            }
+          }
+        ],
+        "measures": [
+          {
+            "name": "Total Gross Revenue",
+            "expression": "SUM(ORDER_FACT[GROSS_REVENUE])",
+            "lineageTag": "measure-total-gross-revenue",
+            "formatString": "\\$#,##0.00"
+          },
+          {
+            "name": "Avg Revenue Per Order",
+            "expression": [
+              "DIVIDE(",
+              "  SUM(ORDER_FACT[GROSS_REVENUE]),",
+              "  DISTINCTCOUNT(ORDER_FACT[ORDER_ID]),",
+              "  0",
+              ")"
+            ],
+            "lineageTag": "measure-avg-revenue-per-order",
+            "formatString": "\\$#,##0.00"
+          }
+        ]
+      }
+    ]
+  }
+}

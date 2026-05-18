@@ -32,11 +32,13 @@ const PBI_COMMUNITY_LINKS = {
 // ── DAX → Sigma Formula Converter ─────────────────────────────────────────────
 
 export function pbiDaxToSigma(
-  dax: string,
+  dax: string | string[],
   warnings: string[] | null,
   measureName: string
 ): string | null {
-  if (!dax || !dax.trim()) return null;
+  // BIM/TMSL serializes multi-line DAX expressions as a string[] (one entry per line)
+  if (Array.isArray(dax)) dax = dax.join('\n');
+  if (typeof dax !== 'string' || !dax.trim()) return null;
   let f = dax.trim();
 
   // ── Tier 4: Structural patterns → warnings only ──
