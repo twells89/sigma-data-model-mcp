@@ -82,6 +82,7 @@ const FMT_TO_KEY = {
   prep:        'prep',
   tableau:     'tableau',
   thoughtspot: 'thoughtspot',
+  quicksight:  'quicksight',
   // Not yet covered by fixtures: contract (atlan), snow, sql, ssas
 };
 
@@ -157,7 +158,7 @@ async function discoverFixtures(filter) {
       if (filter && id !== filter && fmt !== filter) continue;
       const files = await readdir(fxDir);
       const single = files.find(f => f.startsWith('input.'));
-      const multi = ['lookml', 'cube', 'omni'].includes(fmt) && !single
+      const multi = ['lookml', 'cube', 'omni', 'quicksight'].includes(fmt) && !single
         ? files.filter(f => f !== 'expected.summary.json' && !f.startsWith('expected.') && !f.startsWith('.'))
         : null;
       if (!single && (!multi || multi.length === 0)) continue;
@@ -470,6 +471,41 @@ async function driveThoughtSpot(page, fx, opts) {
   });
 }
 
+async function driveQuickSight(page, fx, opts) {
+  // Multi-file: paste each JSON separated by `---` markers (matches the
+  // textarea split-and-parse path in runQuickSightConversion).
+  const inputs = fx.inputFiles
+    ? await Promise.all(fx.inputFiles.map(async fp => ({ name: basename(fp), content: await readFile(fp, 'utf-8') })))
+    : [{ name: basename(fx.inputFile), content: await readFile(fx.inputFile, 'utf-8') }];
+
+  const result = await page.evaluate(async (files, connId, db, schema) => {
+    // Reset any previously loaded files
+    if (window._qsRawFiles) window._qsRawFiles.length = 0;
+    document.getElementById('qsFileList').innerHTML = '';
+    // Stage the textarea
+    document.getElementById('qsJsonInput').value = files
+      .map(f => `// ${f.name}\n${f.content}`)
+      .join('\n---\n');
+    const sel = document.getElementById('qsConnectionId');
+    if (sel) {
+      if (![...sel.options].some(o => o.value === connId)) {
+        const opt = document.createElement('option');
+        opt.value = connId; opt.textContent = connId;
+        sel.appendChild(opt);
+      }
+      sel.value = connId;
+    }
+    if (db) document.getElementById('qsDatabase').value = db;
+    if (schema) document.getElementById('qsSchema').value = schema;
+    try {
+      runQuickSightConversion();
+    } catch (e) { return { ok: false, error: 'run: ' + e.message }; }
+    return { ok: true };
+  }, inputs, opts.connectionId || '<CONNECTION_ID>', opts.database || '', opts.schema || '');
+  if (!result.ok) return result;
+  return readOutput(page, 'qsJsonOutput');
+}
+
 async function driveQlik(page, fx, opts) {
   return drivePaste(page, fx, opts, {
     inputId: 'qlikJsonInput',
@@ -621,6 +657,7 @@ const DRIVERS = {
   prep:        drivePrep,
   qlik:        driveQlik,
   thoughtspot: driveThoughtSpot,
+  quicksight:  driveQuickSight,
 };
 
 // ── Per-fixture runner ────────────────────────────────────────────────────

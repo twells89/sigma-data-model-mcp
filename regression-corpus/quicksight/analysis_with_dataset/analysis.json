@@ -1,0 +1,46 @@
+{
+  "_source": "Synthetic — hand-built from AWS DescribeAnalysisDefinition schema (API_AnalysisDefinition.html). References the sibling dataset.json by ARN. Adds an analysis-level CalculatedField and a couple of ParameterDeclarations.",
+  "AnalysisId": "qs-sales-analysis",
+  "Name": "Sales Analysis",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {
+        "DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/sales-insights",
+        "Identifier": "Sales Insights"
+      }
+    ],
+    "CalculatedFields": [
+      {
+        "DataSetIdentifier": "Sales Insights",
+        "Name": "Discounted Total",
+        "Expression": "ifelse({CUSTOMER_SEGMENT} = 'Enterprise', {Net Revenue} * 0.95, {Net Revenue})"
+      }
+    ],
+    "ParameterDeclarations": [
+      {
+        "StringParameterDeclaration": {
+          "Name": "SegmentFilter",
+          "ParameterValueType": "MULTI_VALUED",
+          "DefaultValues": {"StaticValues": ["Enterprise"]}
+        }
+      },
+      {
+        "DateTimeParameterDeclaration": {
+          "Name": "AsOfDate",
+          "ParameterValueType": "SINGLE_VALUED",
+          "DefaultValues": {"StaticValues": ["2026-01-01"]},
+          "TimeGranularity": "DAY"
+        }
+      }
+    ],
+    "FilterGroups": [
+      {
+        "FilterGroupId": "fg1",
+        "CrossDataset": "SINGLE_DATASET",
+        "Status": "ENABLED",
+        "Filters": [],
+        "ScopeConfiguration": {}
+      }
+    ]
+  }
+}

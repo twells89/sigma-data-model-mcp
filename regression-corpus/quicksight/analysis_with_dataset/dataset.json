@@ -1,0 +1,71 @@
+{
+  "_source": "Synthetic — hand-built from AWS DescribeDataSet schema (API_DescribeDataSet.html). Two PhysicalTables (RelationalTable) joined via LogicalTableMap.JoinInstruction. Points at CSA.TJ.ORDER_FACT / CSA.TJ.CUSTOMER_DIM (verified to POST cleanly against connection cb2f5180-641f-47bd-8efa-da9d590d855a per CLAUDE.md test fixtures).",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/sales-insights",
+    "DataSetId": "sales-insights",
+    "Name": "Sales Insights",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "orders-physical": {
+        "RelationalTable": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-prod",
+          "Catalog": "CSA",
+          "Schema": "TJ",
+          "Name": "ORDER_FACT",
+          "InputColumns": [
+            {"Name": "ORDER_ID",      "Type": "INTEGER"},
+            {"Name": "CUSTOMER_KEY",  "Type": "INTEGER"},
+            {"Name": "GROSS_REVENUE", "Type": "DECIMAL"}
+          ]
+        }
+      },
+      "customers-physical": {
+        "RelationalTable": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-prod",
+          "Catalog": "CSA",
+          "Schema": "TJ",
+          "Name": "CUSTOMER_DIM",
+          "InputColumns": [
+            {"Name": "CUSTOMER_KEY",      "Type": "INTEGER"},
+            {"Name": "CUSTOMER_SEGMENT",  "Type": "STRING"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "orders-logical": {
+        "Alias": "Order Fact",
+        "Source": {"PhysicalTableId": "orders-physical"},
+        "DataTransforms": [
+          {"CreateColumnsOperation": {
+            "Columns": [
+              {"ColumnId": "calc-net", "ColumnName": "Net Revenue", "Expression": "{GROSS_REVENUE} * 0.85"}
+            ]
+          }}
+        ]
+      },
+      "customers-logical": {
+        "Alias": "Customer Dim",
+        "Source": {"PhysicalTableId": "customers-physical"}
+      },
+      "joined-logical": {
+        "Alias": "Sales Insights",
+        "Source": {
+          "JoinInstruction": {
+            "LeftOperand": "orders-logical",
+            "RightOperand": "customers-logical",
+            "Type": "LEFT",
+            "OnClause": "{CUSTOMER_KEY} = {CUSTOMER_KEY[customers-logical]}"
+          }
+        }
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID",         "Type": "INTEGER"},
+      {"Name": "CUSTOMER_KEY",     "Type": "INTEGER"},
+      {"Name": "GROSS_REVENUE",    "Type": "DECIMAL"},
+      {"Name": "Net Revenue",      "Type": "DECIMAL"},
+      {"Name": "CUSTOMER_SEGMENT", "Type": "STRING"}
+    ]
+  }
+}
