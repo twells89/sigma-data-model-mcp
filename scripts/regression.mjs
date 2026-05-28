@@ -106,6 +106,7 @@ async function loadConverters() {
   const qlik = await import(join(BUILD_DIR, 'qlik.js'));
   const thoughtspot = await import(join(BUILD_DIR, 'thoughtspot.js'));
   const oac = await import(join(BUILD_DIR, 'oac.js'));
+  const quicksight = await import(join(BUILD_DIR, 'quicksight.js'));
   return {
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
@@ -117,6 +118,7 @@ async function loadConverters() {
     qlik: qlik.convertQlikToSigma || qlik.default?.convertQlikToSigma,
     thoughtspot: thoughtspot.convertThoughtSpotToSigma || thoughtspot.default?.convertThoughtSpotToSigma,
     oac: oac.convertOacToSigma || oac.default?.convertOacToSigma,
+    quicksight: quicksight.convertQuickSightToSigma || quicksight.default?.convertQuickSightToSigma,
   };
 }
 
@@ -163,7 +165,7 @@ async function discoverFixtures(filter) {
       // find input file(s). Single-file: input.*  Multi-file: any non-summary file.
       const files = await readdir(fxDir);
       const single = files.find(f => f.startsWith('input.'));
-      const multi = ['lookml', 'cube', 'omni'].includes(fmt) && !single
+      const multi = ['lookml', 'cube', 'omni', 'quicksight'].includes(fmt) && !single
         ? files.filter(f => f !== 'expected.summary.json' && !f.startsWith('expected.') && !f.startsWith('.'))
         : null;
       if (!single && (!multi || multi.length === 0)) continue;
@@ -195,7 +197,7 @@ async function runFixture(fx, converters) {
 
   const opts = fx.summary.convertOptions || {};
   // multi-file converters take {name,content}[]
-  const fileBased = ['lookml', 'cube', 'omni'];
+  const fileBased = ['lookml', 'cube', 'omni', 'quicksight'];
   // powerbi/qlik take a parsed JSON object; oac takes a parsed JSON array.
   // JSON.parse handles both shapes, so a single list is sufficient.
   const jsonBased = ['powerbi', 'qlik', 'oac'];

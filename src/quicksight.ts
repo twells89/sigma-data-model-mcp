@@ -1,0 +1,1055 @@
+/**
+ * AWS QuickSight → Sigma Data Model JSON converter.
+ *
+ * Accepts a mix of files, auto-detected by content:
+ *   - DescribeAnalysisDefinition JSON   (has `Definition.DataSetIdentifierDeclarations`)
+ *   - DescribeDataSet JSON              (has `DataSet.PhysicalTableMap` or top-level `PhysicalTableMap`)
+ *   - Asset-bundle wrapped variants     (object whose value is one of the above)
+ *
+ * Asset-bundle .zip extraction is handled by the caller (pass each extracted JSON file).
+ *
+ * Translation:
+ *   PhysicalTable RelationalTable → warehouse-table element
+ *   PhysicalTable CustomSql       → Custom SQL element
+ *   PhysicalTable S3Source/SaaS   → Custom SQL placeholder (no direct warehouse path)
+ *   LogicalTable JoinInstruction  → Sigma relationship on the left-operand element
+ *   LogicalTable DataTransforms:
+ *     CreateColumnsOperation      → calculated column (formula via quicksightFormulaToSigma)
+ *     RenameColumnOperation       → column display name
+ *     CastColumnTypeOperation     → cast wrapper formula
+ *     FilterOperation             → boolean calc column "Filter: <expr>"
+ *     ProjectOperation            → column order / hide non-projected
+ *     TagColumnOperation          → informational warning (Sigma has no equivalent)
+ *   AnalysisDefinition.CalculatedFields → calc columns on the element bound to DataSetIdentifier
+ *   ParameterDeclarations         → Sigma controls (string/number/date)
+ *   FilterGroups                  → informational warnings (analysis-level filters → UI page filters)
+ */
+
+import {
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, sigmaColFormula,
+  type SigmaElement, type SigmaColumn, type ConversionResult,
+} from './sigma-ids.js';
+
+// ── Public interface ────────────────────────────────────────────────────────
+
+export interface QuickSightFile {
+  name: string;
+  content: string;
+}
+
+export interface QuickSightConvertOptions {
+  connectionId?: string;
+  database?: string;
+  schema?: string;
+}
+
+export function convertQuickSightToSigma(
+  files: QuickSightFile[],
+  options: QuickSightConvertOptions = {},
+): ConversionResult {
+  resetIds();
+
+  const { connectionId = '<CONNECTION_ID>', database = '', schema = '' } = options;
+  const dbOverride = database.trim().toUpperCase();
+  const schemaOverride = schema.trim().toUpperCase();
+
+  const analyses: QSAnalysisDefinition[] = [];
+  const datasets: QSDataSet[] = [];
+  const warnings: string[] = [];
+
+  // ── Parse + classify input files ──────────────────────────────────────────
+  for (const file of files) {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(file.content);
+    } catch (e: any) {
+      warnings.push(`${file.name}: JSON parse error — ${e.message}`);
+      continue;
+    }
+    const classified = classifyQuickSightJson(parsed);
+    if (classified.kind === 'analysis') {
+      analyses.push(classified.value);
+    } else if (classified.kind === 'dataset') {
+      datasets.push(classified.value);
+    } else {
+      warnings.push(`${file.name}: unrecognized QuickSight JSON shape — skipped (no AnalysisDefinition or DataSet found)`);
+    }
+  }
+
+  if (analyses.length === 0 && datasets.length === 0) {
+    return {
+      model: emptyModel('QuickSight Model'),
+      warnings: warnings.length ? warnings : ['No QuickSight analysis or dataset JSON found in the provided files'],
+      stats: {},
+    };
+  }
+
+  // ── Datasets → elements ───────────────────────────────────────────────────
+  // Maps a dataset ARN/Identifier to the registry entry built from its
+  // PhysicalTableMap + LogicalTableMap.
+  const datasetRegistry = new Map<string, DatasetEntry>();
+  const elements: SigmaElement[] = [];
+
+  for (const ds of datasets) {
+    const entry = buildElementsForDataset(ds, { connectionId, dbOverride, schemaOverride }, warnings);
+    elements.push(...entry.elements);
+    if (ds.Arn) datasetRegistry.set(ds.Arn, entry);
+    if (ds.DataSetId) datasetRegistry.set(ds.DataSetId, entry);
+    if (ds.Name) datasetRegistry.set(ds.Name, entry);
+  }
+
+  // ── Pre-build derived views for every source element with relationships ──
+  // Analysis-level CalculatedFields land on the derived view (they typically
+  // reference joined dim cols, which can only be reached via [SRC/REL/Field]
+  // cross-element refs from a derived element).
+  const derivedViewBySrcId = new Map<string, SigmaElement>();
+  const sourceEls = elements.filter(e => e.source?.kind === 'warehouse-table' && (e.relationships?.length ?? 0) > 0);
+  for (const srcEl of sourceEls) {
+    const view = buildDerivedView(srcEl, elements);
+    if (view) {
+      elements.push(view);
+      derivedViewBySrcId.set(srcEl.id, view);
+    }
+  }
+
+  // ── Analyses → calc-col / parameter wiring ────────────────────────────────
+  const controls: any[] = [];
+  let totalCalcFields = 0;
+  let totalParams = 0;
+
+  for (const analysis of analyses) {
+    const def = analysis.Definition || {};
+    const identifierMap = new Map<string, DatasetEntry>();
+    for (const decl of def.DataSetIdentifierDeclarations || []) {
+      const ident = decl.Identifier;
+      const arn = decl.DataSetArn;
+      let entry: DatasetEntry | undefined;
+      if (arn && datasetRegistry.has(arn)) entry = datasetRegistry.get(arn);
+      else if (ident && datasetRegistry.has(ident)) entry = datasetRegistry.get(ident);
+      if (!entry) {
+        entry = synthesizeStubDataset(ident || arn || 'Unknown', { connectionId, dbOverride, schemaOverride }, warnings);
+        elements.push(...entry.elements);
+        warnings.push(`ℹ Analysis references dataset "${ident}" (ARN ${arn || '?'}) — no DescribeDataSet JSON supplied; emitted a Custom-SQL stub element so calc fields have a home. Re-run with the dataset JSON to resolve warehouse columns.`);
+      }
+      if (ident) identifierMap.set(ident, entry);
+    }
+
+    for (const cf of def.CalculatedFields || []) {
+      totalCalcFields++;
+      const entry = cf.DataSetIdentifier ? identifierMap.get(cf.DataSetIdentifier) : undefined;
+      if (!entry) {
+        warnings.push(`⚠ Analysis calc field "${cf.Name}": DataSetIdentifier "${cf.DataSetIdentifier}" not in DataSetIdentifierDeclarations — skipped`);
+        continue;
+      }
+      addAnalysisCalcCol(entry, cf.Name, cf.Expression, derivedViewBySrcId, elements, warnings);
+    }
+
+    for (const decl of def.ParameterDeclarations || []) {
+      const ctl = parameterDeclarationToControl(decl, warnings);
+      if (ctl) {
+        controls.push(ctl);
+        totalParams++;
+      }
+    }
+
+    const filterCount = (def.FilterGroups || []).length;
+    if (filterCount > 0) {
+      warnings.push(`ℹ ${filterCount} analysis-level FilterGroup(s) skipped — these are visual page filters in QuickSight. Re-create as workbook filters/page controls in Sigma.`);
+    }
+  }
+
+  // Strip empty arrays
+  for (const el of elements) {
+    if (el.metrics?.length === 0) delete el.metrics;
+    if (el.relationships?.length === 0) delete el.relationships;
+  }
+
+  // ── Build page ────────────────────────────────────────────────────────────
+  const page: any = {
+    id: sigmaShortId(),
+    name: 'Page 1',
+    elements,
+  };
+  if (controls.length) page.controls = controls;
+
+  const modelName = analyses.length === 1
+    ? sigmaDisplayName(String(analyses[0].Name || analyses[0].AnalysisId || 'QuickSight Analysis'))
+    : datasets.length === 1
+      ? sigmaDisplayName(String(datasets[0].Name || datasets[0].DataSetId || 'QuickSight DataSet'))
+      : 'QuickSight Model';
+
+  return {
+    model: { name: modelName, schemaVersion: 1, pages: [page] },
+    warnings,
+    stats: {
+      analyses: analyses.length,
+      datasets: datasets.length,
+      elements: elements.length,
+      columns: elements.reduce((s, e) => s + (e.columns?.length ?? 0), 0),
+      relationships: elements.reduce((s, e) => s + (e.relationships?.length ?? 0), 0),
+      controls: controls.length,
+      calcFields: totalCalcFields,
+      params: totalParams,
+    },
+  };
+}
+
+// ── Classification ──────────────────────────────────────────────────────────
+
+type Classification =
+  | { kind: 'analysis'; value: QSAnalysisDefinition }
+  | { kind: 'dataset'; value: QSDataSet }
+  | { kind: 'unknown' };
+
+function classifyQuickSightJson(obj: any): Classification {
+  if (!obj || typeof obj !== 'object') return { kind: 'unknown' };
+
+  // Analysis: DescribeAnalysisDefinition response shape OR asset-bundle wrapper
+  if (obj.Definition?.DataSetIdentifierDeclarations) {
+    return { kind: 'analysis', value: obj as QSAnalysisDefinition };
+  }
+  if (obj.AnalysisDefinition?.Definition?.DataSetIdentifierDeclarations) {
+    return { kind: 'analysis', value: { ...obj, Definition: obj.AnalysisDefinition.Definition, Name: obj.AnalysisDefinition.Name } as QSAnalysisDefinition };
+  }
+  if (obj.Analysis?.Definition?.DataSetIdentifierDeclarations) {
+    return { kind: 'analysis', value: { ...obj.Analysis } as QSAnalysisDefinition };
+  }
+
+  // Dataset: DescribeDataSet response OR raw DataSet
+  if (obj.DataSet?.PhysicalTableMap) {
+    return { kind: 'dataset', value: obj.DataSet as QSDataSet };
+  }
+  if (obj.PhysicalTableMap) {
+    return { kind: 'dataset', value: obj as QSDataSet };
+  }
+  // Asset-bundle dataset wrapper (rare)
+  if (obj.QuickSightDataSet?.PhysicalTableMap) {
+    return { kind: 'dataset', value: obj.QuickSightDataSet as QSDataSet };
+  }
+
+  return { kind: 'unknown' };
+}
+
+// ── Dataset → elements ──────────────────────────────────────────────────────
+
+interface DatasetBuildContext {
+  connectionId: string;
+  dbOverride: string;
+  schemaOverride: string;
+}
+
+interface DatasetEntry {
+  // Elements emitted for this dataset (one per logical table). For analyses,
+  // calc fields land on the "primary" logical table (the last one with a
+  // join, or the only one if no joins).
+  elements: SigmaElement[];
+  // logicalId → element (includes ones built from PhysicalTableId, JoinInstruction)
+  byLogicalId: Map<string, SigmaElement>;
+  // logicalId → physicalId map (only when the logical table directly references a physical table)
+  logicalToPhysical: Map<string, string>;
+  // The element that an analysis calc field should target by default
+  primary: SigmaElement;
+}
+
+function buildElementsForDataset(
+  ds: QSDataSet,
+  ctx: DatasetBuildContext,
+  warnings: string[],
+): DatasetEntry {
+  const elementsByLogical = new Map<string, SigmaElement>();
+  const logicalToPhysical = new Map<string, string>();
+  const physicalToLogical = new Map<string, string>();
+  // colNameMap[logicalId][lowercaseOriginalName] = { id, displayName }
+  const colMaps = new Map<string, Map<string, { id: string; display: string }>>();
+
+  const phys = ds.PhysicalTableMap || {};
+  const logical = ds.LogicalTableMap || {};
+  const dsName = ds.Name || ds.DataSetId || 'QuickSight DataSet';
+
+  // First pass: build a SigmaElement for each logical table that points at a
+  // physical table directly. JoinInstruction-backed logical tables are
+  // resolved in a second pass.
+  for (const [logicalId, lt] of Object.entries(logical)) {
+    if (lt.Source?.PhysicalTableId) {
+      const physId = lt.Source.PhysicalTableId;
+      const phyTable = phys[physId];
+      if (!phyTable) {
+        warnings.push(`⚠ Dataset "${dsName}": logical table "${lt.Alias || logicalId}" references missing PhysicalTableId "${physId}" — skipped`);
+        continue;
+      }
+      const { element, colMap } = buildElementFromPhysicalTable(phyTable, lt.Alias || logicalId, ctx, warnings);
+      elementsByLogical.set(logicalId, element);
+      logicalToPhysical.set(logicalId, physId);
+      physicalToLogical.set(physId, logicalId);
+      colMaps.set(logicalId, colMap);
+      // Apply this logical table's DataTransforms
+      applyTransformsToElement(element, lt.DataTransforms || [], colMap, dsName, lt.Alias || logicalId, warnings);
+    }
+  }
+
+  // If no LogicalTableMap entries were physical-backed (uncommon: dataset
+  // omits LogicalTableMap altogether), generate one element per physical
+  // table directly.
+  if (elementsByLogical.size === 0) {
+    for (const [physId, phyTable] of Object.entries(phys)) {
+      const alias = inferPhysicalAlias(phyTable, physId);
+      const { element, colMap } = buildElementFromPhysicalTable(phyTable, alias, ctx, warnings);
+      elementsByLogical.set(physId, element);
+      logicalToPhysical.set(physId, physId);
+      physicalToLogical.set(physId, physId);
+      colMaps.set(physId, colMap);
+    }
+  }
+
+  // Second pass: JoinInstruction logical tables → relationships on the left
+  // element. The "joined" logical table itself is not emitted as a separate
+  // Sigma element; its role is captured by the relationship.
+  for (const [logicalId, lt] of Object.entries(logical)) {
+    const join = lt.Source?.JoinInstruction;
+    if (!join) continue;
+    const leftEl = elementsByLogical.get(join.LeftOperand);
+    const rightEl = elementsByLogical.get(join.RightOperand);
+    if (!leftEl || !rightEl) {
+      warnings.push(`⚠ Dataset "${dsName}": join "${lt.Alias || logicalId}" left/right operand not resolvable — relationship skipped`);
+      continue;
+    }
+    const leftColMap = colMaps.get(join.LeftOperand);
+    const rightColMap = colMaps.get(join.RightOperand);
+    const parsed = parseJoinOnClause(join.OnClause || '', join.LeftOperand, join.RightOperand);
+    let leftColId: string | undefined;
+    let rightColId: string | undefined;
+    if (parsed && leftColMap && rightColMap) {
+      leftColId = leftColMap.get(parsed.leftCol.toLowerCase())?.id;
+      rightColId = rightColMap.get(parsed.rightCol.toLowerCase())?.id;
+    }
+    // Relationship name = uppercase right-side alias (matches DM convention
+    // of [SRC/REL_NAME/Col] cross-element refs).
+    const rightAlias = (logical[join.RightOperand]?.Alias || join.RightOperand).toString().toUpperCase().replace(/\s+/g, '_');
+    const rel: any = {
+      id: sigmaShortId(),
+      targetElementId: rightEl.id,
+      name: rightAlias,
+      relationshipType: join.Type === 'INNER' ? 'N:1' : (join.Type === 'RIGHT' ? '1:N' : 'N:1'),
+    };
+    if (leftColId && rightColId) {
+      rel.keys = [{ sourceColumnId: leftColId, targetColumnId: rightColId }];
+    } else {
+      warnings.push(`ℹ Dataset "${dsName}": join "${lt.Alias || logicalId}" OnClause "${join.OnClause}" — could not resolve FK/PK column IDs; relationship added without keys`);
+    }
+    (leftEl.relationships ??= []).push(rel);
+
+    // Apply transforms on the joined logical table to the LEFT element (the
+    // join "produces" a combined row set in QuickSight, but in Sigma the
+    // joined dim cols are reached via the relationship — so transforms on
+    // the joined output that affect left-side columns still apply).
+    applyTransformsToElement(leftEl, lt.DataTransforms || [], leftColMap || new Map(), dsName, lt.Alias || logicalId, warnings);
+  }
+
+  // Pick the primary element: prefer one with the most relationships
+  // (analyses usually wire calc fields to the joined "facts" table).
+  const allEls = Array.from(elementsByLogical.values());
+  const primary = allEls.length === 1
+    ? allEls[0]
+    : allEls.slice().sort((a, b) => (b.relationships?.length ?? 0) - (a.relationships?.length ?? 0))[0];
+
+  return {
+    elements: allEls,
+    byLogicalId: elementsByLogical,
+    logicalToPhysical,
+    primary,
+  };
+}
+
+function inferPhysicalAlias(phy: QSPhysicalTable, physId: string): string {
+  if (phy.RelationalTable?.Name) return phy.RelationalTable.Name;
+  if (phy.CustomSql?.Name) return phy.CustomSql.Name;
+  if (phy.S3Source?.UploadSettings) return physId;
+  return physId;
+}
+
+function buildElementFromPhysicalTable(
+  phy: QSPhysicalTable,
+  alias: string,
+  ctx: DatasetBuildContext,
+  warnings: string[],
+): { element: SigmaElement; colMap: Map<string, { id: string; display: string }> } {
+  const colMap = new Map<string, { id: string; display: string }>();
+
+  if (phy.RelationalTable) {
+    const rt = phy.RelationalTable;
+    const tableName = (rt.Name || alias).toString();
+    // Path: [catalog?, schema?, table]
+    let path: string[] = [];
+    if (rt.Catalog) path.push(rt.Catalog.toUpperCase());
+    if (rt.Schema) path.push(rt.Schema.toUpperCase());
+    path.push(tableName.toUpperCase());
+
+    // Apply DB/schema overrides for incomplete paths (path.length === 1)
+    if (path.length === 1) {
+      const t = path[0];
+      if (ctx.dbOverride && ctx.schemaOverride) path = [ctx.dbOverride, ctx.schemaOverride, t];
+      else if (ctx.schemaOverride) path = [ctx.schemaOverride, t];
+      else if (ctx.dbOverride) path = [ctx.dbOverride, t];
+    } else if (path.length === 2 && ctx.dbOverride) {
+      path = [ctx.dbOverride, path[0], path[1]];
+    }
+
+    const tablePathTail = path[path.length - 1];
+    const element: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      source: { connectionId: ctx.connectionId, kind: 'warehouse-table', path },
+      columns: [],
+      metrics: [],
+      order: [],
+    };
+
+    for (const ic of rt.InputColumns || []) {
+      const id = sigmaInodeId(ic.Name.toUpperCase());
+      const display = sigmaDisplayName(ic.Name);
+      colMap.set(ic.Name.toLowerCase(), { id, display });
+      element.columns.push({ id, formula: sigmaColFormula(tablePathTail, ic.Name) });
+      element.order.push(id);
+    }
+    return { element, colMap };
+  }
+
+  if (phy.CustomSql) {
+    const cs = phy.CustomSql;
+    const element: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      source: { connectionId: ctx.connectionId, kind: 'sql', statement: cs.SqlQuery || '' },
+      columns: [],
+      metrics: [],
+      order: [],
+    };
+    // CustomSql.Columns is documented optional but the API rejects null —
+    // always emit something. If the source bundle didn't supply column metadata,
+    // fall back to InputColumns or warn.
+    const cols = cs.Columns || [];
+    if (cols.length === 0) {
+      warnings.push(`⚠ CustomSql "${cs.Name}" has no Columns metadata — the SQL element will have no surfaced columns. Add them manually after save.`);
+    }
+    for (const ic of cols) {
+      const id = sigmaInodeId(ic.Name.toUpperCase());
+      const display = sigmaDisplayName(ic.Name);
+      colMap.set(ic.Name.toLowerCase(), { id, display });
+      element.columns.push({ id, formula: `[${display}]` });
+      element.order.push(id);
+    }
+    return { element, colMap };
+  }
+
+  if (phy.S3Source) {
+    warnings.push(`ℹ S3Source "${alias}" — Sigma has no direct S3 file connection; emitted as Custom SQL stub. Replace with an external table or warehouse-loaded equivalent.`);
+    const element: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with warehouse SELECT for S3 source "${alias}"\nSELECT 1 AS _placeholder` },
+      columns: [],
+      metrics: [],
+      order: [],
+    };
+    for (const ic of phy.S3Source.InputColumns || []) {
+      const id = sigmaInodeId(ic.Name.toUpperCase());
+      const display = sigmaDisplayName(ic.Name);
+      colMap.set(ic.Name.toLowerCase(), { id, display });
+      element.columns.push({ id, formula: `[${display}]` });
+      element.order.push(id);
+    }
+    return { element, colMap };
+  }
+
+  if ((phy as any).SaaSTable) {
+    warnings.push(`ℹ SaaSTable "${alias}" — Sigma has no direct SaaS connector equivalent; emitted as Custom SQL stub.`);
+    const sa = (phy as any).SaaSTable;
+    const element: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with warehouse SELECT for SaaS source "${alias}" (${(sa.TablePath || []).join('.')})\nSELECT 1 AS _placeholder` },
+      columns: [],
+      metrics: [],
+      order: [],
+    };
+    for (const ic of sa.InputColumns || []) {
+      const id = sigmaInodeId(ic.Name.toUpperCase());
+      const display = sigmaDisplayName(ic.Name);
+      colMap.set(ic.Name.toLowerCase(), { id, display });
+      element.columns.push({ id, formula: `[${display}]` });
+      element.order.push(id);
+    }
+    return { element, colMap };
+  }
+
+  // Unknown physical-table variant: empty stub.
+  warnings.push(`⚠ Physical table "${alias}" has no recognized variant (RelationalTable/CustomSql/S3Source/SaaSTable) — emitted empty stub`);
+  return {
+    element: {
+      id: sigmaShortId(),
+      kind: 'table',
+      source: { connectionId: ctx.connectionId, kind: 'sql', statement: '-- empty placeholder' },
+      columns: [],
+      metrics: [],
+      order: [],
+    },
+    colMap,
+  };
+}
+
+function applyTransformsToElement(
+  element: SigmaElement,
+  transforms: QSDataTransform[],
+  colMap: Map<string, { id: string; display: string }>,
+  dsName: string,
+  logicalAlias: string,
+  warnings: string[],
+): void {
+  for (const tx of transforms) {
+    if (tx.CastColumnTypeOperation) {
+      const op = tx.CastColumnTypeOperation;
+      const existing = colMap.get(op.ColumnName.toLowerCase());
+      if (!existing) {
+        warnings.push(`⚠ ${dsName}/${logicalAlias}: Cast on missing column "${op.ColumnName}" — skipped`);
+        continue;
+      }
+      // Locate the column object on the element and wrap its formula with
+      // a Sigma cast function. The original column stays in place.
+      const col = element.columns.find(c => c.id === existing.id);
+      if (!col) continue;
+      const castFn = sigmaCastForType(op.NewColumnType);
+      if (castFn) col.formula = `${castFn}(${col.formula})`;
+    } else if (tx.CreateColumnsOperation) {
+      for (const newCol of tx.CreateColumnsOperation.Columns || []) {
+        const id = sigmaInodeId(newCol.ColumnName.toUpperCase());
+        const display = sigmaDisplayName(newCol.ColumnName);
+        const translated = quicksightFormulaToSigma(newCol.Expression || '', warnings);
+        colMap.set(newCol.ColumnName.toLowerCase(), { id, display });
+        element.columns.push({ id, formula: translated, name: display });
+        element.order.push(id);
+      }
+    } else if (tx.RenameColumnOperation) {
+      const op = tx.RenameColumnOperation;
+      const existing = colMap.get(op.ColumnName.toLowerCase());
+      if (!existing) continue;
+      const col = element.columns.find(c => c.id === existing.id);
+      if (!col) continue;
+      const newDisplay = sigmaDisplayName(op.NewColumnName);
+      col.name = newDisplay;
+      colMap.delete(op.ColumnName.toLowerCase());
+      colMap.set(op.NewColumnName.toLowerCase(), { id: existing.id, display: newDisplay });
+    } else if (tx.ProjectOperation) {
+      // ProjectedColumns is the subset that survives — we reorder element.order
+      // to match and drop the rest from order (Sigma still keeps them as data
+      // model columns but they'll be off the default projected list).
+      const projected = tx.ProjectOperation.ProjectedColumns || [];
+      const projectedIds = projected
+        .map(name => colMap.get(name.toLowerCase())?.id)
+        .filter((id): id is string => !!id);
+      if (projectedIds.length) {
+        const projectedSet = new Set(projectedIds);
+        // Keep projected first in order, others moved to end
+        const others = element.order.filter(id => !projectedSet.has(id));
+        element.order = [...projectedIds, ...others];
+      }
+    } else if (tx.FilterOperation) {
+      const op = tx.FilterOperation;
+      const translated = quicksightFormulaToSigma(op.ConditionExpression || '', warnings);
+      const id = sigmaShortId();
+      const name = `Filter: ${(op.ConditionExpression || '').slice(0, 40)}`;
+      element.columns.push({ id, formula: translated, name });
+      element.order.push(id);
+      warnings.push(`ℹ ${dsName}/${logicalAlias}: FilterOperation lowered to boolean calc column "${name}" — use as a workbook page filter`);
+    } else if (tx.TagColumnOperation) {
+      warnings.push(`ℹ ${dsName}/${logicalAlias}: TagColumnOperation on "${tx.TagColumnOperation.ColumnName}" skipped (Sigma has no geo-role tagging)`);
+    } else if (tx.UntagColumnOperation || tx.OverrideDatasetParameterOperation) {
+      // No-op tags
+    } else {
+      const keys = Object.keys(tx);
+      if (keys.length) warnings.push(`ℹ ${dsName}/${logicalAlias}: unsupported transform "${keys[0]}" skipped`);
+    }
+  }
+}
+
+function sigmaCastForType(t: string): string | null {
+  switch (t.toUpperCase()) {
+    case 'STRING': return 'Text';
+    case 'INTEGER': return 'Int';
+    case 'DECIMAL': return 'Number';
+    case 'DATETIME': return 'Datetime';
+    default: return null;
+  }
+}
+
+function parseJoinOnClause(onClause: string, leftId: string, rightId: string): { leftCol: string; rightCol: string } | null {
+  // QuickSight conventional form: `{leftCol} = {rightCol[rightOperandId]}`
+  // Both columns may be qualified or unqualified.
+  const m = onClause.match(/\{([^}\[]+?)(?:\[([^\]]+)\])?\}\s*=\s*\{([^}\[]+?)(?:\[([^\]]+)\])?\}/);
+  if (!m) return null;
+  const [, c1, q1, c2, q2] = m;
+  // If qualifier is present, it tells us which operand owns the column.
+  if (q1 && q2) {
+    if (q1 === leftId) return { leftCol: c1.trim(), rightCol: c2.trim() };
+    return { leftCol: c2.trim(), rightCol: c1.trim() };
+  }
+  if (q2 === rightId || q2 === leftId) {
+    return q2 === rightId
+      ? { leftCol: c1.trim(), rightCol: c2.trim() }
+      : { leftCol: c2.trim(), rightCol: c1.trim() };
+  }
+  // Default assume left-first form
+  return { leftCol: c1.trim(), rightCol: c2.trim() };
+}
+
+// ── Stub for analyses with no DescribeDataSet supplied ──────────────────────
+
+function synthesizeStubDataset(
+  identifier: string,
+  ctx: DatasetBuildContext,
+  _warnings: string[],
+): DatasetEntry {
+  const element: SigmaElement = {
+    id: sigmaShortId(),
+    kind: 'table',
+    source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with the warehouse SELECT for QuickSight dataset "${identifier}"\nSELECT 1 AS _placeholder` },
+    columns: [],
+    metrics: [],
+    order: [],
+  };
+  const byLogicalId = new Map([['__stub__', element]]);
+  const logicalToPhysical = new Map([['__stub__', '__stub__']]);
+  return { elements: [element], byLogicalId, logicalToPhysical, primary: element };
+}
+
+/**
+ * Land an analysis-level CalculatedField. Strategy:
+ *  - If the primary element has a derived view (relationships exist), place
+ *    the calc col on the derived view and rewrite any cross-element refs to
+ *    [SRC/REL_NAME/Field] form using a relatedNameMap built from joined
+ *    dim columns.
+ *  - Otherwise, place on the primary element (refs resolve locally).
+ *
+ * QuickSight calc fields naturally use bare {col} identifiers — translation
+ * yields [Col Name] bare refs. The relatedNameMap rewrites any non-local
+ * names to the cross-element triple form.
+ */
+function addAnalysisCalcCol(
+  entry: DatasetEntry,
+  name: string,
+  expression: string,
+  derivedViewBySrcId: Map<string, SigmaElement>,
+  allElements: SigmaElement[],
+  warnings: string[],
+): void {
+  const id = sigmaInodeId(name.toUpperCase());
+  const display = sigmaDisplayName(name);
+  let formula = quicksightFormulaToSigma(expression || '', warnings);
+
+  const derivedView = derivedViewBySrcId.get(entry.primary.id);
+  if (derivedView) {
+    // Build a name → triple-form rewrite map from related dim columns.
+    const srcEl = entry.primary;
+    const srcPath: string[] = srcEl.source.path || [];
+    const srcBaseName: string = srcEl.name || srcPath[srcPath.length - 1] || '';
+    const relatedNameMap = buildRelatedNameMap(srcEl, srcBaseName, allElements);
+    // Local names on the derived view = own warehouse passthroughs (look at
+    // derived view's own columns).
+    const localNamesOnView = new Set<string>();
+    for (const c of derivedView.columns || []) {
+      const m = c.formula?.match(/^\[([^\]\/]+)\/([^\]]+)\]$/);
+      if (m) localNamesOnView.add(m[2].toLowerCase());
+    }
+    // Rewrite bare refs: if the name matches a joined dim, use triple-form;
+    // if it matches a local view col, leave bare; if it matches a calc col
+    // on the source, surface it as a proxy on the derived view first.
+    formula = formula.replace(/\[([^\]\/]+)\]/g, (match, refName) => {
+      const lower = refName.toLowerCase();
+      if (localNamesOnView.has(lower)) return match;
+      const triple = relatedNameMap[refName];
+      if (triple) return `[${triple}]`;
+      // Check if it's a calc col on the source — if so, surface as proxy.
+      const srcCalc = (srcEl.columns || []).find(c => c.name && c.name.toLowerCase() === lower);
+      if (srcCalc) {
+        // Add a proxy column on the derived view referencing the source calc.
+        const proxyId = sigmaShortId();
+        derivedView.columns.push({ id: proxyId, formula: `[${srcBaseName}/${srcCalc.name}]` });
+        derivedView.order.push(proxyId);
+        localNamesOnView.add(lower);
+        return match;
+      }
+      return match;
+    });
+    derivedView.columns.push({ id, formula, name: display });
+    derivedView.order.push(id);
+  } else {
+    entry.primary.columns.push({ id, formula, name: display });
+    entry.primary.order.push(id);
+  }
+}
+
+/** Map calc-col display names from joined dim elements → [SRC/REL/Field]. */
+function buildRelatedNameMap(
+  srcEl: SigmaElement,
+  srcBaseName: string,
+  allElements: SigmaElement[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const rel of srcEl.relationships || []) {
+    if (!rel.name) continue;
+    const tgtEl = allElements.find(e => e.id === rel.targetElementId);
+    if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+    for (const c of tgtEl.columns || []) {
+      if (!c.formula || c.formula.startsWith('/*')) continue;
+      const fm = c.formula.match(/^\[([^\]]+)\]$/);
+      if (!fm) continue;
+      const inner = fm[1];
+      const s = inner.lastIndexOf('/');
+      const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+      if (c.name && !(c.name in map)) map[c.name] = `${srcBaseName}/${rel.name}/${dispName}`;
+      if (!(dispName in map)) map[dispName] = `${srcBaseName}/${rel.name}/${dispName}`;
+    }
+  }
+  return map;
+}
+
+// ── ParameterDeclarations → Sigma controls ──────────────────────────────────
+
+function parameterDeclarationToControl(decl: any, warnings: string[]): any | null {
+  // Each ParameterDeclaration is a one-of with a single key
+  const inner = decl.StringParameterDeclaration
+    || decl.IntegerParameterDeclaration
+    || decl.DecimalParameterDeclaration
+    || decl.DateTimeParameterDeclaration;
+  if (!inner) return null;
+  const kind = decl.StringParameterDeclaration ? 'text'
+    : decl.IntegerParameterDeclaration ? 'number'
+      : decl.DecimalParameterDeclaration ? 'number'
+        : 'date';
+  const id = sigmaShortId();
+  const isMulti = inner.ParameterValueType === 'MULTI_VALUED';
+  const staticDefaults: any[] = inner.DefaultValues?.StaticValues || [];
+  const control: any = {
+    id,
+    name: sigmaDisplayName(inner.Name || 'Param'),
+    kind,
+    multiSelect: isMulti,
+  };
+  if (staticDefaults.length) control.defaultValue = isMulti ? staticDefaults : staticDefaults[0];
+  if (kind === 'number' && isMulti) {
+    warnings.push(`ℹ Parameter "${inner.Name}" is multi-valued numeric — Sigma multi-numeric controls have known limitations; verify in UI (see beads-sigma-z3y).`);
+  }
+  return control;
+}
+
+// ── Derived "view" element builder (own warehouse cols + joined dim cols) ──
+
+function buildDerivedView(srcEl: SigmaElement, allElements: SigmaElement[]): SigmaElement | null {
+  const srcPath: string[] = srcEl.source.path || [];
+  const srcTableName: string = srcPath[srcPath.length - 1] || '';
+  const baseName: string = srcEl.name || srcTableName;
+  const viewCols: { id: string; formula: string }[] = [];
+  const viewOrder: string[] = [];
+
+  for (const col of srcEl.columns || []) {
+    if (!col.formula || col.formula.startsWith('/*')) continue;
+    if (col.name) continue; // skip calc cols (would need rewrite, handled by base element)
+    const m = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
+    if (!m) continue;
+    const dispName = m[2];
+    const cId = sigmaShortId();
+    viewCols.push({ id: cId, formula: `[${baseName}/${dispName}]` });
+    viewOrder.push(cId);
+  }
+
+  for (const rel of srcEl.relationships || []) {
+    if (!rel.name) continue;
+    const tgtEl = allElements.find(e => e.id === rel.targetElementId);
+    if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+    for (const col of tgtEl.columns || []) {
+      if (!col.formula || col.formula.startsWith('/*')) continue;
+      const fm = col.formula.match(/^\[([^\]]+)\]$/);
+      if (!fm) continue;
+      const inner = fm[1];
+      const s = inner.lastIndexOf('/');
+      const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+      const cId = sigmaShortId();
+      viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
+      viewOrder.push(cId);
+    }
+  }
+
+  if (viewCols.length === 0) return null;
+  return {
+    id: sigmaShortId(),
+    kind: 'table',
+    name: `${sigmaDisplayName(srcTableName) || 'Source'} View`,
+    source: { kind: 'table', elementId: srcEl.id },
+    columns: viewCols,
+    order: viewOrder,
+  };
+}
+
+// ── Formula dialect mapper ──────────────────────────────────────────────────
+
+/**
+ * Translate a QuickSight calculated-field expression to a Sigma formula.
+ *
+ * Coverage:
+ *  - identifier syntax: {col name} → [Col Name]
+ *  - string literals: 'x' → "x"
+ *  - ifelse(cond, val, cond, val, ..., else) → nested If(...)
+ *  - switch / coalesce / nullIf / in
+ *  - Aggregate, math, string, date functions
+ *
+ * Window/table-calc functions (sumOver, runningSum, lag, lead, rank, denseRank,
+ * percentOfTotal, period*, lastValue, etc.) cannot be lowered to Sigma DM
+ * formulas safely — Sigma's window functions silently error in DM calc cols.
+ * Translate them to a comment placeholder and emit a warning suggesting a
+ * Custom SQL element.
+ */
+export function quicksightFormulaToSigma(expr: string, warnings: string[]): string {
+  if (!expr || typeof expr !== 'string') return '';
+  let s = expr.trim();
+
+  // 1. Block-out string literals so we don't munge their contents.
+  const strings: string[] = [];
+  s = s.replace(/'((?:[^'\\]|\\.)*)'/g, (_, body) => {
+    const idx = strings.length;
+    strings.push(`"${body.replace(/"/g, '\\"')}"`);
+    return `__STR${idx}__`;
+  });
+
+  // 2. Detect window/table-calc functions (case-insensitive identifier match).
+  const windowFns = [
+    'sumOver','avgOver','countOver','distinctCountOver','maxOver','minOver',
+    'stdevOver','stdevpOver','varOver','varpOver','percentileOver',
+    'percentileContOver','percentileDiscOver','percentOfTotal',
+    'runningSum','runningAvg','runningCount','runningMax','runningMin',
+    'rank','denseRank','percentileRank',
+    'lag','lead','firstValue','lastValue',
+    'difference','percentDifference','periodOverPeriodDifference',
+    'periodOverPeriodLastValue','periodOverPeriodPercentDifference',
+    'periodToDateSumOverTime','periodToDateAvgOverTime',
+    'periodToDateMaxOverTime','periodToDateMinOverTime','periodToDateCountOverTime',
+    'windowSum','windowAvg','windowMax','windowMin','windowCount',
+  ];
+  const windowRe = new RegExp(`\\b(${windowFns.join('|')})\\s*\\(`, 'i');
+  if (windowRe.test(s)) {
+    warnings.push(`⚠ Formula uses a QuickSight table-calculation function (${s.match(windowRe)![1]}) — Sigma DM calc columns silently error on window functions. Translated to a comment placeholder; re-author this column as a Custom SQL element or in the workbook layer.`);
+    return `/* TODO QuickSight table-calc — re-author in Sigma: ${expr.replace(/\*\//g, '* /').slice(0, 200)} */`;
+  }
+
+  // 3. Identifier substitution {col name} → [Col Name].
+  //    QuickSight braces can NOT be nested. Qualifiers like {col[dsId]} are
+  //    permitted but only appear inside join ON clauses (not calc-field
+  //    expressions per AWS docs), so we strip the [...] suffix defensively.
+  s = s.replace(/\{([^{}]+)\}/g, (_, raw) => {
+    const cleaned = String(raw).replace(/\[[^\]]+\]\s*$/, '').trim();
+    return `[${sigmaDisplayName(cleaned)}]`;
+  });
+
+  // 4. ifelse(cond, val, [cond, val, ...], default) → nested If
+  s = transformIfElse(s);
+
+  // 5. switch(expr, case1, val1, case2, val2, ..., default) → nested If with equality checks
+  s = transformSwitch(s);
+
+  // 6. Function-name remapping (case-insensitive).
+  s = remapFunctions(s);
+
+  // 7. SQL-style operators: nothing to do (Sigma uses =, !=, <, >, AND, OR which match QuickSight).
+  // QuickSight uses `<>` for not-equals — Sigma uses `!=`.
+  s = s.replace(/<>/g, '!=');
+
+  // 8. Restore string literals.
+  s = s.replace(/__STR(\d+)__/g, (_, i) => strings[Number(i)]);
+
+  return s;
+}
+
+function transformIfElse(s: string): string {
+  // Greedy from the inside out
+  let prev = '';
+  let safety = 0;
+  while (prev !== s && safety++ < 50) {
+    prev = s;
+    s = s.replace(/\bifelse\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/i, (_, args) => {
+      const parts = splitTopLevel(args, ',');
+      if (parts.length < 3) return `If(${args})`;
+      // Pairs: cond, val ... ending with optional default
+      const isOdd = parts.length % 2 === 1;
+      let result = isOdd ? parts[parts.length - 1] : 'null';
+      const limit = isOdd ? parts.length - 1 : parts.length;
+      for (let i = limit - 2; i >= 0; i -= 2) {
+        result = `If(${parts[i]}, ${parts[i + 1]}, ${result})`;
+      }
+      return result;
+    });
+  }
+  return s;
+}
+
+function transformSwitch(s: string): string {
+  let prev = '';
+  let safety = 0;
+  while (prev !== s && safety++ < 50) {
+    prev = s;
+    s = s.replace(/\bswitch\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/i, (_, args) => {
+      const parts = splitTopLevel(args, ',');
+      if (parts.length < 3) return `Switch(${args})`;
+      const subject = parts[0];
+      const rest = parts.slice(1);
+      const isOdd = rest.length % 2 === 1;
+      let result = isOdd ? rest[rest.length - 1] : 'null';
+      const limit = isOdd ? rest.length - 1 : rest.length;
+      for (let i = limit - 2; i >= 0; i -= 2) {
+        result = `If(${subject} = ${rest[i]}, ${rest[i + 1]}, ${result})`;
+      }
+      return result;
+    });
+  }
+  return s;
+}
+
+function splitTopLevel(s: string, sep: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let bracket = 0;
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === '[') bracket++;
+    else if (ch === ']') bracket--;
+    if (ch === sep && depth === 0 && bracket === 0) {
+      out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+// QuickSight function → Sigma function (Title-Case, applied case-insensitively).
+const QS_FUNC_MAP: Record<string, string> = {
+  // aggregate
+  sum: 'Sum', avg: 'Avg', min: 'Min', max: 'Max', count: 'Count',
+  distinct_count: 'CountDistinct', distinctcount: 'CountDistinct',
+  median: 'Median',
+  percentile: 'Percentile', percentilecont: 'Percentile', percentiledisc: 'Percentile',
+  stdev: 'Stdev', stdevp: 'StdevP', var: 'Var', varp: 'VarP',
+  // conditional
+  isnull: 'IsNull', notnull: 'IsNotNull',
+  coalesce: 'Coalesce', nullif: 'Nullif',
+  // string
+  concat: 'Concat', substring: 'Mid', strlen: 'Len',
+  tolower: 'Lower', toupper: 'Upper', trim: 'Trim',
+  replace: 'Replace', split: 'Split', locate: 'Find', contains: 'Contains',
+  // math
+  abs: 'Abs', ceil: 'Ceiling', floor: 'Floor', round: 'Round',
+  log: 'Log', exp: 'Exp', sqrt: 'Sqrt', mod: 'Mod',
+  // date
+  now: 'Now', today: 'Today',
+  truncdate: 'DateTrunc',
+  adddatetime: 'DateAdd',
+  datediff: 'DateDiff',
+  extract: 'DatePart',
+  epochdate: 'EpochDate',
+  formatdate: 'Text', parsedate: 'Date',
+  // boolean / set
+  in: 'In',
+};
+
+function remapFunctions(s: string): string {
+  return s.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g, (match, fn) => {
+    const mapped = QS_FUNC_MAP[fn.toLowerCase()];
+    return mapped ?? match;
+  });
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function emptyModel(name: string): any {
+  return { name, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] };
+}
+
+// ── Type defs (subset of AWS shape used by the converter) ───────────────────
+
+interface QSAnalysisDefinition {
+  AnalysisId?: string;
+  Name?: string;
+  Definition: {
+    DataSetIdentifierDeclarations?: Array<{ DataSetArn: string; Identifier: string }>;
+    CalculatedFields?: Array<{ DataSetIdentifier: string; Name: string; Expression: string }>;
+    ColumnConfigurations?: any[];
+    FilterGroups?: any[];
+    ParameterDeclarations?: any[];
+    Options?: any;
+    Sheets?: any[]; // not consumed
+  };
+}
+
+interface QSDataSet {
+  Arn?: string;
+  DataSetId?: string;
+  Name?: string;
+  ImportMode?: 'SPICE' | 'DIRECT_QUERY';
+  PhysicalTableMap?: Record<string, QSPhysicalTable>;
+  LogicalTableMap?: Record<string, QSLogicalTable>;
+  OutputColumns?: Array<{ Name: string; Type: string; SubType?: string }>;
+  FieldFolders?: Record<string, { columns?: string[]; description?: string }>;
+}
+
+interface QSPhysicalTable {
+  RelationalTable?: {
+    DataSourceArn: string;
+    Catalog?: string;
+    Schema?: string;
+    Name: string;
+    InputColumns?: Array<{ Name: string; Type: string; SubType?: string; Id?: string }>;
+  };
+  CustomSql?: {
+    DataSourceArn: string;
+    Name: string;
+    SqlQuery?: string;
+    Columns?: Array<{ Name: string; Type: string; SubType?: string }>;
+  };
+  S3Source?: {
+    DataSourceArn: string;
+    UploadSettings: any;
+    InputColumns?: Array<{ Name: string; Type: string }>;
+  };
+}
+
+interface QSLogicalTable {
+  Alias: string;
+  Source: {
+    PhysicalTableId?: string;
+    DataSetArn?: string;
+    JoinInstruction?: QSJoinInstruction;
+  };
+  DataTransforms?: QSDataTransform[];
+}
+
+interface QSJoinInstruction {
+  LeftOperand: string;
+  RightOperand: string;
+  Type: 'INNER' | 'OUTER' | 'LEFT' | 'RIGHT';
+  OnClause: string;
+  LeftJoinKeyProperties?: { UniqueKey?: boolean };
+  RightJoinKeyProperties?: { UniqueKey?: boolean };
+}
+
+interface QSDataTransform {
+  CastColumnTypeOperation?: { ColumnName: string; NewColumnType: string; Format?: string; SubType?: string };
+  CreateColumnsOperation?: { Columns: Array<{ ColumnId: string; ColumnName: string; Expression: string }> };
+  FilterOperation?: { ConditionExpression: string };
+  ProjectOperation?: { ProjectedColumns: string[] };
+  RenameColumnOperation?: { ColumnName: string; NewColumnName: string };
+  TagColumnOperation?: { ColumnName: string; Tags: any[] };
+  UntagColumnOperation?: { ColumnName: string; TagNames?: string[] };
+  OverrideDatasetParameterOperation?: any;
+}

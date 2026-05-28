@@ -20,6 +20,7 @@ import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
+import { convertQuickSightToSigma } from './quicksight.js';
 import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
@@ -956,6 +957,68 @@ Pivot, Script, RunCommand, and Prediction nodes are skipped with warnings.`,
           schema: schema || undefined,
           tableMapping: mapping,
           tdsFiles: tds_files || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_quicksight_to_sigma ───────────────────────────────────────────
+
+  server.tool(
+    'convert_quicksight_to_sigma',
+    `Convert AWS QuickSight asset exports to Sigma Computing data model JSON.
+
+Accepts one or more JSON files, auto-detected by content:
+  - DescribeAnalysisDefinition response (analysis JSON: paste output of
+      \`aws quicksight describe-analysis-definition --account-id X --analysis-id Y\`)
+  - DescribeDataSet response (dataset JSON: paste output of
+      \`aws quicksight describe-data-set --account-id X --data-set-id Z\`)
+
+For an analysis: pass the analysis JSON plus one DescribeDataSet JSON per
+referenced dataset (the analysis's DataSetIdentifierDeclarations list points
+at dataset ARNs by reference; without the matching dataset JSONs the converter
+emits a Custom-SQL stub element so calc fields have a home).
+
+For an asset-bundle .qs export: unzip first and pass each \`analyses/*.json\`
+and \`datasets/*.json\` file individually.
+
+Translation:
+  - PhysicalTable.RelationalTable → warehouse-table element
+  - PhysicalTable.CustomSql → Custom SQL element
+  - PhysicalTable.S3Source / SaaSTable → Custom SQL placeholder (no Sigma equivalent)
+  - LogicalTable.JoinInstruction → Sigma relationship on the left-side element
+  - LogicalTable.DataTransforms: CreateColumns → calc col, RenameColumn → display
+      name, CastColumnType → cast wrapper, FilterOperation → boolean calc col,
+      ProjectOperation → column order, TagColumn → warning
+  - AnalysisDefinition.CalculatedFields → calc cols on the bound element
+  - ParameterDeclarations → Sigma controls
+  - Window/table-calc QS functions (sumOver, runningSum, lag, lead, rank, etc.)
+    → comment placeholder + warning (Sigma DM cols silently error on windows)
+
+Pass files as an array of {name, content} objects.`,
+    {
+      files: z.array(z.object({
+        name: z.string().describe('Filename (e.g. "my-analysis.json" or "orders-dataset.json"). The converter classifies by content, not extension.'),
+        content: z.string().describe('Full JSON content (DescribeAnalysisDefinition or DescribeDataSet response)'),
+      })).describe('Array of QuickSight asset JSON files'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name (used when RelationalTable.Catalog is missing); pass empty string to omit'),
+      schema: z.string().describe('Override schema name (used when RelationalTable.Schema is missing); pass empty string to omit'),
+    },
+    async ({ files, connection_id, database, schema }) => {
+      try {
+        const result = convertQuickSightToSigma(files, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{

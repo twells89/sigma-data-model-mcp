@@ -1,0 +1,11 @@
+{
+  "description": "QuickSight v1: analysis + dataset round-trip. Dataset has two RelationalTables (ORDER_FACT, CUSTOMER_DIM) joined via LogicalTableMap.JoinInstruction on CUSTOMER_KEY; dataset-level CreateColumnsOperation adds 'Net Revenue'. Analysis adds an analysis-level CalculatedField 'Discounted Total' bound to the join, plus a string-multi and a date parameter. Verifies: (1) two warehouse-table elements created, (2) relationship wired from Order Fact → Customer Dim, (3) dataset-level + analysis-level calc cols both land on the orders element, (4) controls emitted for parameters, (5) zero error columns at query time.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 2,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
