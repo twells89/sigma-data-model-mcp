@@ -215,7 +215,33 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
     return [db.toUpperCase(), table.toUpperCase()];
   }
 
-  // Pattern 2: navigation by {[Name="X"]}[Data] — common for Snowflake, Databricks, BigQuery
+  // Pattern 2a: Kind-tagged navigation — Snowflake / Databricks / BigQuery / others.
+  // Power BI's Snowflake connector emits navigation steps that carry an explicit Kind:
+  //   Source{[Name = "CSA", Kind = "Database"]}[Data]
+  //   #"Navigation 1"{[Name = "TJ", Kind = "Schema"]}[Data]
+  //   #"Navigation 2"{[Name = "EMPLOYEES", Kind = "Table"]}[Data]
+  // Key on the Kind so each segment maps to the right path slot regardless of order
+  // (and tolerate arbitrary whitespace inside the record). Caller overrides still apply
+  // later in convertPowerBIToSigma.
+  const kindNavMatches = [...mExpr.matchAll(
+    /\[\s*Name\s*=\s*"([^"]+)"\s*,\s*Kind\s*=\s*"(Database|Schema|Table|View)"\s*\]/gi
+  )];
+  if (kindNavMatches.length) {
+    let db: string | null = null, sch: string | null = null, tbl: string | null = null;
+    for (const m of kindNavMatches) {
+      const kind = m[2].toLowerCase();
+      if (kind === 'database') db = m[1];
+      else if (kind === 'schema') sch = m[1];
+      else if (kind === 'table' || kind === 'view') tbl = m[1];
+    }
+    if (tbl) {
+      const parts = [db, sch, tbl].filter((s): s is string => !!s);
+      if (parts.length >= 2) return parts.map(s => s.toUpperCase());
+    }
+  }
+
+  // Pattern 2b: plain navigation by {[Name="X"]}[Data] (no Kind tag) —
+  // older Snowflake/Databricks/BigQuery M, positional DB/Schema/Table order.
   // let DB     = Source{[Name="ANALYTICS"]}[Data]
   // let Schema = DB{[Name="PROD"]}[Data]
   // let Table  = Schema{[Name="SALES"]}[Data]
@@ -423,8 +449,13 @@ export function convertPowerBIToSigma(
       if (folder.items.length > 0) folders.push(folder);
     }
 
+    // Name the base element after its warehouse table (last path segment) so
+    // workbook masters can reference it as [TABLE/Col]. Without this, only the
+    // derived "<Table> View" elements were named and unnamed base elements
+    // were unaddressable. (Bug beads-sigma-tkd #1)
+    const baseElementName = (path && path.length ? path[path.length - 1] : tableName.toUpperCase());
     const element: SigmaElement = {
-      id: elementId, kind: 'table',
+      id: elementId, kind: 'table', name: baseElementName,
       source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path },
       columns, order
     };
