@@ -84,6 +84,199 @@ function rewriteDateDiff(f: string): string {
   return f;
 }
 
+// SWITCH(TRUE(), c1, v1, c2, v2, ..., [default]) -> nested ternary Ifs:
+//   If(c1, v1, If(c2, v2, ... [, default])). Sigma's If is strictly ternary,
+//   so a flat If(c1, v1, c2, v2, default) is malformed. (beads-sigma-n9u)
+// Scans for the DAX form on the RAW expression (before generic renames) so the
+// pairs split cleanly, then recurses pair-by-pair. Paren/quote-aware.
+function rewriteSwitchTrue(f: string): string {
+  const re = /\bSWITCH\s*\(\s*TRUE\s*\(\s*\)\s*,/gi;
+  for (let guard = 0; guard < 200; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const openIdx = m.index + m[0].length;
+    const { args, endPos } = splitCallArgs(f, openIdx);
+    if (args.length < 2) break; // malformed -> leave for generic Switch rename
+    // args = [c1, v1, c2, v2, ..., (optional default)]
+    const hasDefault = args.length % 2 === 1;
+    const def = hasDefault ? args[args.length - 1] : null;
+    const pairCount = Math.floor(args.length / 2);
+    let nested = def !== null ? def : 'null';
+    for (let p = pairCount - 1; p >= 0; p--) {
+      const cond = args[p * 2];
+      const val = args[p * 2 + 1];
+      nested = `If(${cond}, ${val}, ${nested})`;
+    }
+    f = f.slice(0, m.index) + nested + f.slice(endPos);
+  }
+  return f;
+}
+
+// COUNTROWS(FILTER(ALL(T) | T, <part-eq>* && T[x] > EARLIER(T[x]))) + 1
+//   -> RankDense([x], "desc"[, partition]). This is the canonical DAX rank
+//   idiom for a calculated column. The EARLIER(T[x]) is the current row's x;
+//   counting rows whose x is greater, +1, == dense descending rank. A leading
+//   T[p] = EARLIER(T[p]) predicate scopes the rank to a partition.
+//   (beads-sigma-3t9)
+function rewriteEarlierRank(f: string): string {
+  const re = /\bCOUNTROWS\s*\(\s*FILTER\s*\(/gi;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    // openIdx is just past FILTER's "(" — splitCallArgs gives FILTER's args.
+    const filterOpen = m.index + m[0].length;
+    const { args: filterArgs, endPos: filterEnd } = splitCallArgs(f, filterOpen);
+    if (filterArgs.length < 2) break;
+    // The COUNTROWS wrapper's own close-paren is right after FILTER's close.
+    // Find it, then look for a trailing "+ 1".
+    let j = filterEnd;
+    while (j < f.length && /\s/.test(f[j])) j++;
+    if (f[j] !== ')') break; // not the shape we expect
+    let after = j + 1;
+    const tail = f.slice(after).match(/^\s*\+\s*1\b/);
+    if (!tail) break;
+    const fullEnd = after + tail[0].length;
+    // Parse the predicate (everything after the table arg, joined).
+    const pred = filterArgs.slice(1).join(', ');
+    // Find the EARLIER-comparison term: <ref> (>|<) EARLIER(<ref>)
+    const cmp = pred.match(/(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*(>|<)\s*EARLIER\s*\(\s*([^)]+?)\s*\)/i);
+    if (!cmp) break;
+    const rankRefRaw = cmp[1];
+    const dir = cmp[2] === '>' ? 'desc' : 'asc';
+    // Partition predicates: any <ref> = EARLIER(<ref>) terms (split on &&).
+    const partRefs: string[] = [];
+    for (const term of pred.split(/&&/)) {
+      const pm = term.match(/(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*=\s*EARLIER\s*\(\s*[^)]+?\s*\)/i);
+      if (pm) partRefs.push(pm[1].trim());
+    }
+    const bare = (x: string) => x
+      .replace(/'[^']+'\[([^\]]+)\]/g, '[$1]')
+      .replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]')
+      .trim();
+    const rankRef = bare(rankRefRaw);
+    let replacement = `RankDense(${rankRef}, "${dir}")`;
+    if (partRefs.length) {
+      const parts = partRefs.map(bare).join(', ');
+      replacement = `RankDense(${rankRef}, "${dir}", ${parts})`;
+    }
+    f = f.slice(0, m.index) + replacement + f.slice(fullEnd);
+  }
+  return f;
+}
+
+// DAX statistical iterators that have clean Sigma equivalents (beads-sigma-9l2).
+//   MEDIANX(t, e)            -> Median(e)
+//   PERCENTILEX.INC(t, e, k) -> PercentileCont(e, k)      (NOT PercentileInc)
+//   STDEVX.P(t, e)           -> Sqrt(VariancePop(e))      (no StdDevP in Sigma)
+//   VARX.P(t, e)             -> VariancePop(e)
+//   GEOMEANX(t, e)           -> Exp(Avg(Ln(e)))
+// The table arg is dropped (Sigma aggregates over element rows / grouping).
+function rewriteStatIterators(f: string): string {
+  const specs: { re: RegExp; build: (a: string[]) => string | null }[] = [
+    { re: /\bMEDIANX\s*\(/i,            build: a => a.length >= 2 ? `Median(${a[1]})` : null },
+    { re: /\bPERCENTILEX\.INC\s*\(/i,  build: a => a.length >= 3 ? `PercentileCont(${a[1]}, ${a[2]})` : null },
+    { re: /\bPERCENTILEX\.EXC\s*\(/i,  build: a => a.length >= 3 ? `PercentileCont(${a[1]}, ${a[2]})` : null },
+    { re: /\bSTDEVX\.P\s*\(/i,         build: a => a.length >= 2 ? `Sqrt(VariancePop(${a[1]}))` : null },
+    { re: /\bSTDEVX\.S\s*\(/i,         build: a => a.length >= 2 ? `Sqrt(Variance(${a[1]}))` : null },
+    { re: /\bVARX\.P\s*\(/i,           build: a => a.length >= 2 ? `VariancePop(${a[1]})` : null },
+    { re: /\bVARX\.S\s*\(/i,           build: a => a.length >= 2 ? `Variance(${a[1]})` : null },
+    { re: /\bGEOMEANX\s*\(/i,           build: a => a.length >= 2 ? `Exp(Avg(Ln(${a[1]})))` : null },
+  ];
+  for (const spec of specs) {
+    for (let guard = 0; guard < 50; guard++) {
+      const reG = new RegExp(spec.re.source, 'gi');
+      reG.lastIndex = 0;
+      const m = reG.exec(f);
+      if (!m) break;
+      const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+      const rep = spec.build(args);
+      if (rep === null) break;
+      f = f.slice(0, m.index) + rep + f.slice(endPos);
+    }
+  }
+  return f;
+}
+
+// COMBINEVALUES(sep, a, b, ...) -> [a] & sep & [b] & sep & ... (beads-sigma-9l2)
+function rewriteCombineValues(f: string): string {
+  const re = /\bCOMBINEVALUES\s*\(/gi;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (args.length < 2) break;
+    const sep = args[0];
+    const vals = args.slice(1);
+    const joined = vals.join(` & ${sep} & `);
+    f = f.slice(0, m.index) + joined + f.slice(endPos);
+  }
+  return f;
+}
+
+// IF(HASONEVALUE(col), SELECTEDVALUE(col), default) and standalone
+//   HASONEVALUE / SELECTEDVALUE. (beads-sigma-9l2)
+//   HASONEVALUE(col)      -> CountDistinct(col) = 1
+//   SELECTEDVALUE(col[,d]) -> If(CountDistinct(col) = 1, Min(col), d|null)
+// Applied on RAW DAX before generic renames so the col refs are intact.
+function rewriteSingleValue(f: string): string {
+  // Collapse the common idiom IF(HASONEVALUE(c), SELECTEDVALUE(c[,d]), def)
+  //   -> If(CountDistinct(c) = 1, Min(c), def) — matches the spec's canonical
+  //   single-value form without a redundant nested CountDistinct check.
+  {
+    const re = /\bIF\s*\(\s*HASONEVALUE\s*\(/gi;
+    for (let guard = 0; guard < 50; guard++) {
+      re.lastIndex = 0;
+      const m = re.exec(f);
+      if (!m) break;
+      const ifOpen = m.index + 'IF('.length; // index just past the outer IF(
+      const { args, endPos } = splitCallArgs(f, ifOpen);
+      if (args.length < 3) break;
+      const hovM = args[0].match(/^\s*HASONEVALUE\s*\(/i);
+      const svM = args[1].match(/^\s*SELECTEDVALUE\s*\(/i);
+      if (!hovM || !svM) break;
+      const hovArgs = splitCallArgs(args[0], hovM.index! + hovM[0].length).args;
+      const svArgs = splitCallArgs(args[1], svM.index! + svM[0].length).args;
+      if (hovArgs.length < 1 || svArgs.length < 1) break;
+      const col = svArgs[0]; // value column from SELECTEDVALUE
+      const def = args[2];
+      const rep = `If(CountDistinct(${col}) = 1, Min(${col}), ${def})`;
+      f = f.slice(0, m.index) + rep + f.slice(endPos);
+    }
+  }
+  // SELECTEDVALUE(col, default?) -> If(CountDistinct(col)=1, Min(col), default)
+  {
+    const re = /\bSELECTEDVALUE\s*\(/gi;
+    for (let guard = 0; guard < 50; guard++) {
+      re.lastIndex = 0;
+      const m = re.exec(f);
+      if (!m) break;
+      const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+      if (args.length < 1) break;
+      const col = args[0];
+      const def = args.length >= 2 ? args[1] : 'null';
+      const rep = `If(CountDistinct(${col}) = 1, Min(${col}), ${def})`;
+      f = f.slice(0, m.index) + rep + f.slice(endPos);
+    }
+  }
+  // HASONEVALUE(col) -> CountDistinct(col) = 1
+  {
+    const re = /\bHASONEVALUE\s*\(/gi;
+    for (let guard = 0; guard < 50; guard++) {
+      re.lastIndex = 0;
+      const m = re.exec(f);
+      if (!m) break;
+      const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+      if (args.length < 1) break;
+      const rep = `CountDistinct(${args[0]}) = 1`;
+      f = f.slice(0, m.index) + rep + f.slice(endPos);
+    }
+  }
+  return f;
+}
+
 export function pbiDaxToSigma(
   dax: string | string[],
   warnings: string[] | null,
@@ -93,6 +286,20 @@ export function pbiDaxToSigma(
   if (Array.isArray(dax)) dax = dax.join('\n');
   if (typeof dax !== 'string' || !dax.trim()) return null;
   let f = dax.trim();
+
+  // ── Tier 0: high-value DAX idioms with clean Sigma equivalents ──
+  // Run on the RAW expression BEFORE the structural-warning guards and the
+  // generic renames, so these forms translate instead of being dropped to a
+  // warning (or shipped as a raw error column). (beads-sigma-9l2 / 3t9 / n9u)
+  f = rewriteEarlierRank(f);    // COUNTROWS(FILTER(ALL,..EARLIER..))+1 -> RankDense
+  f = rewriteStatIterators(f);  // MEDIANX/PERCENTILEX.INC/STDEVX.P/VARX.P/GEOMEANX
+  f = rewriteCombineValues(f);  // COMBINEVALUES(sep,a,b) -> [a] & sep & [b]
+  f = rewriteSingleValue(f);    // HASONEVALUE / SELECTEDVALUE
+  f = rewriteSwitchTrue(f);     // SWITCH(TRUE(), c,v,...) -> nested If
+  // DISTINCTCOUNTNOBLANK(col) -> CountDistinct(col) (Sigma CountDistinct already
+  // ignores nulls). Done here so the generic DISTINCTCOUNT rename can't first
+  // claim the prefix and leave a dangling NOBLANK token.
+  f = f.replace(/\bDISTINCTCOUNTNOBLANK\s*\(/gi, 'CountDistinct(');
 
   // ── Tier 4: Structural patterns → warnings only ──
   // CALCULATE with ALL/ALLEXCEPT/REMOVEFILTERS
@@ -236,7 +443,8 @@ export function pbiDaxToSigma(
   f = f.replace(/\bRELATEDTABLE\s*\([^)]*\)/gi, '/* RELATEDTABLE - use relationship */');
   // Logical
   f = f.replace(/\bIF\s*\(/gi, 'If(');
-  f = f.replace(/\bSWITCH\s*\(\s*TRUE\s*\(\s*\)\s*,/gi, 'If(');
+  // SWITCH(TRUE(), ...) is handled earlier by rewriteSwitchTrue (nested If).
+  // The remaining SWITCH(value, k1, v1, ..., default) form maps to Sigma Switch.
   f = f.replace(/\bSWITCH\s*\(/gi, 'Switch(');
   f = f.replace(/\bISBLANK\s*\(/gi, 'IsNull(');
   f = f.replace(/\bCOALESCE\s*\(/gi, 'Coalesce(');
@@ -369,6 +577,43 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
   return null;
 }
 
+// ── Calculated (DAX) tables → Sigma sql element, never a warehouse-table ──────
+// A partition with source.type === "calculated" is a DAX-computed table
+// (GENERATESERIES / CALENDAR / ADDCOLUMNS / SELECTCOLUMNS / ROW / DATATABLE …),
+// NOT a warehouse object. Path-guessing one yields a fabricated three-part path
+// that 404s at query time. Instead synthesize a Sigma `sql` element from a
+// VALUES list when the DAX is a GENERATESERIES(start, stop, step) series; for
+// anything else, signal { ok: false } so the caller emits a structured refusal
+// rather than a broken element. (beads-sigma-w9s)
+function buildCalcTableSql(
+  dax: string,
+  seriesColName: string
+): { ok: true; sql: string } | { ok: false; reason: string } {
+  // Find GENERATESERIES(start, stop[, step]) anywhere in the expression.
+  const gm = dax.match(/\bGENERATESERIES\s*\(/i);
+  if (!gm) {
+    return { ok: false, reason: 'DAX calculated table is not a GENERATESERIES — no warehouse source exists; recreate manually as a Sigma SQL element or input table.' };
+  }
+  const { args } = splitCallArgs(dax, gm.index! + gm[0].length);
+  if (args.length < 2) {
+    return { ok: false, reason: 'GENERATESERIES with non-literal bounds — recreate the series manually.' };
+  }
+  const start = Number(args[0]);
+  const stop = Number(args[1]);
+  const step = args.length >= 3 ? Number(args[2]) : 1;
+  if (!Number.isFinite(start) || !Number.isFinite(stop) || !Number.isFinite(step) || step === 0) {
+    return { ok: false, reason: 'GENERATESERIES with non-literal/zero bounds — recreate the series manually.' };
+  }
+  const vals: number[] = [];
+  if (step > 0) { for (let v = start; v <= stop && vals.length < 10000; v += step) vals.push(v); }
+  else { for (let v = start; v >= stop && vals.length < 10000; v += step) vals.push(v); }
+  if (!vals.length) return { ok: false, reason: 'GENERATESERIES yields an empty series — recreate manually.' };
+  const rows = vals.map(v => `(${v})`).join(', ');
+  const col = seriesColName || 'Value';
+  const sql = `SELECT v AS "${col}" FROM (VALUES ${rows}) AS t(v)`;
+  return { ok: true, sql };
+}
+
 // ── Main conversion ───────────────────────────────────────────────────────────
 
 export interface PowerBIConvertOptions {
@@ -443,9 +688,65 @@ export function convertPowerBIToSigma(
     tableIdMap[tableName] = elementId;
     tableColMap[tableName] = {};
 
+    const partition = (t.partitions || [])[0];
+
+    // ── DAX calculated tables (source.type === "calculated") ────────────────
+    // Branch BEFORE any M-path extraction: these are computed in the model,
+    // not warehouse objects. Path-guessing produces a fabricated path that
+    // 404s. Emit a Sigma `sql` element (synthesized VALUES for GENERATESERIES)
+    // or a structured refusal — never a warehouse-table. (beads-sigma-w9s)
+    if (partition?.source?.type === 'calculated') {
+      const ctExpr = Array.isArray(partition.source.expression)
+        ? partition.source.expression.join('\n')
+        : (partition.source.expression || '');
+      // Declared columns (calculatedTableColumn / untyped) become surfaced cols.
+      const ctCols = (t.columns || []).filter((c: any) => c.type !== 'rowNumber' && !c.isGenerated);
+      const firstColName = ctCols.length
+        ? sigmaDisplayName(ctCols[0].sourceColumn || ctCols[0].name)
+        : 'Value';
+      const built = buildCalcTableSql(ctExpr, firstColName);
+
+      const ctColumns: SigmaColumn[] = [];
+      const ctOrder: string[] = [];
+      for (const c of ctCols) {
+        const sourceCol = (c.sourceColumn || c.name || '').replace(/^\[|\]$/g, '');
+        const displayName = sigmaDisplayName(sourceCol);
+        const colId = sigmaInodeId((sourceCol || c.name).toUpperCase().replace(/\s+/g, '_'));
+        tableColMap[tableName][c.name] = colId;
+        allPbiToSigmaNames[c.name] = displayName;
+        const col: SigmaColumn = { id: colId, formula: `[${displayName}]` };
+        if (c.isHidden) (col as any).hidden = true;
+        if (c.description) col.description = c.description;
+        ctColumns.push(col);
+        ctOrder.push(colId);
+      }
+
+      let statement: string;
+      if (built.ok) {
+        statement = built.sql;
+        if (ctCols.length > 1) {
+          warnings.push(`ℹ Calculated table "${tableName}": synthesized a SQL VALUES series for column "${firstColName}". The remaining derived column(s) (${ctCols.slice(1).map((c: any) => sigmaDisplayName(c.sourceColumn || c.name)).join(', ')}) come from DAX ADDCOLUMNS/SELECTCOLUMNS — add their expressions to the SQL or as Sigma calc columns.`);
+        } else {
+          warnings.push(`ℹ Calculated table "${tableName}": DAX GENERATESERIES → synthesized Sigma SQL element (VALUES list).`);
+        }
+      } else {
+        statement = `-- TODO (beads-sigma-w9s): ${built.reason}\n-- Original DAX: ${ctExpr.replace(/\n/g, ' ').slice(0, 300)}\nSELECT 1 AS _placeholder`;
+        warnings.push(`⛔ Calculated table "${tableName}": ${built.reason} Emitted a placeholder SQL element (NOT a warehouse-table). Original DAX preserved as a comment.`);
+      }
+
+      const ctElement: SigmaElement = {
+        id: elementId, kind: 'table', name: tableName.toUpperCase(),
+        source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'sql', statement },
+        columns: ctColumns, order: ctOrder,
+      };
+      if (!built.ok) (ctElement as any).ok = false;
+      if (t.isHidden) (ctElement as any).visibleAsSource = false;
+      elements.push(ctElement);
+      continue;
+    }
+
     // Determine source path
     let path: string[] | null = null;
-    const partition = (t.partitions || [])[0];
     if (partition?.source) {
       if (partition.source.expression) {
         path = pbiExtractPathFromM(
