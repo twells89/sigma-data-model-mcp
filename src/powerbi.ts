@@ -31,6 +31,59 @@ const PBI_COMMUNITY_LINKS = {
 
 // ── DAX → Sigma Formula Converter ─────────────────────────────────────────────
 
+// Split the top-level (depth-1) comma-separated arguments of a DAX/Sigma
+// function call. `startIdx` must point at the first char AFTER the opening
+// paren. Returns { args, endPos } where endPos is the index just past the
+// matching closing paren (so the caller can splice it out). Paren-, bracket-
+// and quote-aware so nested calls / [refs] / "strings" don't fool the split.
+function splitCallArgs(s: string, startIdx: number): { args: string[]; endPos: number } {
+  const args: string[] = [];
+  let depth = 1, argStart = startIdx, i = startIdx;
+  let inStr: string | null = null;
+  for (; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) { if (ch === inStr) inStr = null; continue; }
+    if (ch === '"' || ch === "'") { inStr = ch; continue; }
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') {
+      depth--;
+      if (depth === 0) { args.push(s.slice(argStart, i).trim()); i++; break; }
+    } else if (ch === ',' && depth === 1) {
+      args.push(s.slice(argStart, i).trim());
+      argStart = i + 1;
+    }
+  }
+  return { args, endPos: i };
+}
+
+// DAX DATEDIFF(start, end, UNIT) -> Sigma DateDiff("unit", start, end):
+// quoted lowercased unit FIRST, then start, then end. Nested-paren aware so
+// DATEDIFF(a, IF(...), DAY) reorders correctly. MUST run before the generic
+// `DATEDIFF(` -> `DateDiff(` rename so it claims the DAX-ordered form.
+// (beads-sigma-f0p)
+function rewriteDateDiff(f: string): string {
+  // Scan forward from a moving cursor so we never re-parse our own emitted
+  // `DateDiff(...)` output (the regex is case-insensitive, so re-matching the
+  // mixed-case result would scramble args). Match only the DAX-ordered form.
+  const re = /\bDATEDIFF\s*\(/gi;
+  let cursor = 0;
+  for (let guard = 0; guard < 200; guard++) {
+    re.lastIndex = cursor;
+    const m = re.exec(f);
+    if (!m) break;
+    const openIdx = m.index + m[0].length;
+    const { args, endPos } = splitCallArgs(f, openIdx);
+    if (args.length < 3) { cursor = openIdx; continue; } // malformed -> skip
+    const start = args[0];
+    const end = args[1];
+    const unit = args[2].replace(/^\[|\]$/g, '').trim().toLowerCase();
+    const replacement = `DateDiff("${unit}", ${start}, ${end})`;
+    f = f.slice(0, m.index) + replacement + f.slice(endPos);
+    cursor = m.index + replacement.length; // resume AFTER the emitted form
+  }
+  return f;
+}
+
 export function pbiDaxToSigma(
   dax: string | string[],
   warnings: string[] | null,
@@ -59,17 +112,62 @@ export function pbiDaxToSigma(
     if (warnings) warnings.push(`⚠ "${measureName}": uses DAX time intelligence (${fn}). Use Period over Period feature. See: ${PBI_COMMUNITY_LINKS.pop}`);
     return null;
   }
-  // CALCULATE without ALL (simple filter)
+  // CALCULATE without ALL (single-predicate filter)
+  // DAX: CALCULATE(<agg>(<col-or-table>), <predicate>)
+  //   <agg>  = SUM/AVERAGE/MIN/MAX/COUNT/COUNTROWS/DISTINCTCOUNT
+  //   <predicate> = a row-level boolean: TABLE[col] = "v" | [col] > 100000 |
+  //                 [col] = TRUE() | FILTER(table, <predicate>)
+  // SumIf/AvgIf/MinIf/MaxIf/CountDistinctIf take (col, predicate). But Sigma's
+  // CountIf takes ONE logical arg: CountIf(<predicate>) — the 2-arg form errors
+  // at query time. COUNTROWS / COUNT(table) -> CountIf(<predicate>). (beads-sigma-862)
   if (/\bCALCULATE\s*\(/i.test(f)) {
-    const simpleCalc = f.match(/\bCALCULATE\s*\(\s*(SUM|COUNT|COUNTROWS|AVERAGE|MIN|MAX|DISTINCTCOUNT)\s*\(\s*(\[[^\]]+\])\s*\)\s*,\s*(\[[^\]]+\])\s*=\s*"([^"]+)"\s*\)/i);
-    if (simpleCalc) {
-      const aggMap: Record<string, string> = { 'SUM': 'SumIf', 'AVERAGE': 'AvgIf', 'COUNT': 'CountIf', 'MIN': 'MinIf', 'MAX': 'MaxIf', 'DISTINCTCOUNT': 'CountDistinctIf' };
-      const sigmaFn = aggMap[simpleCalc[1].toUpperCase()] || 'SumIf';
-      const col = simpleCalc[2];
-      const dimCol = simpleCalc[3];
-      const val = simpleCalc[4];
-      if (sigmaFn === 'CountIf') return `CountIf(${dimCol} = "${val}")`;
-      return `${sigmaFn}(${col}, ${dimCol} = "${val}")`;
+    const cm = f.match(/\bCALCULATE\s*\(/i);
+    if (cm) {
+      const { args } = splitCallArgs(f, cm.index! + cm[0].length);
+      // exactly: [ aggExpr, predicate ]
+      if (args.length === 2) {
+        const aggExpr = args[0];
+        let pred = args[1];
+        const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
+        if (aggM) {
+          const aggFn = aggM[1].toUpperCase();
+          // inner ref: 'Table'[Col] | Table[Col] | [Col] | <table-name> (for COUNTROWS)
+          const innerRaw = aggM[2].trim();
+          // Unwrap a FILTER(table, predicate) wrapper to its predicate.
+          const filterM = pred.match(/^\s*FILTER\s*\(/i);
+          if (filterM) {
+            const fr = splitCallArgs(pred, filterM.index! + filterM[0].length);
+            if (fr.args.length >= 2) pred = fr.args.slice(1).join(', ').trim();
+          }
+          // Normalize qualified col refs in BOTH the inner agg col and the
+          // predicate to bare [Col] (downstream name-mapping keys on bare names).
+          const bareRef = (x: string) =>
+            x.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]').replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+          pred = bareRef(pred);
+          // Refuse predicates that compare a column to ANOTHER bracketed ref on
+          // the RHS — e.g. FILTER(T, T[Salary] > [Company Avg Salary]). That RHS
+          // is a measure/aggregate, not a row literal, so a row-level CountIf
+          // would be wrong (needs a windowed compare). Bail to the warning.
+          // (MANIFEST row 68 "Above Avg Earner Count" = category b.)
+          const cmpRhs = pred.replace(/^[\s\S]*?(=|<>|!=|>=|<=|>|<)/, '').trim();
+          if (/\[[^\]]+\]/.test(cmpRhs)) {
+            if (warnings) warnings.push(`⚠ "${measureName}": CALCULATE filter compares against an aggregate/measure (${cmpRhs}). Needs a windowed comparison or grouping — add manually. See: ${PBI_COMMUNITY_LINKS.leveled}`);
+            return null;
+          }
+          const isCountish = aggFn === 'COUNTROWS' || aggFn === 'COUNT';
+          if (isCountish) {
+            return `CountIf(${pred})`;
+          }
+          if (aggFn === 'DISTINCTCOUNT') {
+            const col = bareRef(innerRaw);
+            return `CountDistinctIf(${col}, ${pred})`;
+          }
+          const aggMap: Record<string, string> = { 'SUM': 'SumIf', 'AVERAGE': 'AvgIf', 'MIN': 'MinIf', 'MAX': 'MaxIf' };
+          const sigmaFn = aggMap[aggFn] || 'SumIf';
+          const col = bareRef(innerRaw);
+          return `${sigmaFn}(${col}, ${pred})`;
+        }
+      }
     }
     if (warnings) warnings.push(`⚠ "${measureName}": complex CALCULATE expression. Use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
     return null;
@@ -81,6 +179,11 @@ export function pbiDaxToSigma(
   }
 
   // ── Tier 1: Direct mappings ──
+
+  // DATEDIFF(start, end, UNIT) -> DateDiff("unit", start, end). Run first on
+  // the raw DAX so arg reordering + unit-quoting happen before bracket/table
+  // normalization. (beads-sigma-f0p)
+  f = rewriteDateDiff(f);
 
   // DIVIDE(a, b, alt) — nested-paren-aware parser
   const divideMatch = f.match(/\bDIVIDE\s*\(/i);
@@ -294,6 +397,9 @@ export function convertPowerBIToSigma(
   const tableIdMap: Record<string, string> = {};
   const tableColMap: Record<string, Record<string, string>> = {};
   const allPbiToSigmaNames: Record<string, string> = {};
+  // measure (PBI) name -> owning element id, for cross-table ratio detection
+  // (beads-sigma-m1a). Includes measures later moved to the fact element.
+  const measureToElementId: Record<string, string> = {};
 
   // Detect "measures only" tables and calculation group tables
   const measureOnlyTables = new Set<string>();
@@ -418,6 +524,7 @@ export function convertPowerBIToSigma(
     // Measures → metrics
     const metrics: any[] = [];
     for (const m of (t.measures || [])) {
+      if (m.name) measureToElementId[m.name] = elementId; // m1a cross-table detection
       let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
       if (sigmaFormula) {
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
@@ -474,6 +581,7 @@ export function convertPowerBIToSigma(
         const t = model.tables.find((tb: any) => tb.name === tName);
         if (!t) continue;
         for (const m of (t.measures || [])) {
+          if (m.name) measureToElementId[m.name] = factEl.id; // m1a cross-table detection
           let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
           if (sigmaFormula) {
             sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
@@ -520,6 +628,57 @@ export function convertPowerBIToSigma(
         name: toTable
       });
     }
+  }
+
+  // ── Cross-table ratio / combination measures (beads-sigma-m1a) ──────────────
+  // A measure like DIVIDE([Total Absence Hours], [Headcount]) where the numerator
+  // and denominator aggregates live on DIFFERENT elements is emitted by the
+  // formula converter as a same-element metric ([A] / [B]). The foreign aggregate
+  // ([Headcount] on EMPLOYEES, not ABSENCE_RECORDS) then resolves NULL on the
+  // host element. Detect these and, rather than ship a silently-null metric,
+  // strip the metric and emit a structured warning describing the correct Sigma
+  // reproduction: a constant-key (All Key = 1) Lookup join to the foreign
+  // element so the foreign aggregate is taken across the FULL related set
+  // (e.g. global headcount = total employees, not employees-with-absences).
+  const measureRefRe = /\[([^\]\/]+)\]/g;
+  for (const el of elements) {
+    const mets: any[] = (el as any).metrics || [];
+    if (!mets.length) continue;
+    const kept: any[] = [];
+    for (const metric of mets) {
+      const formula: string = metric.formula || '';
+      // Only care about formulas that COMBINE values (ratio / arithmetic across
+      // measure refs). A lone aggregate or single-ref metric is fine.
+      const refs = [...formula.matchAll(measureRefRe)].map(m => m[1]);
+      const foreignMeasures = [...new Set(refs)].filter(name => {
+        const owner = measureToElementId[name];
+        return owner && owner !== el.id; // references a measure owned by ANOTHER element
+      });
+      // Must also actually combine (contain an operator), else a bare passthrough
+      // ref to a foreign measure is rare — still treat as cross-element.
+      const combines = /[\/*+\-]/.test(formula.replace(/\[[^\]]*\]/g, ''));
+      if (foreignMeasures.length && combines) {
+        const owners = foreignMeasures
+          .map(n => {
+            const oid = measureToElementId[n];
+            const oel = elements.find(e => e.id === oid);
+            return `[${n}] (on ${oel?.name || oid})`;
+          })
+          .join(', ');
+        warnings.push(
+          `⛔ "${metric.name}": cross-table ratio — references ${owners} from a different element than "${el.name}". ` +
+          `Emitting a same-element metric would resolve those aggregates as NULL. ` +
+          `In Sigma, reproduce via a constant-key (All Key = 1) relationship Lookup to the foreign element so the foreign aggregate is taken across the FULL related set ` +
+          `(e.g. denominator = global headcount, not just rows with a match), then divide. ` +
+          `Add this metric manually. See: ${PBI_COMMUNITY_LINKS.leveled}`
+        );
+        // Drop the silently-null metric (do NOT ship it).
+        continue;
+      }
+      kept.push(metric);
+    }
+    if (kept.length) (el as any).metrics = kept;
+    else delete (el as any).metrics;
   }
 
   // ── Pull cross-element calc cols off source warehouse-table elements ─────
