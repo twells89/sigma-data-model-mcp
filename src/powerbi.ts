@@ -84,6 +84,45 @@ function rewriteDateDiff(f: string): string {
   return f;
 }
 
+// DAX WEEKNUM(date[, return_type]) -> Sigma week-of-year formula.
+// IMPORTANT: Sigma's native DatePart("week",...)/DATE_PART('week',...) is ISO
+// (week containing the first Thursday = week 1) and DIVERGES from DAX WEEKNUM at
+// year boundaries (e.g. WEEKNUM('2021-01-01',2)=1 but ISO=53;
+// WEEKNUM('2019-12-30',2)=53 but ISO=1). DAX WEEKNUM uses the Excel/US convention:
+// the week containing Jan 1 is week 1, and the count increments at each week-start
+// boundary. So we synthesize the Excel-style formula explicitly:
+//   floor( (dayOfYear-1 + offsetOfJan1) / 7 ) + 1
+// where dayOfYear-1 = DateDiff("day", DateTrunc("year",d), d) and offsetOfJan1 is
+// the position of Jan 1 within its week (0 = the week-start day).
+//   return_type 2 (Monday-start):  offset = Mod(Weekday(jan1)+5, 7)  [Mon=0..Sun=6]
+//   return_type 1/default (Sunday): offset = Mod(Weekday(jan1)+6, 7)  [Sun=0..Sat=6]
+// Sigma Weekday() returns 1=Sunday..7=Saturday. Validated EXACT vs PBI WEEKNUM(d,2)
+// on 9 boundary dates incl. 2019-12-30, 2020-12-31, 2021-01-01 (the year-boundary
+// cases where the naive DatePart("week") mapping is WRONG). (beads-sigma-a8h)
+function rewriteWeeknum(f: string): string {
+  const re = /\bWEEKNUM\s*\(/gi;
+  let cursor = 0;
+  for (let guard = 0; guard < 200; guard++) {
+    re.lastIndex = cursor;
+    const m = re.exec(f);
+    if (!m) break;
+    const openIdx = m.index + m[0].length;
+    const { args, endPos } = splitCallArgs(f, openIdx);
+    if (args.length < 1) { cursor = openIdx; continue; } // malformed -> skip
+    const dateArg = args[0].trim();
+    // return_type: DAX defaults to 1 (Sunday-start). Type 2 = Monday-start.
+    const rt = args.length >= 2 ? args[1].replace(/^\[|\]$/g, '').trim() : '1';
+    // Sunday-start offset = +6, Monday-start offset = +5 (mod 7).
+    const off = rt === '2' ? 5 : 6;
+    const yearStart = `DateTrunc("year", ${dateArg})`;
+    const replacement =
+      `Floor((DateDiff("day", ${yearStart}, ${dateArg}) + Mod(Weekday(${yearStart}) + ${off}, 7)) / 7) + 1`;
+    f = f.slice(0, m.index) + replacement + f.slice(endPos);
+    cursor = m.index + replacement.length; // resume AFTER the emitted form
+  }
+  return f;
+}
+
 // SWITCH(TRUE(), c1, v1, c2, v2, ..., [default]) -> nested ternary Ifs:
 //   If(c1, v1, If(c2, v2, ... [, default])). Sigma's If is strictly ternary,
 //   so a flat If(c1, v1, c2, v2, default) is malformed. (beads-sigma-n9u)
@@ -391,6 +430,8 @@ export function pbiDaxToSigma(
   // the raw DAX so arg reordering + unit-quoting happen before bracket/table
   // normalization. (beads-sigma-f0p)
   f = rewriteDateDiff(f);
+  // WEEKNUM -> Excel-style week-of-year formula (NOT ISO DatePart). (beads-sigma-a8h)
+  f = rewriteWeeknum(f);
 
   // DIVIDE(a, b, alt) — nested-paren-aware parser
   const divideMatch = f.match(/\bDIVIDE\s*\(/i);
@@ -488,7 +529,7 @@ export function pbiDaxToSigma(
   const quotedTablePrefixes = (f.match(/'([^']+)'\[/g) || []).map(m => m.replace(/'\[$/g, '').replace(/^'/g, ''));
   const unquotedTablePrefixes = (f.match(/\b([A-Za-z_]\w*)\[/g) || []).map(m => m.replace(/\[$/, ''));
   const allTablePrefixes = [...new Set([...quotedTablePrefixes, ...unquotedTablePrefixes])].filter(p =>
-    !/^(If|Switch|Not|And|Or|Sum|Avg|Min|Max|Count|CountIf|CountDistinct|CumulativeSum|Coalesce|Nullif|Round|Floor|Ceiling|Abs|Upper|Lower|Trim|Left|Right|Mid|Replace|Find|Len|Year|Month|Day|Hour|Minute|Second|Today|Now|MakeDate|DateDiff|DateAdd|DateTrunc|DateFormat|IsNull|IsNotNull|Int|Number|Text|Sqrt|Power|Concat|In|GrandTotal|CumulativeAvg)$/.test(p)
+    !/^(If|Switch|Not|And|Or|Sum|Avg|Min|Max|Count|CountIf|CountDistinct|CumulativeSum|Coalesce|Nullif|Round|Floor|Ceiling|Abs|Upper|Lower|Trim|Left|Right|Mid|Replace|Find|Len|Year|Month|Day|Hour|Minute|Second|Today|Now|MakeDate|DateDiff|DateAdd|DateTrunc|DateFormat|IsNull|IsNotNull|Int|Number|Text|Sqrt|Power|Concat|In|GrandTotal|CumulativeAvg|Weekday|Mod|DateTrunc)$/.test(p)
   );
   if (allTablePrefixes.length > 1 && warnings) {
     const tableNames = allTablePrefixes.join(', ');
@@ -577,6 +618,103 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
   return null;
 }
 
+// Translate a simple DAX ADDCOLUMNS derived expression (over the CALENDAR [Date]
+// row) into a Snowflake SQL scalar expression over the spine column "d".
+// Handles YEAR/MONTH/DAY/QUARTER/WEEKDAY/FORMAT(,"MMM"/"MMMM")/the date itself.
+// Returns null when the expression isn't a recognized date-part shape so the
+// caller can fall back to a passthrough/comment. (beads-sigma-7mn)
+function daxCalendarDerivedToSql(expr: string): string | null {
+  const e = expr.trim();
+  // The bare CALENDAR date column itself, e.g. [Date] -> the spine date.
+  if (/^\[[^\]]+\]$/.test(e)) return 'd';
+  let m: RegExpMatchArray | null;
+  if ((m = e.match(/^YEAR\s*\(\s*\[[^\]]+\]\s*\)$/i))) return 'EXTRACT(YEAR FROM d)';
+  if ((m = e.match(/^MONTH\s*\(\s*\[[^\]]+\]\s*\)$/i))) return 'EXTRACT(MONTH FROM d)';
+  if ((m = e.match(/^DAY\s*\(\s*\[[^\]]+\]\s*\)$/i))) return 'EXTRACT(DAY FROM d)';
+  if ((m = e.match(/^QUARTER\s*\(\s*\[[^\]]+\]\s*\)$/i))) return 'EXTRACT(QUARTER FROM d)';
+  if ((m = e.match(/^WEEKDAY\s*\(\s*\[[^\]]+\]/i))) return 'DAYOFWEEK(d)';
+  // FORMAT([Date], "MMM") -> short month name; "MMMM" -> full month name.
+  if ((m = e.match(/^FORMAT\s*\(\s*\[[^\]]+\]\s*,\s*"([^"]+)"\s*\)$/i))) {
+    const fmt = m[1];
+    if (/^MMMM$/.test(fmt)) return "TO_CHAR(d, 'MMMM')";
+    if (/^MMM$/.test(fmt)) return "TO_CHAR(d, 'Mon')";
+    if (/^YYYY$/.test(fmt)) return "TO_CHAR(d, 'YYYY')";
+    return "TO_CHAR(d, '" + fmt.replace(/MMMM/g, 'MMMM').replace(/MMM/g, 'Mon') + "')";
+  }
+  return null;
+}
+
+// CALENDAR(DATE(y,m,d), DATE(y,m,d)) [optionally wrapped in ADDCOLUMNS(..., name, expr, ...)]
+// -> a Snowflake date-spine SQL element: GENERATOR(ROWCOUNT=>N) + DATEADD daily
+// series from start..end inclusive, plus each ADDCOLUMNS-derived column translated
+// via daxCalendarDerivedToSql. VERIFIED vs PBI: AdventureWorks-style spine = 3287
+// rows, 2018-01-01..2026-12-31, derived Year/MonthNo/Month exact. (beads-sigma-7mn)
+function buildCalendarSpineSql(
+  dax: string,
+  colDisplayNames: string[]
+): { ok: true; sql: string } | { ok: false; reason: string } {
+  const cm = dax.match(/\bCALENDAR\s*\(/i);
+  if (!cm) return { ok: false, reason: 'not a CALENDAR expression' };
+  const { args } = splitCallArgs(dax, cm.index! + cm[0].length);
+  if (args.length < 2) return { ok: false, reason: 'CALENDAR with non-literal bounds — recreate the date spine manually.' };
+  const parseDate = (a: string): string | null => {
+    const dm = a.match(/DATE\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+    if (!dm) return null;
+    const [, y, mo, d] = dm;
+    return `${y.padStart(4, '0')}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  };
+  const startStr = parseDate(args[0]);
+  const endStr = parseDate(args[1]);
+  if (!startStr || !endStr) return { ok: false, reason: 'CALENDAR bounds are not literal DATE(y,m,d) — recreate the date spine manually.' };
+  const startMs = Date.parse(startStr + 'T00:00:00Z');
+  const endMs = Date.parse(endStr + 'T00:00:00Z');
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return { ok: false, reason: 'CALENDAR bounds invalid — recreate the date spine manually.' };
+  }
+  const rowCount = Math.round((endMs - startMs) / 86400000) + 1; // inclusive
+
+  // Collect the ADDCOLUMNS derived (name, expr) pairs, if any.
+  // ADDCOLUMNS(<table>, "Name1", <expr1>, "Name2", <expr2>, ...)
+  const derived: { name: string; expr: string }[] = [];
+  const am = dax.match(/\bADDCOLUMNS\s*\(/i);
+  if (am) {
+    const { args: addArgs } = splitCallArgs(dax, am.index! + am[0].length);
+    // addArgs[0] is the table (the CALENDAR(...)); the rest are name/expr pairs.
+    for (let i = 1; i + 1 < addArgs.length; i += 2) {
+      const name = addArgs[i].trim().replace(/^"|"$/g, '');
+      derived.push({ name, expr: addArgs[i + 1].trim() });
+    }
+  }
+
+  // First declared column = the CALENDAR date series.
+  const dateColName = colDisplayNames[0] || 'Date';
+  const selects: string[] = [`d AS "${dateColName}"`];
+  const unconverted: string[] = [];
+  derived.forEach((dv, idx) => {
+    // Map derived name -> the declared display name in column order (skip col 0,
+    // the date). Fall back to the DAX-derived name when not enough declared cols.
+    const display = colDisplayNames[idx + 1] || dv.name;
+    const sqlExpr = daxCalendarDerivedToSql(dv.expr);
+    if (sqlExpr) {
+      selects.push(`${sqlExpr} AS "${display}"`);
+    } else {
+      selects.push(`NULL AS "${display}"`);
+      unconverted.push(display);
+    }
+  });
+
+  const sql =
+    `SELECT ${selects.join(', ')}\n` +
+    `FROM (\n` +
+    `  SELECT DATEADD('day', SEQ4(), CAST('${startStr}' AS DATE)) AS d\n` +
+    `  FROM TABLE(GENERATOR(ROWCOUNT => ${rowCount}))\n` +
+    `)`;
+  if (unconverted.length) {
+    return { ok: true, sql: sql + `\n-- NOTE: derived column(s) ${unconverted.join(', ')} had a DAX expression that could not be auto-translated — emitted as NULL; fill in manually.` };
+  }
+  return { ok: true, sql };
+}
+
 // ── Calculated (DAX) tables → Sigma sql element, never a warehouse-table ──────
 // A partition with source.type === "calculated" is a DAX-computed table
 // (GENERATESERIES / CALENDAR / ADDCOLUMNS / SELECTCOLUMNS / ROW / DATATABLE …),
@@ -587,12 +725,20 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
 // rather than a broken element. (beads-sigma-w9s)
 function buildCalcTableSql(
   dax: string,
-  seriesColName: string
+  seriesColName: string,
+  colDisplayNames: string[] = []
 ): { ok: true; sql: string } | { ok: false; reason: string } {
+  // CALENDAR(a,b) [/ ADDCOLUMNS(CALENDAR(a,b), ...)] -> a real date-spine SQL
+  // element with the ADDCOLUMNS-derived columns translated to SQL. Checked
+  // before GENERATESERIES so the date spine wins over the numeric-series path.
+  // (beads-sigma-7mn)
+  if (/\bCALENDAR\s*\(/i.test(dax)) {
+    return buildCalendarSpineSql(dax, colDisplayNames);
+  }
   // Find GENERATESERIES(start, stop[, step]) anywhere in the expression.
   const gm = dax.match(/\bGENERATESERIES\s*\(/i);
   if (!gm) {
-    return { ok: false, reason: 'DAX calculated table is not a GENERATESERIES — no warehouse source exists; recreate manually as a Sigma SQL element or input table.' };
+    return { ok: false, reason: 'DAX calculated table is not a GENERATESERIES or CALENDAR — no warehouse source exists; recreate manually as a Sigma SQL element or input table.' };
   }
   const { args } = splitCallArgs(dax, gm.index! + gm[0].length);
   if (args.length < 2) {
@@ -701,10 +847,10 @@ export function convertPowerBIToSigma(
         : (partition.source.expression || '');
       // Declared columns (calculatedTableColumn / untyped) become surfaced cols.
       const ctCols = (t.columns || []).filter((c: any) => c.type !== 'rowNumber' && !c.isGenerated);
-      const firstColName = ctCols.length
-        ? sigmaDisplayName(ctCols[0].sourceColumn || ctCols[0].name)
-        : 'Value';
-      const built = buildCalcTableSql(ctExpr, firstColName);
+      const ctColDisplayNames: string[] = ctCols.map((c: any) =>
+        sigmaDisplayName((c.sourceColumn || c.name || '').replace(/^\[|\]$/g, '')));
+      const firstColName = ctColDisplayNames.length ? ctColDisplayNames[0] : 'Value';
+      const built = buildCalcTableSql(ctExpr, firstColName, ctColDisplayNames);
 
       const ctColumns: SigmaColumn[] = [];
       const ctOrder: string[] = [];
@@ -724,7 +870,9 @@ export function convertPowerBIToSigma(
       let statement: string;
       if (built.ok) {
         statement = built.sql;
-        if (ctCols.length > 1) {
+        if (/\bCALENDAR\s*\(/i.test(ctExpr)) {
+          warnings.push(`ℹ Calculated table "${tableName}": DAX CALENDAR/ADDCOLUMNS → synthesized a Sigma SQL date-spine element (GENERATOR + DATEADD) with the derived columns translated to SQL.`);
+        } else if (ctCols.length > 1) {
           warnings.push(`ℹ Calculated table "${tableName}": synthesized a SQL VALUES series for column "${firstColName}". The remaining derived column(s) (${ctCols.slice(1).map((c: any) => sigmaDisplayName(c.sourceColumn || c.name)).join(', ')}) come from DAX ADDCOLUMNS/SELECTCOLUMNS — add their expressions to the SQL or as Sigma calc columns.`);
         } else {
           warnings.push(`ℹ Calculated table "${tableName}": DAX GENERATESERIES → synthesized Sigma SQL element (VALUES list).`);
