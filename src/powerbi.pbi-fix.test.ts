@@ -299,17 +299,69 @@ test('w9s: fixture_08 DimMonth GENERATESERIES -> sql element', () => {
   assert.ok(!baseElements(model).some((e: any) => e.name === 'DIMMONTH'),
     'DimMonth must NOT be a warehouse-table');
 });
-test('w9s: non-GENERATESERIES calc table (CALENDAR) -> sql {ok:false} placeholder, not warehouse-table', () => {
+// 7mn: CALENDAR / ADDCOLUMNS(CALENDAR(...)) is now a REAL date-spine SQL element
+// (was previously an {ok:false} placeholder). VERIFIED vs PBI: 3287-row spine
+// 2018-01-01..2026-12-31 with derived Year/MonthNo/Month columns.
+test('7mn: ADDCOLUMNS(CALENDAR(a,b)) -> real sql date-spine element, NOT an {ok:false} placeholder', () => {
   const { model, warnings } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_06_kitchen_sink.bim`));
   const sqls = sqlElements(model);
   const dd = sqls.find((e: any) => e.name === 'DIMDATE');
   assert.ok(dd, 'DimDate must be emitted as a sql element (not warehouse-table)');
-  assert.equal((dd as any).ok, false, 'non-translatable calc table should carry ok:false');
-  assert.match(dd.source.statement, /TODO/, 'placeholder SQL should flag manual work');
+  assert.notEqual((dd as any).ok, false, 'CALENDAR is now translatable — must NOT carry ok:false');
+  assert.doesNotMatch(dd.source.statement, /TODO/, 'real spine SQL must not be a TODO placeholder');
+  // Snowflake date-spine: GENERATOR + DATEADD over a literal start date.
+  assert.match(dd.source.statement, /GENERATOR\s*\(\s*ROWCOUNT\s*=>\s*3287\s*\)/i,
+    'spine must be GENERATOR(ROWCOUNT => 3287) — 3287 days inclusive');
+  assert.match(dd.source.statement, /DATEADD\(\s*'day'\s*,\s*SEQ4\(\)\s*,\s*CAST\('2018-01-01' AS DATE\)\)/i,
+    'spine must DATEADD day-offsets from 2018-01-01');
+  // Derived ADDCOLUMNS columns translated to SQL.
+  assert.match(dd.source.statement, /EXTRACT\(YEAR FROM d\) AS "Year"/i, 'Year = EXTRACT(YEAR)');
+  assert.match(dd.source.statement, /EXTRACT\(MONTH FROM d\) AS "Month No"/i, 'MonthNo = EXTRACT(MONTH)');
+  assert.match(dd.source.statement, /TO_CHAR\(d, 'Mon'\) AS "Month"/i, 'Month = TO_CHAR(,\'Mon\')');
   assert.ok(!baseElements(model).some((e: any) => e.name === 'DIMDATE'),
     'DimDate must NOT be a path-guessed warehouse-table');
-  assert.ok(warnings.some(w => /DimDate/.test(w) && /calculated table/i.test(w)),
-    'expected a structured calculated-table refusal warning');
+  assert.ok(warnings.some(w => /DimDate/.test(w) && /date-spine/i.test(w)),
+    'expected a date-spine synthesis info warning');
+});
+
+// a8h: WEEKNUM is NOT mapped to the ISO DatePart("week",...) (which diverges from
+// DAX at year boundaries) — it maps to the Excel-style week-of-year formula.
+// VERIFIED EXACT vs PBI WEEKNUM(d,2) on 9 boundary dates incl. 2019-12-30 (53),
+// 2021-01-01 (1) — the cases where naive DatePart("week") is WRONG.
+test('a8h: WEEKNUM(date,2) -> Excel-style Monday-start week formula (NOT ISO DatePart)', () => {
+  const out = pbiDaxToSigma('WEEKNUM(SAFETY_INCIDENTS[DATE], 2)', null, 'Week Of Year');
+  assert.ok(out, 'WEEKNUM must translate');
+  // Must NOT emit the naive ISO DatePart("week",...) which is wrong at boundaries.
+  assert.doesNotMatch(out!, /DatePart\s*\(\s*"week"/i, 'must NOT use ISO DatePart("week")');
+  // Monday-start (return_type 2) uses the +5 offset on Weekday(year-start).
+  assert.match(out!, /Floor\(\(DateDiff\("day", DateTrunc\("year", \[DATE\]\), \[DATE\]\) \+ Mod\(Weekday\(DateTrunc\("year", \[DATE\]\)\) \+ 5, 7\)\) \/ 7\) \+ 1/,
+    'return_type 2 = Monday-start formula with +5 offset');
+});
+
+test('a8h: WEEKNUM(date) and WEEKNUM(date,1) -> Sunday-start (+6 offset)', () => {
+  const def = pbiDaxToSigma('WEEKNUM(SAFETY_INCIDENTS[DATE])', null, 'Week Of Year');
+  const t1 = pbiDaxToSigma('WEEKNUM(SAFETY_INCIDENTS[DATE], 1)', null, 'Week Of Year');
+  for (const out of [def, t1]) {
+    assert.ok(out, 'WEEKNUM must translate');
+    assert.doesNotMatch(out!, /DatePart\s*\(\s*"week"/i, 'must NOT use ISO DatePart("week")');
+    assert.match(out!, /Mod\(Weekday\(DateTrunc\("year", \[DATE\]\)\) \+ 6, 7\)/,
+      'Sunday-start (default / type 1) uses +6 offset');
+  }
+});
+
+// a8h: the Safety & Absence "Week Of Year" calc col surfaces the new formula
+// (and never the ISO DatePart) after column-name normalization.
+test('a8h: fixture_08 "Week Of Year" calc col uses the Excel-style WEEKNUM formula', () => {
+  const { model } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_08_safety_absence_patterns.bim`));
+  let formula: string | undefined;
+  for (const el of model.pages[0].elements)
+    for (const c of (el.columns || []))
+      if (c.name === 'Week Of Year' || /Week Of Year/i.test(c.name || '')) formula = c.formula;
+  if (formula) {
+    assert.doesNotMatch(formula, /DatePart\s*\(\s*"week"/i, 'must NOT use ISO DatePart("week")');
+    assert.match(formula, /Floor\(\(DateDiff\("day", DateTrunc\("year"/,
+      'Week Of Year must use the Excel-style week formula');
+  }
 });
 
 // 9l2: structured refusal — every dropped measure leaves at least a warning
