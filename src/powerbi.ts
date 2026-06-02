@@ -768,6 +768,79 @@ export interface PowerBIConvertOptions {
   schema?: string;
 }
 
+// ── Time-intelligence → grouped DM elements (DateLookback / CumulativeSum) ──
+// Standalone time-intel measures (SAMEPERIODLASTYEAR / DATEADD / TOTALYTD /
+// running-total / hand-rolled prior-year) can't be scalar metrics (they need a
+// date grouping) — emit them as grouped/leveled elements on the fact's "<T> View"
+// (denormalized join), which is DM-native and verified exact vs Power BI.
+function classifyTimeIntel(dax: string): 'prior' | 'ytd' | null {
+  const d = dax || '';
+  if (/\bTOTALYTD\s*\(|\bDATESYTD\s*\(/i.test(d)) return 'ytd';
+  if (/FILTER\s*\(\s*ALL\s*\([^)]*\)\s*,[^<]*<=\s*MAX\s*\(/i.test(d)) return 'ytd'; // running total
+  if (/\bSAMEPERIODLASTYEAR\s*\(/i.test(d)) return 'prior';
+  if (/\bDATEADD\s*\([^,]+,\s*-?\d+\s*,\s*(YEAR|QUARTER|MONTH|WEEK|DAY)/i.test(d)) return 'prior';
+  // hand-rolled prior-year: SELECTEDVALUE(Date[Year]) … ALL(Date[Year]) … [Year]=cy-1
+  if (/SELECTEDVALUE\s*\([^)]*\[Year\]/i.test(d) && /ALL\s*\([^)]*\[Year\]/i.test(d) && /-\s*1\b/.test(d)) return 'prior';
+  return null;
+}
+// Sigma's display name for a View column: [A/Col]->"Col"; [A/DIM/Col]->"Col (DIM)".
+function viewColDisplay(formula: string): string {
+  const p = (formula || '').replace(/^\[|\]$/g, '').split('/');
+  return p.length <= 2 ? p[p.length - 1] : `${p[p.length - 1]} (${p[p.length - 2]})`;
+}
+function emitTimeIntelElements(model: any, elements: any[], warnings: string[]): void {
+  const AGG: Record<string, string> = { SUM: 'Sum', AVERAGE: 'Avg', AVG: 'Avg', MIN: 'Min',
+    MAX: 'Max', COUNT: 'Count', COUNTA: 'Count', DISTINCTCOUNT: 'CountDistinct' };
+  const views = elements.filter((e: any) => e.name && /View$/.test(e.name) && e.source?.kind === 'table');
+  if (!views.length) return;
+  const lastSeg = (f: string) => (f || '').replace(/^\[|\]$/g, '').split('/').pop() || '';
+  for (const t of (model.tables || [])) {
+    for (const m of (t.measures || [])) {
+      const dax = Array.isArray(m.expression) ? m.expression.join(' ') : String(m.expression || '');
+      const shape = classifyTimeIntel(dax);
+      if (!shape) continue;
+      const am = dax.match(/\b(SUM|AVERAGE|AVG|MIN|MAX|COUNT|DISTINCTCOUNT)\s*\(\s*'?[^'\[]*'?\[([^\]]+)\]/i);
+      if (!am) continue;
+      const agg = AGG[am[1].toUpperCase()]; const col = am[2];
+      // find a View carrying both the value column and a date column
+      let parent: any = null, valDisp = '', dateDisp = '';
+      for (const v of views) {
+        const vc = (v.columns || []).find((c: any) => lastSeg(c.formula).toUpperCase() === col.toUpperCase());
+        const dc = (v.columns || []).find((c: any) => /full date/i.test(viewColDisplay(c.formula)))
+                || (v.columns || []).find((c: any) => /date/i.test(lastSeg(c.formula)) && !/key/i.test(lastSeg(c.formula)));
+        if (vc && dc) { parent = v; valDisp = viewColDisplay(vc.formula); dateDisp = viewColDisplay(dc.formula); break; }
+      }
+      if (!parent) continue;
+      const pn = parent.name; const b = (m.name || 'TI').replace(/[^a-zA-Z0-9]/g, '').slice(0, 14);
+      if (shape === 'prior') {
+        const prior = `${valDisp} (Prior Year)`;
+        const cols = [
+          { id: `${b}_d`, formula: `DateTrunc("year", [${pn}/${dateDisp}])`, name: 'Year' },
+          { id: `${b}_v`, formula: `${agg}([${pn}/${valDisp}])`, name: valDisp },
+          { id: `${b}_p`, formula: `DateLookback([${valDisp}], [Year], 1, "year")`, name: prior },
+          { id: `${b}_y`, formula: `([${valDisp}] - [${prior}]) / [${prior}]`, name: `${valDisp} YoY %`, format: { kind: 'number', formatString: ',.1%' } },
+        ];
+        elements.push({ id: `${b}PP`, kind: 'table', name: m.name, source: { kind: 'table', elementId: parent.id },
+          columns: cols, order: cols.map(c => c.id), groupings: [{ id: `${b}_g`, groupBy: [`${b}_d`], calculations: [`${b}_v`, `${b}_p`, `${b}_y`] }] });
+        warnings.push(`ℹ Time-intel measure "${m.name}" → grouped DateLookback element on "${pn}" (prior-year + YoY %).`);
+      } else {
+        const cols = [
+          { id: `${b}_o`, formula: `DateTrunc("year", [${pn}/${dateDisp}])`, name: 'Year' },
+          { id: `${b}_i`, formula: `DateTrunc("month", [${pn}/${dateDisp}])`, name: 'Month' },
+          { id: `${b}_v`, formula: `${agg}([${pn}/${valDisp}])`, name: valDisp },
+          { id: `${b}_c`, formula: `CumulativeSum([${valDisp}])`, name: `${valDisp} YTD` },
+        ];
+        // TWO grouping LEVELS so CumulativeSum resets per outer (year) period.
+        elements.push({ id: `${b}YT`, kind: 'table', name: m.name, source: { kind: 'table', elementId: parent.id },
+          columns: cols, order: cols.map(c => c.id), groupings: [
+            { id: `${b}_go`, groupBy: [`${b}_o`] },
+            { id: `${b}_gi`, groupBy: [`${b}_i`], calculations: [`${b}_v`, `${b}_c`] }] });
+        warnings.push(`ℹ Time-intel measure "${m.name}" → grouped CumulativeSum (YTD, year-reset) element on "${pn}".`);
+      }
+    }
+  }
+}
+
 export function convertPowerBIToSigma(
   modelJson: any,
   options: PowerBIConvertOptions = {}
@@ -1278,6 +1351,10 @@ export function convertPowerBIToSigma(
   // append onto the derived element. Mirrors tableau.ts Step 3.
   const pbiDerivedEls = buildDerivedElements(elements);
   for (const de of pbiDerivedEls) elements.push(de);
+
+  // Auto-emit grouped time-intel elements (DateLookback / CumulativeSum) for
+  // standalone time-intel measures, now that the "<T> View" join elements exist.
+  emitTimeIntelElements(model, elements, warnings);
 
   const pbiPlacedSrcElIds: Record<string, boolean> = {};
   for (const de of pbiDerivedEls) {
