@@ -390,3 +390,118 @@ describe('gap-3: PDT property warnings (distribution, sortkeys, datagroup_trigge
     assert.ok(w, `Expected datagroup_trigger warning, got:\n${warnings.join('\n')}`);
   });
 });
+
+// ── Bug fixes (thelook regression) ──────────────────────────────────────────
+// Bug 1: measure ${dimension} refs were not resolved → literal ${...} leaked
+//        into formulas + phantom columns. Bug 2: snowflake (multi-hop) joins
+//        whose FK lives on a joined view were wired off the base element with
+//        bogus base.id = target.id keys. Inline LookML mirrors thelook's shape.
+describe('bugfix: measure ${dim} refs + snowflake join wiring', () => {
+  const model = {
+    name: 'shop.model.lkml',
+    content: `
+      connection: "c"
+      explore: orders {
+        join: customers {
+          type: left_outer
+          sql_on: \${orders.customer_id} = \${customers.id} ;;
+          relationship: many_to_one
+        }
+        join: regions {
+          type: left_outer
+          sql_on: \${customers.region_id} = \${regions.id} ;;
+          relationship: many_to_one
+        }
+      }`,
+  };
+  const ordersView = {
+    name: 'orders.view.lkml',
+    content: `
+      view: orders {
+        sql_table_name: DB.SCH.ORDERS ;;
+        dimension: id { primary_key: yes type: number sql: \${TABLE}.id ;; }
+        dimension: customer_id { type: number sql: \${TABLE}.customer_id ;; }
+        dimension: amount { type: number sql: \${TABLE}.amount ;; }
+        dimension: status { type: string sql: \${TABLE}.status ;; }
+        measure: total_amount { type: sum sql: \${amount} ;; }
+        measure: distinct_customers { type: count_distinct sql: \${customer_id} ;; }
+        measure: completed_amount { type: sum sql: \${amount} ;; filters: [status: "Complete"] }
+      }`,
+  };
+  const customersView = {
+    name: 'customers.view.lkml',
+    content: `
+      view: customers {
+        sql_table_name: DB.SCH.CUSTOMERS ;;
+        dimension: id { primary_key: yes type: number sql: \${TABLE}.id ;; }
+        dimension: region_id { type: number sql: \${TABLE}.region_id ;; }
+        dimension: name { type: string sql: \${TABLE}.name ;; }
+      }`,
+  };
+  const regionsView = {
+    name: 'regions.view.lkml',
+    content: `
+      view: regions {
+        sql_table_name: DB.SCH.REGIONS ;;
+        dimension: id { primary_key: yes type: number sql: \${TABLE}.id ;; }
+        dimension: name { type: string sql: \${TABLE}.name ;; }
+      }`,
+  };
+  const files = [model, ordersView, customersView, regionsView];
+  const run = () => convertLookMLToSigma(files, { exploreName: 'orders', connectionId: 'c' });
+  const tableOf = (e: any) => e.source?.path ? e.source.path[e.source.path.length - 1] : (e.name || e.id);
+
+  test('bug1: no ${...} leaks in any column id or formula', () => {
+    const { model } = run();
+    const els = model.pages[0].elements;
+    const leaks: string[] = [];
+    for (const e of els) {
+      for (const c of (e.columns || [])) {
+        if ((c.formula || '').includes('${') || (c.id || '').includes('${')) leaks.push(`${c.id}=${c.formula}`);
+      }
+      for (const m of (e.metrics || [])) {
+        if ((m.formula || '').includes('${')) leaks.push(`${m.name}=${m.formula}`);
+      }
+    }
+    assert.equal(leaks.length, 0, `unexpected \${} leaks:\n${leaks.join('\n')}`);
+  });
+
+  test('bug1: measure ${amount} resolves to a Sum over the amount column', () => {
+    const { model } = run();
+    const orders = model.pages[0].elements.find((e: any) => tableOf(e) === 'ORDERS')!;
+    const m = orders.metrics!.find((x: any) => x.name === 'Total Amount')!;
+    assert.match(m.formula, /^Sum\(\[Amount\]\)$/i, `got: ${m.formula}`);
+    const cd = orders.metrics!.find((x: any) => x.name === 'Distinct Customers')!;
+    assert.match(cd.formula, /^CountDistinct\(\[Customer Id\]\)$/i, `got: ${cd.formula}`);
+    const cf = orders.metrics!.find((x: any) => x.name === 'Completed Amount')!;
+    assert.match(cf.formula, /^SumIf\(\[Amount\], \[Status\] = "Complete"\)$/i, `got: ${cf.formula}`);
+  });
+
+  test('bug2: snowflake join (regions) is wired off the customers element, not orders', () => {
+    const { model } = run();
+    const els = model.pages[0].elements;
+    const byId: Record<string, any> = {};
+    for (const e of els) byId[e.id] = e;
+
+    // Find the regions relationship wherever it lives.
+    let host: any = null, rel: any = null;
+    for (const e of els) {
+      const r = (e.relationships || []).find((x: any) => x.name === 'regions');
+      if (r) { host = e; rel = r; }
+    }
+    assert.ok(rel, 'regions relationship not found');
+    assert.equal(tableOf(host), 'CUSTOMERS', `regions rel should hang off CUSTOMERS, got ${tableOf(host)}`);
+    assert.equal(tableOf(byId[rel.targetElementId]), 'REGIONS');
+
+    // Source column must be customers.region_id, NOT orders.id.
+    const srcCol = (host.columns || []).find((c: any) => c.id === rel.keys[0].sourceColumnId);
+    assert.match(srcCol.formula, /Region Id/i, `source col should be Region Id, got ${srcCol?.formula}`);
+  });
+
+  test('bug2: direct join (customers) still wired off the orders base element', () => {
+    const { model } = run();
+    const orders = model.pages[0].elements.find((e: any) => tableOf(e) === 'ORDERS')!;
+    const rel = (orders.relationships || []).find((x: any) => x.name === 'customers');
+    assert.ok(rel, 'customers relationship should be on the orders element');
+  });
+});
