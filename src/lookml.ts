@@ -394,6 +394,10 @@ function lookConvertView(
   // fieldDisplayMap: fieldName → Sigma display name (uses label if present)
   const yesnoExprMap = new Map<string, string>();
   const fieldDisplayMap = new Map<string, string>();
+  // dimension name (lowercase) → physical column (UPPER). Resolves intra-view
+  // ${dimension} references inside measure sql (e.g. measure total_revenue {
+  // sql: ${sale_price} } → SALE_PRICE).
+  const dimPhysColMap = new Map<string, string>();
   {
     const allDims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
     allDims.forEach((yd: any) => {
@@ -416,6 +420,7 @@ function lookConvertView(
           const stripped = lookStripSql(yd.sql) || yd._name;
           const physCol = stripped.split('.').pop()!.replace(/"/g, '').toUpperCase();
           displayName = colLabel(physCol);
+          dimPhysColMap.set(lname, physCol);
         } else {
           displayName = yd.label || sigmaDisplayName(yd._name);
         }
@@ -658,7 +663,15 @@ function lookConvertView(
   measures.forEach((ms: any) => {
     if (!ms._name) return;
     const msName = ms._name.toUpperCase();
-    const sqlCol = lookStripSql(ms.sql) || msName;
+    // Resolve intra-view ${dimension} references to the underlying physical
+    // column before deriving it (e.g. ${sale_price} → SALE_PRICE). Without this,
+    // bare ${field} tokens leak into formulas and fabricate phantom ${...}
+    // columns. (${TABLE}.col and ${view.field} forms are handled by lookStripSql.)
+    const resolvedMsSql = (ms.sql || '').replace(
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+      (match: string, refName: string) => dimPhysColMap.get(refName.toLowerCase()) ?? match
+    );
+    const sqlCol = lookStripSql(resolvedMsSql) || msName;
     const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase() || msName.replace(/"/g, '');
     const msType = (ms.type || 'count').toLowerCase();
     const msLabel = ms.label || sigmaDisplayName(msName);
@@ -868,8 +881,13 @@ export function convertLookMLToSigma(
     if (!elementMap[j.viewName]) elementMap[j.viewName] = physViewMap[j.viewName];
   }
 
-  // Wire relationships
-  const baseEl = elementMap[baseAlias].element;
+  // Wire relationships.
+  // A join's sql_on names the joined ("target") view on one side and the
+  // FK-owning ("source") view on the other. The source is NOT always the base
+  // explore view: in a snowflake schema the FK can live on another joined view
+  // (e.g. ${inventory_items.product_id} = ${products.id} hangs the products
+  // relationship off the inventory_items element, not the base fact). Attach
+  // each relationship to the element that actually owns the FK column.
   const usedTargetCols = new Set<string>();
 
   relJoins.forEach(j => {
@@ -878,12 +896,33 @@ export function convertLookMLToSigma(
       warnings.push(`⚠ Relationship "${j.alias}": target not found`);
       return;
     }
+    const isTargetView = (name: string) => name === j.alias || name === j.viewName;
 
     j.keys.forEach((k: any) => {
-      const isTarget = (name: string) => name === j.alias || name === j.viewName;
-      const srcColId = lookFindColId(elementMap[baseAlias], isBaseView(k.leftView) ? k.leftCol : k.rightCol);
-      const tgtColId = lookFindColId(targetRes, isTarget(k.leftView) ? k.leftCol : k.rightCol);
+      // Identify which side of the equality is this join's target view; the
+      // other side owns the FK and becomes the relationship source.
+      let srcView: string, srcCol: string, tgtCol: string;
+      if (isTargetView(k.rightView)) {
+        srcView = k.leftView; srcCol = k.leftCol; tgtCol = k.rightCol;
+      } else if (isTargetView(k.leftView)) {
+        srcView = k.rightView; srcCol = k.rightCol; tgtCol = k.leftCol;
+      } else {
+        // Neither side names the joined view — fall back to the base element.
+        warnings.push(`⚠ Relationship "${j.alias}": sql_on does not reference the joined view directly — wired from the base element; verify keys in Sigma.`);
+        const baseIsLeft = isBaseView(k.leftView);
+        srcView = baseAlias;
+        srcCol = baseIsLeft ? k.leftCol : k.rightCol;
+        tgtCol = baseIsLeft ? k.rightCol : k.leftCol;
+      }
 
+      const srcRes = elementMap[srcView];
+      if (!srcRes) {
+        warnings.push(`⚠ Relationship "${j.alias}": source view "${srcView}" not found in the explore — skipped`);
+        return;
+      }
+
+      const srcColId = lookFindColId(srcRes, srcCol);
+      const tgtColId = lookFindColId(targetRes, tgtCol);
       if (!srcColId || !tgtColId) {
         warnings.push(`⚠ Relationship "${j.alias}": could not resolve column IDs for keys (${k.leftCol} / ${k.rightCol})`);
         return;
@@ -896,8 +935,9 @@ export function convertLookMLToSigma(
       }
       usedTargetCols.add(pairKey);
 
-      if (!baseEl.relationships) baseEl.relationships = [];
-      baseEl.relationships.push({
+      const srcEl = srcRes.element;
+      if (!srcEl.relationships) srcEl.relationships = [];
+      srcEl.relationships.push({
         id: sigmaShortId(),
         targetElementId: targetRes.elementId,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
