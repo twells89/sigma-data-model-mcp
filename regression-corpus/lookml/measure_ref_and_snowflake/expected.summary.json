@@ -1,0 +1,13 @@
+{
+  "description": "Regression for two LookML converter bugs found on the qwiklabs thelook fixture (2026-06-04). Bug 1: measures referencing sibling dimensions via ${dim} (e.g. total_net_revenue { sql: ${net_revenue} }) leaked literal ${...} tokens into metric formulas and fabricated phantom ${...} columns → type:error. Bug 2: a snowflake join whose FK lives on a joined view (store_dim joined via customer_dim.customer_key) was mis-wired off the base element as order_fact.order_id = store_dim.store_key (text=int) → type:error; the relationship must attach to the customer_dim element instead. A correctly-wired, ${dim}-resolving converter produces zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 4,
+    "minRelationships": 2,
+    "noErrorColumns": true
+  }
+}
