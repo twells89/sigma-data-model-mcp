@@ -376,3 +376,64 @@ test('9l2: no measure is silently dropped (each non-converted measure warns)', (
       `dropped measure "${name}" must produce a warning, not vanish`);
   }
 });
+
+import { formatFromMask, inferSigmaFormat } from './sigma-ids.js';
+
+test('r9oz: bare COUNTROWS(FILTER(table,pred)) -> CountIf(pred), never malformed Count())', () => {
+  const out = pbiDaxToSigma("COUNTROWS(FILTER('ORDER_FACT', 'ORDER_FACT'[Net Revenue] > 200))", null, 'High Value Orders');
+  assert.equal(out, 'CountIf([Net Revenue] > 200)');
+  assert.ok(!/Count\(\)\)/.test(out || ''), 'must not emit malformed Count())');
+});
+
+test('r9oz: COUNT(FILTER(...)) also -> CountIf(pred)', () => {
+  const out = pbiDaxToSigma("COUNT(FILTER('T', 'T'[Status] = \"Open\"))", null, 'Open');
+  assert.equal(out, 'CountIf([Status] = "Open")');
+});
+
+test('RANKX is dropped-and-warned (no invalid passthrough)', () => {
+  const warns: string[] = [];
+  const out = pbiDaxToSigma("RANKX(ALL('T'[Sub Category]), [Total Sales],,DESC)", warns, 'Sales Rank');
+  assert.equal(out, null, 'RANKX must not emit a formula');
+  assert.ok(warns.some(w => /ranking \(RANKX\)/i.test(w)), 'must warn about RANKX');
+});
+
+test('4q7k: formatFromMask maps Excel masks to Sigma format objects', () => {
+  assert.deepEqual(formatFromMask('0.0%'), { kind: 'number', formatString: ',.1%' });
+  assert.deepEqual(formatFromMask('\\$#,0'), { kind: 'number', formatString: '$,.0f', currencySymbol: '$' });
+  assert.deepEqual(formatFromMask('\\$#,0.00'), { kind: 'number', formatString: '$,.2f', currencySymbol: '$' });
+  assert.deepEqual(formatFromMask('#,0'), { kind: 'number', formatString: ',.0f' });
+  assert.equal(formatFromMask('General Date'), null);
+  assert.equal(formatFromMask(undefined), null);
+});
+
+test('4q7k: inferSigmaFormat honors the source mask over the name heuristic', () => {
+  // "Avg Discount" name would heuristically guess currency; the % mask wins.
+  assert.deepEqual(inferSigmaFormat('Avg([Discount])', 'Avg Discount', '0.0%'),
+    { kind: 'number', formatString: ',.1%' });
+  // no mask -> falls back to heuristics (currency by name)
+  assert.deepEqual(inferSigmaFormat('Sum([Sales])', 'Total Sales'),
+    { kind: 'number', formatString: '$,.2f', currencySymbol: '$' });
+});
+
+test('dangling-ref: a metric referencing a dropped measure is pruned (not posted broken)', () => {
+  const model = {
+    model: { tables: [{
+      name: 'F', columns: [{ name: 'Order Id', dataType: 'string', sourceColumn: 'ORDER_ID' }],
+      partitions: [{ source: { type: 'm', expression: [
+        'let Source = Snowflake.Databases("a","b"),',
+        '#"N1" = Source{[Name="DB",Kind="Database"]}[Data],',
+        '#"N2" = #"N1"{[Name="SCH",Kind="Schema"]}[Data],',
+        '#"N3" = #"N2"{[Name="F",Kind="Table"]}[Data] in #"N3"' ] } }],
+      measures: [
+        { name: 'Orders', expression: "DISTINCTCOUNT('F'[Order Id])" },
+        { name: 'Returned Orders', expression: "CALCULATE([Orders], 'F'[Returned] = \"Yes\")" },
+        { name: 'Return Rate', expression: '[Returned Orders] / [Orders]' },
+      ],
+    }] },
+  };
+  const { model: out } = convertPowerBIToSigma(model as any);
+  const names = (out.pages[0].elements[0].metrics || []).map((m: any) => m.name);
+  assert.ok(!names.includes('Returned Orders'), 'complex CALCULATE measure dropped');
+  assert.ok(!names.includes('Return Rate'), 'dangling dependent metric must be pruned');
+  assert.ok(names.includes('Orders'), 'clean metric retained');
+});

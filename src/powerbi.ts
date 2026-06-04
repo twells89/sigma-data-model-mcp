@@ -316,6 +316,62 @@ function rewriteSingleValue(f: string): string {
   return f;
 }
 
+// COUNTROWS(FILTER(table, pred)) | COUNT(FILTER(table, pred)) -> CountIf(pred).
+// The BARE form (no CALCULATE wrapper) otherwise reaches the COUNTROWS catch-all
+// (/\bCOUNTROWS\s*\(\s*'?[^)]*'?\s*\)/), whose [^)]* stops at FILTER's inner ')'
+// and leaves the outer paren dangling -> malformed 'Count())' that fails the DM
+// POST (beads-sigma-r9oz). Run in Tier 0, before the catch-all. Predicate column
+// refs are normalized to bare [Col] so downstream name-mapping resolves them.
+function rewriteCountRowsFilter(f: string): string {
+  const re = /\b(?:COUNTROWS|COUNT)\s*\(/gi;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    let replaced = false;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(f)) !== null) {
+      const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+      if (args.length !== 1) continue;
+      const inner = args[0].trim();
+      const fm = inner.match(/^FILTER\s*\(/i);
+      if (!fm) continue;
+      const fr = splitCallArgs(inner, fm[0].length);
+      if (fr.args.length < 2) continue;
+      let pred = fr.args.slice(1).join(', ').trim();
+      pred = pred
+        .replace(/'[^']+'\[([^\]]+)\]/g, '[$1]')
+        .replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+      f = f.slice(0, m.index) + `CountIf(${pred})` + f.slice(endPos);
+      replaced = true;
+      break;
+    }
+    if (!replaced) break;
+  }
+  return f;
+}
+
+// Drop any metric whose formula references a MEASURE that was itself dropped
+// (a CALCULATE/iterator/ranking measure that didn't translate) — e.g. a ratio
+// built on it. Without this the dependent metric posts but silently resolves to
+// "Missing Metric". `droppedNames` is seeded with the source measures that did
+// NOT make it into `metrics`; pruned metrics are added back so transitive chains
+// (A→B→droppedC) collapse too. Scoped to dropped MEASURE names ONLY — column
+// refs and surviving measures are never touched. (dangling-ref cascade)
+function pruneDanglingMetrics(metrics: any[], droppedNames: Set<string>, warnings: string[] | null): void {
+  for (let pass = 0; pass < 10; pass++) {
+    const before = metrics.length;
+    for (let i = metrics.length - 1; i >= 0; i--) {
+      const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r) => r.slice(1, -1));
+      const bad = refs.find((r) => droppedNames.has(r));
+      if (bad) {
+        if (warnings) warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which did not translate — dropped to avoid a dangling reference.`);
+        droppedNames.add(metrics[i].name);
+        metrics.splice(i, 1);
+      }
+    }
+    if (metrics.length === before) break;
+  }
+}
+
 export function pbiDaxToSigma(
   dax: string | string[],
   warnings: string[] | null,
@@ -335,6 +391,7 @@ export function pbiDaxToSigma(
   f = rewriteCombineValues(f);  // COMBINEVALUES(sep,a,b) -> [a] & sep & [b]
   f = rewriteSingleValue(f);    // HASONEVALUE / SELECTEDVALUE
   f = rewriteSwitchTrue(f);     // SWITCH(TRUE(), c,v,...) -> nested If
+  f = rewriteCountRowsFilter(f);// COUNTROWS/COUNT(FILTER(t,pred)) -> CountIf(pred) (r9oz)
   // DISTINCTCOUNTNOBLANK(col) -> CountDistinct(col) (Sigma CountDistinct already
   // ignores nulls). Done here so the generic DISTINCTCOUNT rename can't first
   // claim the prefix and leave a dangling NOBLANK token.
@@ -350,6 +407,15 @@ export function pbiDaxToSigma(
   if (/\b(SUMX|AVERAGEX|MINX|MAXX|COUNTAX|CONCATENATEX)\s*\(/i.test(f)) {
     const fn = f.match(/\b(SUMX|AVERAGEX|MINX|MAXX|COUNTAX|CONCATENATEX)/i)![1];
     if (warnings) warnings.push(`⚠ "${measureName}": uses DAX iterator (${fn}). Use groupings or calculated columns. See: ${PBI_COMMUNITY_LINKS.groupings}`);
+    return null;
+  }
+  // Ranking functions — window/scope; no DM-metric equivalent. Emitting RANKX
+  // verbatim is an invalid Sigma formula that fails the whole DM POST
+  // (beads-sigma-r9oz/mkm). Drop-and-warn instead. (RANKX before RANK so the
+  // alternation captures the full token.)
+  if (/\b(RANKX|RANK\.EQ|RANK\.AVG|RANK)\s*\(/i.test(f)) {
+    const fn = f.match(/\b(RANKX|RANK\.EQ|RANK\.AVG|RANK)/i)![1];
+    if (warnings) warnings.push(`⚠ "${measureName}": uses DAX ranking (${fn}). No data-model-metric equivalent — add a workbook Rank() in an ordered table, or a grouped element. See: ${PBI_COMMUNITY_LINKS.groupings}`);
     return null;
   }
   // Time intelligence
@@ -1032,7 +1098,7 @@ export function convertPowerBIToSigma(
         const colId = sigmaShortId();
         tableColMap[tableName][c.name] = colId;
         pbiToSigmaName[c.name] = c.name;
-        const _calcFmt = inferSigmaFormat(sigmaFormula, c.name);
+        const _calcFmt = inferSigmaFormat(sigmaFormula, c.name, (c as any).formatString);
         const _calcCol: any = { id: colId, formula: sigmaFormula, name: c.name };
         if (_calcFmt) _calcCol.format = _calcFmt;
         columns.push(_calcCol);
@@ -1052,7 +1118,7 @@ export function convertPowerBIToSigma(
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
           return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
         });
-        const _mFmt = inferSigmaFormat(sigmaFormula, m.name);
+        const _mFmt = inferSigmaFormat(sigmaFormula, m.name, (m as any).formatString);
         const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
         if (_mFmt) metric.format = _mFmt;
         if (m.description) metric.description = m.description;
@@ -1060,6 +1126,13 @@ export function convertPowerBIToSigma(
       } else if (!warnings.some(w => w.includes(`"${m.name}"`))) {
         warnings.push(`⛔ "${m.name}": DAX measure could not be auto-converted. Add manually.`);
       }
+    }
+    {
+      const emitted = new Set(metrics.map((mm: any) => mm.name));
+      const dropped = new Set<string>(
+        (t.measures || []).map((mm: any) => mm.name).filter((nm: string) => nm && !emitted.has(nm))
+      );
+      pruneDanglingMetrics(metrics, dropped, warnings);
     }
 
     // Display folders
@@ -1110,7 +1183,7 @@ export function convertPowerBIToSigma(
               return allPbiToSigmaNames[colName] ? `[${allPbiToSigmaNames[colName]}]` : `[${colName}]`;
             });
             if (!(factEl as any).metrics) (factEl as any).metrics = [];
-            const _moFmt = inferSigmaFormat(sigmaFormula, m.name);
+            const _moFmt = inferSigmaFormat(sigmaFormula, m.name, (m as any).formatString);
             const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: m.name };
             if (_moFmt) metric.format = _moFmt;
             if (m.description) metric.description = m.description;
