@@ -83,7 +83,32 @@ export function sigmaAggFormula(agg: string, identifier: string): string {
  *  4. Name keywords for currency                             → $,.2f
  *  5. Count/CountDistinct formula                            → ,.0f integer
  */
-export function inferSigmaFormat(formula: string, displayName?: string): Record<string, any> | null {
+/**
+ * Map a source-tool numeric format mask (Excel/.NET style, e.g. "$#,0.00",
+ * "0.0%", "#,##0") to a Sigma format object. The PRIMARY format signal when the
+ * source carries one — far more reliable than guessing from the formula/name
+ * (beads-sigma-4q7k). Returns null for masks we don't recognize (e.g. dates,
+ * "General Date") so the heuristic fallback still runs.
+ */
+export function formatFromMask(mask?: string): Record<string, any> | null {
+  if (!mask || typeof mask !== 'string') return null;
+  const s = mask.trim();
+  if (!s || /general|date|time|@|yy|dd/i.test(s)) return null;
+  // decimals = run of 0/# after a decimal point in the mask
+  const decM = s.match(/\.([0#]+)/);
+  const decimals = decM ? decM[1].length : 0;
+  const isPercent = /%/.test(s);
+  const isCurrency = /[$£€¥]/.test(s);
+  if (isPercent) return { kind: 'number', formatString: `,.${decimals}%` };
+  if (isCurrency) return { kind: 'number', formatString: `$,.${decimals}f`, currencySymbol: '$' };
+  if (/[0#]/.test(s)) return { kind: 'number', formatString: `,.${decimals}f` };
+  return null;
+}
+
+export function inferSigmaFormat(formula: string, displayName?: string, sourceMask?: string): Record<string, any> | null {
+  // Honor the source format mask first when present — most reliable signal.
+  const fromMask = formatFromMask(sourceMask);
+  if (fromMask) return fromMask;
   if (!formula) return null;
   const f = formula.trim();
   const n = (displayName || '').toLowerCase();
