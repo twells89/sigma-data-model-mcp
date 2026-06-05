@@ -293,17 +293,26 @@ export function convertThoughtSpotToSigma(
     }
   }
 
-  // Place same-element calcs directly on their host element.
+  // Place same-element calcs on their host element. A TML formula that is itself
+  // aggregate-level (e.g. `sum(x)/sum(y)`, `sqrt(sum(x))`, `average(x)`) must be
+  // a Sigma METRIC (evaluated in aggregate context) — as a row-level calc column
+  // its inner Sum() collapses to the row value and the ratio-of-sums is lost.
+  // Row-level formulas (if/then, safe_divide, concat, …) stay calc columns.
   for (const elId of Object.keys(sameElCalcsByElId)) {
     const hostEl = elements.find(e => e.id === elId);
     if (!hostEl) continue;
     for (const p of sameElCalcsByElId[elId]) {
-      const colId = sigmaShortId();
       let fmt: any = inferSigmaFormat(p.sigmaFormula, p.dispName);
       if (fmt?.formatString === ',.2%') fmt = { kind: 'number', formatString: ',.2f', suffix: '%' };
-      const colObj: any = { id: colId, name: p.dispName, formula: p.sigmaFormula };
-      if (fmt) colObj.format = fmt;
-      hostEl.columns.push(colObj);
+      if (tsIsAggregateFormula(p.formulaExpr)) {
+        const metric: any = { id: sigmaShortId(), name: p.dispName, formula: p.sigmaFormula };
+        if (fmt) metric.format = fmt;
+        (hostEl.metrics ||= []).push(metric);
+      } else {
+        const colObj: any = { id: sigmaShortId(), name: p.dispName, formula: p.sigmaFormula };
+        if (fmt) colObj.format = fmt;
+        hostEl.columns.push(colObj);
+      }
     }
   }
 
@@ -389,6 +398,14 @@ export function convertThoughtSpotToSigma(
 }
 
 // ── ThoughtSpot formula → Sigma formula ────────────────────────────────────
+
+// A TML formula is "aggregate-level" if it applies an aggregate function to a
+// column — its value is one number per group, not per row. Such formulas must
+// become Sigma metrics, not row-level calc columns.
+function tsIsAggregateFormula(expr: string): boolean {
+  return /\b(sum|count|count_distinct|unique_count|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total)\s*\(/i
+    .test(expr || '');
+}
 
 function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): string {
   if (!expr) return '';
