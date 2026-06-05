@@ -91,6 +91,25 @@ export function convertThoughtSpotToSigma(
     }
   }
 
+  // Auto-include physical columns referenced by a JOIN key or a FORMULA but not
+  // explicitly selected. Without this, joins drop ("join key columns not found")
+  // and formulas referencing an unselected column resolve to `error` in Sigma —
+  // real ThoughtSpot models routinely reference base columns they don't surface.
+  const refRe = /\[([^\]:]+)::([^\]]+)\]/g;
+  const referenced: Array<[string, string]> = [];
+  const collectRefs = (s: string) => { let m; while ((m = refRe.exec(s || ''))) referenced.push([m[1], m[2]]); };
+  for (const j of (ws.joins || [])) collectRefs(j.on || '');
+  for (const mt of (ws.model_tables || [])) for (const j of (mt.joins || [])) collectRefs(j.on || '');
+  for (const expr of Object.values(formulaMap)) collectRefs(expr);
+  for (const [alias, physCol] of referenced) {
+    const tableName = tablePathMap[alias] || alias;
+    if (!tablesMeta[tableName] && !colsByTable[tableName]) continue; // ref to an unknown table — skip
+    const existing = (colsByTable[tableName] ||= []);
+    if (!existing.some(e => e.physCol.toUpperCase() === physCol.toUpperCase())) {
+      existing.push({ col: { column_id: `${tableName}::${physCol}`, name: sigmaDisplayName(physCol) }, physCol, tableName });
+    }
+  }
+
   const allTableNames = Array.from(new Set([
     ...Object.keys(colsByTable),
     ...Object.keys(tablesMeta),
