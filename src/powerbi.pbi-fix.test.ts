@@ -437,3 +437,49 @@ test('dangling-ref: a metric referencing a dropped measure is pruned (not posted
   assert.ok(!names.includes('Return Rate'), 'dangling dependent metric must be pruned');
   assert.ok(names.includes('Orders'), 'clean metric retained');
 });
+
+test('mkm: ISINSCOPE/scope introspection is dropped-and-warned (no invalid passthrough)', () => {
+  for (const expr of [
+    'IF(ISINSCOPE(\'Date\'[Year]), [Total Sales], BLANK())',
+    'IF(ISFILTERED(\'Product\'[Category]), [Total Sales])',
+  ]) {
+    const warns: string[] = [];
+    const out = pbiDaxToSigma(expr, warns, 'Scoped Measure');
+    assert.equal(out, null, `must drop: ${expr}`);
+    assert.ok(warns.some(w => /scope introspection/i.test(w)), `must warn: ${expr}`);
+  }
+});
+
+test('VAR/RETURN inlines into a single expression (no longer dropped)', () => {
+  const out = pbiDaxToSigma('VAR rev = [Total Net Rev] VAR ord = [Order Count] RETURN DIVIDE(rev, ord)', [], 'AOV');
+  assert.equal(out, '([Total Net Rev]) / ([Order Count])');
+  // a VAR referencing an earlier VAR
+  const out2 = pbiDaxToSigma('VAR a = [X] VAR b = a * 2 RETURN b + [Y]', [], 'm');
+  assert.equal(out2, '(([X]) * 2) + [Y]');
+});
+
+test('simple SUMX/AVERAGEX/MAXX over a bare table -> Sum/Avg/Max(rowExpr)', () => {
+  assert.equal(pbiDaxToSigma("SUMX('ORDER_FACT', 'ORDER_FACT'[Net Revenue] * 'ORDER_FACT'[Quantity Ordered])", [], 'm'),
+    'Sum([Net Revenue] * [Quantity Ordered])');
+  assert.equal(pbiDaxToSigma("AVERAGEX(Sales, Sales[Price] - Sales[Cost])", [], 'm'),
+    'Avg([Price] - [Cost])');
+  assert.equal(pbiDaxToSigma("MAXX('T', 'T'[A])", [], 'm'), 'Max([A])');
+});
+
+test('iterator over FILTER/TOPN or with a nested aggregate is NOT mis-translated (still dropped)', () => {
+  const w1: string[] = [];
+  assert.equal(pbiDaxToSigma("SUMX(TOPN(5, VALUES('T'[K]), [M]), [M])", w1, 'Top5'), null);
+  assert.ok(w1.some(x => /iterator \(SUMX\)/.test(x)));
+  const w2: string[] = [];
+  assert.equal(pbiDaxToSigma("SUMX('T', SUM('T'[X]))", w2, 'bad'), null); // nested agg -> not simple
+});
+
+test('CALCULATE(<agg>, ALL(<wholeTable>)) -> GrandTotal(<agg>) (%-of-total now translates)', () => {
+  assert.equal(pbiDaxToSigma("DIVIDE([Total Sales], CALCULATE([Total Sales], ALL('SAMPLE_SUPERSTORE')))", [], 'Pct'),
+    '[Total Sales] / GrandTotal([Total Sales])');
+  assert.equal(pbiDaxToSigma('CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Sales))', [], 'gt'),
+    'GrandTotal(Sum([Amount]))');
+  // partial ALL (a column) and multi-arg CALCULATE must NOT be mis-translated
+  assert.equal(pbiDaxToSigma('CALCULATE([Sales], ALL(Sales[Region]))', [], 'p'), null);
+  assert.equal(pbiDaxToSigma('CALCULATE([Sales], ALL(Sales), Sales[Y]=1)', [], 'm'), null);
+});
