@@ -473,3 +473,13 @@ test('iterator over FILTER/TOPN or with a nested aggregate is NOT mis-translated
   const w2: string[] = [];
   assert.equal(pbiDaxToSigma("SUMX('T', SUM('T'[X]))", w2, 'bad'), null); // nested agg -> not simple
 });
+
+test('CALCULATE(<agg>, ALL(<wholeTable>)) -> GrandTotal(<agg>) (%-of-total now translates)', () => {
+  assert.equal(pbiDaxToSigma("DIVIDE([Total Sales], CALCULATE([Total Sales], ALL('SAMPLE_SUPERSTORE')))", [], 'Pct'),
+    '[Total Sales] / GrandTotal([Total Sales])');
+  assert.equal(pbiDaxToSigma('CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Sales))', [], 'gt'),
+    'GrandTotal(Sum([Amount]))');
+  // partial ALL (a column) and multi-arg CALCULATE must NOT be mis-translated
+  assert.equal(pbiDaxToSigma('CALCULATE([Sales], ALL(Sales[Region]))', [], 'p'), null);
+  assert.equal(pbiDaxToSigma('CALCULATE([Sales], ALL(Sales), Sales[Y]=1)', [], 'm'), null);
+});

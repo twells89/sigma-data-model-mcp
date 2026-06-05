@@ -429,6 +429,34 @@ function rewriteSimpleIterator(f: string): string {
   return f;
 }
 
+// CALCULATE(<agg>, ALL(<wholeTable>)) | CALCULATE(<agg>, REMOVEFILTERS(<wholeTable>))
+// -> GrandTotal(<agg>) — Sigma's grand-total-over-all-rows aggregate (verified at
+// query time: Sum([x])/GrandTotal(Sum([x])) over a grouped table sums to 100%).
+// This makes the common %-of-total idiom DIVIDE([m], CALCULATE([m], ALL(T)))
+// translate to [m] / GrandTotal([m]) instead of being dropped. Only fires when
+// the filter is a WHOLE-table ALL/REMOVEFILTERS (no [Column] inside — ALL(T[c])
+// is a partial subtotal, left for the warning) and CALCULATE has exactly 2 args.
+function rewriteCalcGrandTotal(f: string): string {
+  const re = /\bCALCULATE\s*\(/gi;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    let replaced = false;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(f)) !== null) {
+      const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+      if (args.length !== 2) continue;
+      const filt = args[1].trim();
+      // whole-table ALL/REMOVEFILTERS only: ALL('Table') or ALL(Table), NO [col]
+      if (!/^(ALL|REMOVEFILTERS)\s*\(\s*'?[A-Za-z_][\w ]*'?\s*\)$/i.test(filt)) continue;
+      f = f.slice(0, m.index) + `GrandTotal(${args[0].trim()})` + f.slice(endPos);
+      replaced = true;
+      break;
+    }
+    if (!replaced) break;
+  }
+  return f;
+}
+
 // Drop any metric whose formula references a MEASURE that was itself dropped
 // (a CALCULATE/iterator/ranking measure that didn't translate) — e.g. a ratio
 // built on it. Without this the dependent metric posts but silently resolves to
@@ -474,6 +502,7 @@ export function pbiDaxToSigma(
   f = rewriteCountRowsFilter(f);// COUNTROWS/COUNT(FILTER(t,pred)) -> CountIf(pred) (r9oz)
   f = rewriteVarReturn(f);      // VAR x=.. RETURN f(x) -> inlined expression
   f = rewriteSimpleIterator(f); // SUMX/AVERAGEX/MINX/MAXX(bareTable, rowExpr) -> Sum/Avg/Min/Max(rowExpr)
+  f = rewriteCalcGrandTotal(f); // CALCULATE(<agg>, ALL(<wholeTable>)) -> GrandTotal(<agg>) (%-of-total)
   // DISTINCTCOUNTNOBLANK(col) -> CountDistinct(col) (Sigma CountDistinct already
   // ignores nulls). Done here so the generic DISTINCTCOUNT rename can't first
   // claim the prefix and leave a dangling NOBLANK token.
