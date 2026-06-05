@@ -349,6 +349,86 @@ function rewriteCountRowsFilter(f: string): string {
   return f;
 }
 
+// Inline a DAX VAR ... RETURN block into a single expression (beads-sigma — VAR
+// leg). `VAR a = e1 VAR b = e2(a) RETURN f(a,b)` -> f with each var substituted
+// by its (parenthesized) expression. Later VARs may reference earlier ones.
+// Returns the inlined RETURN expression so the rest of the pipeline (DIVIDE,
+// renames, …) processes it; leaves f unchanged if it can't parse cleanly.
+function rewriteVarReturn(f: string): string {
+  if (!/^\s*VAR\b/i.test(f) || !/\bRETURN\b/i.test(f)) return f;
+  // collect top-level VAR / RETURN keyword positions (depth 0, outside strings)
+  const marks: { kw: string; pos: number; end: number }[] = [];
+  let depth = 0, inStr: string | null = null;
+  for (let i = 0; i < f.length; i++) {
+    const ch = f[i];
+    if (inStr) { if (ch === inStr) inStr = null; continue; }
+    if (ch === '"' || ch === "'") { inStr = ch; continue; }
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (depth === 0) {
+      const m = f.slice(i).match(/^(VAR|RETURN)\b/i);
+      if (m) { marks.push({ kw: m[1].toUpperCase(), pos: i, end: i + m[1].length }); i += m[1].length - 1; }
+    }
+  }
+  const ret = marks.find(m => m.kw === 'RETURN');
+  if (!ret || marks[0].kw !== 'VAR') return f;
+  const vars: { name: string; expr: string }[] = [];
+  for (let k = 0; k < marks.length; k++) {
+    if (marks[k].kw !== 'VAR') continue;
+    const segEnd = (k + 1 < marks.length) ? marks[k + 1].pos : f.length;
+    const body = f.slice(marks[k].end, segEnd);
+    const eq = body.indexOf('=');
+    if (eq < 0) return f;
+    const name = body.slice(0, eq).trim();
+    let expr = body.slice(eq + 1).trim();
+    if (!/^[A-Za-z_]\w*$/.test(name)) return f;        // not a clean scalar VAR
+    // substitute earlier vars into this expr
+    for (const v of vars) {
+      expr = expr.replace(new RegExp(`\\b${v.name}\\b`, 'g'), `(${v.expr})`);
+    }
+    vars.push({ name, expr });
+  }
+  let out = f.slice(ret.end).trim();
+  // substitute longest names first to avoid prefix collisions
+  for (const v of [...vars].sort((a, b) => b.name.length - a.name.length)) {
+    out = out.replace(new RegExp(`\\b${v.name}\\b`, 'g'), `(${v.expr})`);
+  }
+  // bail if the result still contains a bare VAR/RETURN token (nested block we
+  // didn't handle) — let the downstream guard warn instead of emitting garbage.
+  if (/\bVAR\b|\bRETURN\b/i.test(out)) return f;
+  return out;
+}
+
+// Simple row-iterator over a BARE table -> aggregate-of-expression. Sigma accepts
+// aggregates of expressions (verified: Sum([a]*[b]) posts clean). Only fires when
+// arg1 is a plain table name (NOT FILTER/VALUES/TOPN/SUMMARIZE — those iterate a
+// derived row set) and the body has no nested aggregate/CALCULATE (which would
+// double-aggregate). Otherwise leaves it for the iterator drop-warn guard.
+function rewriteSimpleIterator(f: string): string {
+  const ITER: Record<string, string> = { SUMX: 'Sum', AVERAGEX: 'Avg', MINX: 'Min', MAXX: 'Max' };
+  const re = /\b(SUMX|AVERAGEX|MINX|MAXX)\s*\(/gi;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const fn = m[1].toUpperCase();
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (args.length !== 2) break;
+    const tbl = args[0].trim();
+    const body = args[1].trim();
+    // arg1 must be a bare (optionally quoted) table identifier
+    const bareTable = /^'[^']+'$/.test(tbl) || /^[A-Za-z_]\w*$/.test(tbl);
+    // body must be a row expression — no nested aggregate / CALCULATE / iterator
+    const bodyHasAgg = /\b(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT|CALCULATE|SUMX|AVERAGEX|MINX|MAXX|COUNTAX|RANKX)\s*\(/i.test(body);
+    if (!bareTable || bodyHasAgg) break;   // not a simple iterator — leave for the guard
+    const bareBody = body
+      .replace(/'[^']+'\[([^\]]+)\]/g, '[$1]')
+      .replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+    f = f.slice(0, m.index) + `${ITER[fn]}(${bareBody})` + f.slice(endPos);
+  }
+  return f;
+}
+
 // Drop any metric whose formula references a MEASURE that was itself dropped
 // (a CALCULATE/iterator/ranking measure that didn't translate) — e.g. a ratio
 // built on it. Without this the dependent metric posts but silently resolves to
@@ -392,6 +472,8 @@ export function pbiDaxToSigma(
   f = rewriteSingleValue(f);    // HASONEVALUE / SELECTEDVALUE
   f = rewriteSwitchTrue(f);     // SWITCH(TRUE(), c,v,...) -> nested If
   f = rewriteCountRowsFilter(f);// COUNTROWS/COUNT(FILTER(t,pred)) -> CountIf(pred) (r9oz)
+  f = rewriteVarReturn(f);      // VAR x=.. RETURN f(x) -> inlined expression
+  f = rewriteSimpleIterator(f); // SUMX/AVERAGEX/MINX/MAXX(bareTable, rowExpr) -> Sum/Avg/Min/Max(rowExpr)
   // DISTINCTCOUNTNOBLANK(col) -> CountDistinct(col) (Sigma CountDistinct already
   // ignores nulls). Done here so the generic DISTINCTCOUNT rename can't first
   // claim the prefix and leave a dangling NOBLANK token.
