@@ -623,6 +623,127 @@ export function convertQvdsToSigma(
   return result;
 }
 
+// ── QlikView QVW (PRJ-folder) ingestion ──────────────────────────────────────
+// QlikView .qvw apps are an undocumented binary with no parser. The practical
+// migration path is the developer-opt-in "-prj" project folder (QlikView Desktop
+// writes one when "Create project folder" / version-control export is enabled).
+// We read the plain-text LoadScript.txt (the data model — reliable) plus the chart
+// object files (CH*.xml — expression measures / calculated dimensions) and synthesize
+// the qtr-shaped JSON convertQlikToSigma already accepts.
+// Spec: help.qlik.com/.../QV_QlikView/QlikView_Project_Files.htm
+export interface QvwPrjFile { name: string; content: string; }
+
+/** Parse a Qlik/QlikView LOAD script into tables + in-memory (post-rename) field names.
+ *  Uses the alias side of `expr AS Field`, the file name for unlabeled tables, and skips
+ *  bare expressions without an alias. (No row counts — a -prj folder carries no data.) */
+export function parseQlikLoadScript(script: string): Array<{ name: string; fields: string[] }> {
+  // strip /* */ and // comments
+  const s = script.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+  const tables: Array<{ name: string; fields: string[] }> = [];
+  // [Label:] [PRECEDING] (LOAD|SQL SELECT) <body> until FROM/RESIDENT/INLINE/AUTOGENERATE/;
+  const blockRe = /(?:^|\n)[ \t]*(?:([A-Za-z_]\w*)\s*:\s*)?(?:[A-Za-z]+[ \t]+)?\b(?:LOAD|SQL\s+SELECT)\b([\s\S]*?)(?:\b(?:FROM|RESIDENT|INLINE|AUTOGENERATE)\b([\s\S]*?))?;/gi;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(s))) {
+    const label = m[1];
+    const body = m[2] || '';
+    const tail = m[3] || '';
+    const fields: string[] = [];
+    for (const raw of splitTopLevel(body, ',')) {
+      let f = raw.trim();
+      if (!f || f === '*') continue;
+      const asM = f.match(/\s+AS\s+(.+)$/is);
+      if (asM) f = asM[1].trim();                 // in-memory name = the alias
+      f = f.replace(/^[\["']+|[\]"']+$/g, '').trim();
+      // accept only a clean field name (letters/digits/underscore/space) — skip leftover expressions
+      if (!/^[A-Za-z_][\w ]*$/.test(f)) continue;
+      fields.push(f);
+    }
+    if (!fields.length) continue;
+    // name: explicit label, else the source file/table tail, else TableN
+    let name = label;
+    if (!name) {
+      const fileM = tail.match(/\[[^\]]*?([A-Za-z0-9_]+)\.(?:qvd|csv|txt|xlsx?)\b/i)
+        || tail.match(/\b([A-Za-z0-9_]+)\s*$/);
+      name = fileM ? fileM[1] : `Table${tables.length + 1}`;
+    }
+    tables.push({ name, fields });
+  }
+  return tables;
+}
+
+/** Extract expression "measures" (and calculated dimensions) from a QlikView chart
+ *  object XML (CH*.xml). Defensive: the per-version nesting varies, so we pull every
+ *  <Definition>/<Expression> body and pair it with the nearest <Label>. */
+export function parseQvwChartXml(xml: string): { measures: any[]; dimensions: any[] } {
+  const measures: any[] = [];
+  const seen = new Set<string>();
+  const stripTags = (s: string) => s.replace(/<[^>]+>/g, ' ');
+  const clean = (s: string) => _decodeXmlEntity(s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).trim();
+  // Prefer the innermost <Definition> (the actual formula); fall back to <Expression>
+  // bodies (older format) with any nested tags stripped.
+  const defs = [...xml.matchAll(/<Definition>([\s\S]*?)<\/Definition>/gi)];
+  const useFallback = defs.length === 0;
+  const blocks = useFallback ? [...xml.matchAll(/<Expression>([\s\S]*?)<\/Expression>/gi)] : defs;
+  for (const m of blocks) {
+    let def = clean(useFallback ? stripTags(m[1]) : m[1]);
+    if (!def || def.length > 2000) continue;
+    // must look like an expression (a leading '=' or an aggregation), not a bare field
+    if (!/^=/.test(def) && !/\b(Sum|Count|Avg|Min|Max|Only|Aggr)\s*\(/i.test(def)) continue;
+    if (seen.has(def)) continue;
+    seen.add(def);
+    const idx = (m.index ?? 0) + m[0].length;
+    const after = xml.slice(idx, idx + 300);
+    const lm = after.match(/<Label>([\s\S]*?)<\/Label>/i);
+    const label = lm ? clean(stripTags(lm[1])) : '';
+    measures.push({ title: label || `Expr ${measures.length + 1}`, qDef: def });
+  }
+  return { measures, dimensions: [] };
+}
+
+/**
+ * Convert a QlikView "-prj" project folder to a Sigma data model spec.
+ * Pass the folder's files as `{ name, content }[]` (LoadScript.txt + CH*.xml + …).
+ * The load script yields the tables/fields; chart XML yields expression measures.
+ */
+export function convertQvwPrjToSigma(
+  prjFiles: QvwPrjFile[],
+  options: QlikConvertOptions = {},
+): ConversionResult {
+  const warnings: string[] = [];
+  const find = (re: RegExp) => prjFiles.filter(f => re.test(f.name));
+  const scriptFile = find(/LoadScript\.txt$/i)[0] || find(/\.qvs$/i)[0];
+  if (!scriptFile) {
+    throw new Error('No LoadScript.txt found in the -prj folder. Enable "Create project folder" in QlikView Desktop and upload the full <name>-prj/ contents.');
+  }
+  const tables = parseQlikLoadScript(scriptFile.content);
+  if (!tables.length) warnings.push('LoadScript.txt parsed but no LOAD tables recovered — check the script syntax.');
+
+  // Charts → expression measures (de-duplicated across all CH*.xml)
+  const measureMap = new Map<string, any>();
+  let chartCount = 0;
+  for (const cf of find(/CH[^/]*\.xml$/i)) {
+    chartCount++;
+    for (const meas of parseQvwChartXml(cf.content).measures) {
+      if (!measureMap.has(meas.qDef)) measureMap.set(meas.qDef, meas);
+    }
+  }
+  const masterMeasures = [...measureMap.values()];
+  if (chartCount && !masterMeasures.length) {
+    warnings.push(`${chartCount} chart file(s) found but no expressions recovered — chart XML structure may differ; add measures manually.`);
+  }
+  warnings.push('QlikView -prj ingestion: relationships are inferred from shared field names only (no row counts in a -prj folder) — review join directions in Sigma.');
+
+  const qtr = tables.map(t => ({
+    qName: t.name,
+    qNoOfRows: 0,
+    qFields: t.fields.map(name => ({ qName: name })),
+  }));
+  const appName = (scriptFile.name.match(/^(.*?)-prj/i)?.[1]) || 'QlikView App';
+  const result = convertQlikToSigma({ appName, qtr, masterMeasures, masterDimensions: [] }, options);
+  result.warnings = [...warnings, ...result.warnings];
+  return result;
+}
+
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 function qlikParseInput(raw: any): { tables: any[]; masterMeasures: any[]; masterDimensions: any[]; appName: string } {

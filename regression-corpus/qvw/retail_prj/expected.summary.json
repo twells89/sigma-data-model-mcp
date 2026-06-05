@@ -1,0 +1,13 @@
+{
+  "description": "beads-sigma-0e1: QlikView QVW -prj folder ingestion. Parses LoadScript.txt (tables/fields) + CH*.xml (expression measures) into qtr JSON -> convertQvwPrjToSigma -> Sigma DM. Real CSA.TJ tables/columns so it POSTs live. Validates the QlikView migration front-end end-to-end.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 2,
+    "noErrorColumns": true
+  }
+}
