@@ -94,47 +94,72 @@ export function convertQlikToSigma(
   }
 
   const createdRels = new Set<string>();
+  const _distinctRatio = (info: any, fieldName: string): number => {
+    const f = info.fields.find((x: any) => x.name === fieldName);
+    const d = f ? (f.distinctValueCount || f.cardinal || 0) : 0;
+    return info.rowCount > 0 && d > 0 ? d / info.rowCount : 0;
+  };
+  // How PK-like (dimension-like) a table is for a shared key: real cardinality when
+  // available, else a heuristic (non-fact tables win; fewer rows as a tiebreak).
+  const _pkScore = (tableName: string, fieldName: string): number => {
+    const info = tableElementMap[tableName];
+    const r = _distinctRatio(info, fieldName);
+    if (r > 0) return r;
+    const isFact = /FACT|FACTS|_FCT|TRANSACTIONS?$/i.test(tableName);
+    return (isFact ? 0 : 1) + 1 / (1 + (info.rowCount || 0));
+  };
+  const _addRel = (fromInfo: any, toInfo: any, fieldName: string) => {
+    const relKey = [fromInfo.elementId, toInfo.elementId].sort().join('|') + '|' + fieldName;
+    if (createdRels.has(relKey)) return;
+    createdRels.add(relKey);
+    const fromColInfo = fromInfo.colMap[fieldName];
+    const toColInfo   = toInfo.colMap[fieldName];
+    if (!fromColInfo || !toColInfo) return;
+    if (!fromInfo.element.relationships) fromInfo.element.relationships = [];
+    const tgtPath = toInfo.element.source?.path;
+    fromInfo.element.relationships.push({
+      id: sigmaShortId(),
+      targetElementId: toInfo.elementId,
+      keys: [{ sourceColumnId: fromColInfo.colId, targetColumnId: toColInfo.colId }],
+      name: tgtPath ? tgtPath[tgtPath.length - 1].toUpperCase() : fieldName.toUpperCase(),
+    });
+  };
+
   for (const [fieldName, tableNames] of Object.entries(fieldToTables)) {
     if (tableNames.length < 2) continue;
-    if (tableNames.length > 2) {
-      warnings.push(`Field "${fieldName}" links ${tableNames.length} tables (${tableNames.join(', ')}). Complex association — review relationships in Sigma.`);
+
+    if (tableNames.length === 2) {
+      // Two tables sharing a key → single relationship, directed toward the PK side.
+      const infoA = tableElementMap[tableNames[0]];
+      const infoB = tableElementMap[tableNames[1]];
+      if (!infoA || !infoB) continue;
+      const aRatio = _distinctRatio(infoA, fieldName);
+      const bRatio = _distinctRatio(infoB, fieldName);
+      const hasPkSide = aRatio >= 0.9 || bRatio >= 0.9;
+      const noInfo    = aRatio === 0 && bRatio === 0;
+      if (!hasPkSide && !noInfo) continue;
+      // Direct toward the PK side. With cardinality, that's the higher ratio; without
+      // it, the higher _pkScore (non-fact / smaller table) — so facts point at dims.
+      const aIsPk = noInfo
+        ? _pkScore(tableNames[0], fieldName) >= _pkScore(tableNames[1], fieldName)
+        : aRatio >= bRatio;
+      const toInfo   = aIsPk ? infoA : infoB;
+      const fromInfo = aIsPk ? infoB : infoA;
+      _addRel(fromInfo, toInfo, fieldName);
+      continue;
     }
-    for (let i = 0; i < tableNames.length - 1; i++) {
-      for (let j = i + 1; j < tableNames.length; j++) {
-        const infoA = tableElementMap[tableNames[i]];
-        const infoB = tableElementMap[tableNames[j]];
-        if (!infoA || !infoB) continue;
 
-        const relKey = [infoA.elementId, infoB.elementId].sort().join('|') + '|' + fieldName;
-        if (createdRels.has(relKey)) continue;
-        createdRels.add(relKey);
-
-        const aField = infoA.fields.find((f: any) => f.name === fieldName);
-        const bField = infoB.fields.find((f: any) => f.name === fieldName);
-        const aDistinct = aField ? (aField.distinctValueCount || 0) : 0;
-        const bDistinct = bField ? (bField.distinctValueCount || 0) : 0;
-        const aRatio = infoA.rowCount > 0 && aDistinct > 0 ? aDistinct / infoA.rowCount : 0;
-        const bRatio = infoB.rowCount > 0 && bDistinct > 0 ? bDistinct / infoB.rowCount : 0;
-
-        const hasPkSide = aRatio >= 0.9 || bRatio >= 0.9;
-        const noInfo    = aRatio === 0 && bRatio === 0;
-        if (!hasPkSide && !noInfo) continue;
-
-        const toInfo   = aRatio >= bRatio ? infoA : infoB;
-        const fromInfo = aRatio >= bRatio ? infoB : infoA;
-        const fromColInfo = fromInfo.colMap[fieldName];
-        const toColInfo   = toInfo.colMap[fieldName];
-        if (!fromColInfo || !toColInfo) continue;
-
-        if (!fromInfo.element.relationships) fromInfo.element.relationships = [];
-        const tgtPath = toInfo.element.source?.path;
-        fromInfo.element.relationships.push({
-          id: sigmaShortId(),
-          targetElementId: toInfo.elementId,
-          keys: [{ sourceColumnId: fromColInfo.colId, targetColumnId: toColInfo.colId }],
-          name: tgtPath ? tgtPath[tgtPath.length - 1].toUpperCase() : fieldName.toUpperCase(),
-        });
-      }
+    // ≥3 tables share this key (e.g. two facts + a conformed dimension). Link each
+    // table to the single inferred key owner (the dim), NEVER fact↔fact — a direct
+    // fact-to-fact join on a dim key is a fan trap that double-counts.
+    const pkTable = [...tableNames].sort((x, y) => _pkScore(y, fieldName) - _pkScore(x, fieldName))[0];
+    const pkInfo = tableElementMap[pkTable];
+    warnings.push(`Field "${fieldName}" links ${tableNames.length} tables (${tableNames.join(', ')}). Linked each to "${pkTable}" (inferred key owner); no fact-to-fact join created — review in Sigma.`);
+    if (!pkInfo) continue;
+    for (const other of tableNames) {
+      if (other === pkTable) continue;
+      const otherInfo = tableElementMap[other];
+      if (otherInfo) _addRel(otherInfo, pkInfo, fieldName);
     }
   }
 
@@ -166,6 +191,25 @@ export function convertQlikToSigma(
   const measuresByElement: Record<string, SigmaMetric[]> = {};
   for (const el of elements) measuresByElement[el.id] = [];
 
+  // Field name (UPPER) → owning element ids, for placing a measure on the element
+  // that actually owns the fields it references (matters for multi-fact models).
+  const fieldToEl: Record<string, Set<string>> = {};
+  for (const info of Object.values(tableElementMap)) {
+    for (const [fn, dn] of Object.entries(info.colMap)) {
+      for (const key of [fn.toUpperCase(), (dn as any).displayName.toUpperCase()]) {
+        (fieldToEl[key] = fieldToEl[key] || new Set()).add(info.elementId);
+      }
+    }
+  }
+  // Fact-like elements = relationship targets (dims point at facts). Used to break
+  // ties toward the measure's fact when a Set-Analysis condition references a dim.
+  const factLike = new Set<string>();
+  for (const el of elements) for (const rel of ((el as any).relationships || [])) {
+    if (rel.targetElementId) factLike.add(rel.targetElementId);
+  }
+  const rowCountByEl: Record<string, number> = {};
+  for (const info of Object.values(tableElementMap)) rowCountByEl[info.elementId] = info.rowCount || 0;
+
   for (const m of masterMeasures) {
     const title: string = m.title || m.qTitle || 'Metric';
     const exprRaw: string = m.expr || m.qDef || m.expression || '';
@@ -174,14 +218,21 @@ export function convertQlikToSigma(
     sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) =>
       qlikColToDisplayName[colName] ? `[${qlikColToDisplayName[colName]}]` : _m
     );
+    // Score every element by how many of the measure's field references it owns;
+    // resolve bare Qlik names (Sum(UNITS_ON_HAND)) as well as bracketed display names.
+    const tokens = new Set<string>();
+    for (const t of (exprRaw.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [])) tokens.add(t.toUpperCase());
+    for (const t of (sigmaFormula.match(/\[([^\]\/]+)\]/g) || [])) tokens.add(t.slice(1, -1).toUpperCase());
+    const hits: Record<string, number> = {};
+    for (const tok of tokens) for (const id of (fieldToEl[tok] || [])) hits[id] = (hits[id] || 0) + 1;
     let bestElementId = elements[0]?.id;
-    outer: for (const [, info] of Object.entries(tableElementMap)) {
-      for (const [fn, dn] of Object.entries(info.colMap)) {
-        if (sigmaFormula.includes(`[${(dn as any).displayName}]`) || sigmaFormula.includes(`[${fn}]`)) {
-          bestElementId = info.elementId;
-          break outer;
-        }
-      }
+    const ranked = Object.keys(hits).sort((a, b) =>
+      (hits[b] - hits[a]) ||
+      ((factLike.has(b) ? 1 : 0) - (factLike.has(a) ? 1 : 0)) ||
+      ((rowCountByEl[b] || 0) - (rowCountByEl[a] || 0)));
+    if (ranked.length) bestElementId = ranked[0];
+    if (ranked.length > 1) {
+      warnings.push(`ℹ "${title}": references fields from ${ranked.length} elements — placed on the most-referenced one. If it errors as cross-element, host it on the denormalized element instead.`);
     }
     if (!measuresByElement[bestElementId]) measuresByElement[bestElementId] = [];
     const metric: any = { id: sigmaShortId(), formula: sigmaFormula, name: title };
@@ -264,7 +315,7 @@ export function convertQlikToSigma(
     const title: string = d.title || d.qTitle || 'Dimension';
     const exprRaw: string = d.fieldDef || d.qFieldDef || d.expr || d.expression || '';
     const isCalc = exprRaw.trim().startsWith('=') ||
-      /\b(If|Sum|Count|Avg|Concat|Year|Month|Day|Left|Right|Upper|Lower|Trim)\s*\(/i.test(exprRaw);
+      /\b(If|Sum|Count|Avg|Concat|Year|Month|Day|Left|Right|Upper|Lower|Trim|Class|Dual|Floor|Ceil|Round|Pick|Match)\s*\(/i.test(exprRaw);
     if (!isCalc) continue;
     let sigmaFormula = qlikExprToSigma(exprRaw, warnings, title);
     if (!sigmaFormula) continue;
@@ -511,35 +562,205 @@ function qlikParseInput(raw: any): { tables: any[]; masterMeasures: any[]; maste
   return { tables, masterMeasures, masterDimensions, appName };
 }
 
+/** Split `s` on top-level occurrences of `sep`, respecting () [] {} and quotes. */
+function _splitTop(s: string, sep = ','): string[] {
+  const out: string[] = [];
+  let depth = 0, start = 0, q = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) { if (c === q) q = ''; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === sep && depth === 0) { out.push(s.slice(start, i)); start = i + 1; }
+  }
+  out.push(s.slice(start));
+  return out.map(x => x.trim());
+}
+
+/** Bracket a bare Qlik field token (so the caller's display-name rewrite catches it).
+ *  Leaves already-bracketed refs, numbers, and quoted strings alone. */
+function _maybeBracket(tok: string): string {
+  const t = tok.trim();
+  if (!t) return t;
+  if (/^\[.*\]$/.test(t)) return t;                       // already bracketed
+  if (/^-?\d+(\.\d+)?$/.test(t)) return t;                // numeric literal
+  if (/^['"].*['"]$/.test(t)) return `"${t.slice(1, -1)}"`; // quoted string literal
+  if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(t)) return `[${t}]`; // bare field name
+  return t;                                               // expression — leave as-is
+}
+
+/** Translate ONE Qlik set-modifier field clause (`FIELD OP {values}`) to a Sigma condition.
+ *  Returns null when too complex (search wildcards, $()-expansion, set operators). */
+function _setClauseToCond(clause: string): string | null {
+  const m = clause.match(/^\s*([A-Za-z_][\w.]*)\s*(-=|\+=|\*=|\/=|=)\s*\{([^}]*)\}\s*$/);
+  if (!m) return null;
+  const [, field, op, valuesRaw] = m;
+  if (op === '+=' || op === '*=' || op === '/=') return null; // set arithmetic — too complex
+  if (/[\$]/.test(valuesRaw)) return null;                    // dollar-expansion
+  const vals = _splitTop(valuesRaw).map(v => v.trim()).filter(Boolean);
+  if (!vals.length) return null;
+  for (const v of vals) if (/[*?<>]/.test(v) && !/^['"]/.test(v)) return null; // search/range — too complex
+  const eq = op === '-=' ? '<>' : '=';
+  const join = op === '-=' ? ' and ' : ' or ';
+  const parts = vals.map(v => `[${field}]${eq}${_maybeBracket(v)}`);
+  return parts.length === 1 ? parts[0] : `(${parts.join(join)})`;
+}
+
+/** Translate a SIMPLE Qlik Set-Analysis aggregation to a Sigma If-wrapped aggregate.
+ *  Returns null when the expression is not a translatable set agg (caller warns + drops). */
+function _translateSetAnalysis(f: string): string | null {
+  const head = f.match(/^(Sum|Count|Avg|Min|Max)\s*\(/i);
+  if (!head) return null;
+  const agg = head[1];
+  // Balance the outer parens to isolate the aggregation argument.
+  let depth = 0, argStart = -1, argEnd = -1;
+  for (let i = head[0].length - 1; i < f.length; i++) {
+    if (f[i] === '(') { if (depth === 0) argStart = i + 1; depth++; }
+    else if (f[i] === ')') { depth--; if (depth === 0) { argEnd = i; break; } }
+  }
+  if (argStart < 0 || argEnd < 0 || f.slice(argEnd + 1).trim()) return null; // trailing → not a bare set agg
+  let inner = f.slice(argStart, argEnd).trim();
+  if (inner[0] !== '{') return null;                       // no set modifier
+  // Balance the set braces.
+  let bd = 0, setEnd = -1;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '{') bd++;
+    else if (inner[i] === '}') { bd--; if (bd === 0) { setEnd = i; break; } }
+  }
+  if (setEnd < 0) return null;
+  const setStr = inner.slice(1, setEnd).trim();
+  let valueStr = inner.slice(setEnd + 1).trim();
+  if (/[\$]/.test(setStr)) return null;                    // dollar-expansion in set
+
+  // Parse the set modifier into a list of conditions.
+  let conds: string[] = [];
+  let setBody = setStr;
+  // Leading set identifier: 1 (= all records, ignore selections) or $/named state → only 1 is handled.
+  const idMatch = setBody.match(/^\s*(1|\$\d*|[A-Za-z_]\w*)\s*(<.*>)?\s*$/s);
+  if (idMatch && idMatch[1] !== '1' && !setBody.startsWith('<')) return null; // bookmark/alt-state
+  setBody = setBody.replace(/^\s*1\s*/, '');               // strip leading 1 (ignore-selection)
+  if (setBody) {
+    const fm = setBody.match(/^<(.*)>$/s);
+    if (!fm) return null;
+    for (const clause of _splitTop(fm[1])) {
+      if (!clause.trim()) continue;
+      const c = _setClauseToCond(clause);
+      if (!c) return null;
+      conds.push(c);
+    }
+  }
+  const cond = conds.join(' and ');
+
+  // Handle DISTINCT and bracket the value field.
+  let distinct = false;
+  const dm = valueStr.match(/^DISTINCT\s+(.*)$/is);
+  if (dm) { distinct = true; valueStr = dm[1].trim(); }
+  const value = _maybeBracket(valueStr);
+
+  if (/^Count$/i.test(agg)) {
+    const wrapped = cond ? `If(${cond}, ${value})` : value;
+    return distinct ? `CountDistinct(${wrapped})` : `Count(${wrapped})`;
+  }
+  return cond ? `${agg}(If(${cond}, ${value}))` : `${agg}(${value})`;
+}
+
+/** Translate a row-wise (multi-arg) Qlik Range* function to Sigma arithmetic.
+ *  Returns null for the single-arg inter-record form (e.g. RangeSum(Above(...))). */
+function _translateRange(f: string): string | null {
+  const m = f.match(/^Range(Sum|Avg|Max|Min)\s*\(/i);
+  if (!m) return null;
+  const fn = m[1];
+  let depth = 0, start = -1, end = -1;
+  for (let i = m[0].length - 1; i < f.length; i++) {
+    if (f[i] === '(') { if (depth === 0) start = i + 1; depth++; }
+    else if (f[i] === ')') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (start < 0 || end < 0 || f.slice(end + 1).trim()) return null;
+  const args = _splitTop(f.slice(start, end));
+  if (args.length < 2) return null;                        // single-arg = inter-record → drop
+  const wrapped = args.map(a => `(${a.trim()})`);
+  if (/^Sum$/i.test(fn)) return wrapped.join(' + ');
+  if (/^Avg$/i.test(fn)) return `(${wrapped.join(' + ')}) / ${args.length}`;
+  if (/^Max$/i.test(fn)) return `Greatest(${args.map(a => a.trim()).join(', ')})`;
+  if (/^Min$/i.test(fn)) return `Least(${args.map(a => a.trim()).join(', ')})`;
+  return null;
+}
+
 function qlikExprToSigma(expr: string, warnings: string[], name: string): string | null {
   if (!expr?.trim()) return null;
   let f = expr.trim();
   if (f.startsWith('=')) f = f.slice(1).trim();
 
-  if (/\{\s*[\$1][^}]*\}/.test(f)) {
-    warnings?.push(`"${name}": uses Qlik Set Analysis. In Sigma, use SumIf/CountIf with a condition argument instead.`);
+  // --- Variable expansion: $(...) cannot be resolved and POST-blocks the whole DM. ---
+  if (/\$\s*\(/.test(f)) {
+    warnings?.push(`"${name}": uses a Qlik variable/dollar-expansion $(...) — cannot resolve; measure dropped. Define it explicitly in Sigma.`);
     return null;
   }
-  if (/\bAggr\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses Aggr() — no direct Sigma equivalent.`);
+
+  // --- Inter-record / chart-position / selection-state / ranking functions have no
+  //     scalar Sigma equivalent. Emitting them verbatim produces a silently broken
+  //     metric (or fails the POST), so drop + warn instead of passing through. ---
+  const UNSUPPORTED: Array<[RegExp, string]> = [
+    [/\b(Above|Below|Before|After|Top|Bottom)\s*\(/i, 'an inter-record/chart function (Above/Below/…)'],
+    [/\b(Peek|Previous|Exists|FieldValue|FieldIndex|LookUp)\s*\(/i, 'a script/inter-record lookup function'],
+    [/\b(RowNo|RecNo|NoOfRows|NoOfColumns|FirstSortedValue)\s*\(/i, 'a row-position/sorted-value function'],
+    [/\b(Rank|HRank|VRank)\s*\(/i, 'Rank() (Sigma Rank is a window function with different semantics)'],
+    [/\bAggr\s*\(/i, 'Aggr() — build a grouped/level data-model element instead'],
+    [/(?<![A-Za-z_])[PE]\s*\(/, 'a set-element function P()/E()'],
+    [/\bGet(?:Field)?(?:Selections?|CurrentSelections?|PossibleCount|SelectedCount|AlternativeCount|ExcludedCount)\s*\(/i, 'a selection-state function'],
+  ];
+  for (const [re, label] of UNSUPPORTED) {
+    if (re.test(f)) {
+      warnings?.push(`"${name}": uses ${label} — no direct Sigma equivalent; measure dropped (see gap-scout).`);
+      return null;
+    }
+  }
+
+  // --- Set Analysis: translate the simple single-/multi-flag forms; drop the rest. ---
+  if (/\{.*\}/s.test(f)) {
+    const t = _translateSetAnalysis(f);
+    if (t) { f = t; }
+    else {
+      warnings?.push(`"${name}": uses Qlik Set Analysis Sigma can't auto-translate (search/$()/set operators) — measure dropped. Use SumIf/CountIf manually.`);
+      return null;
+    }
+  }
+
+  // --- Row-wise Range* (multiple args) → arithmetic / Greatest / Least. ---
+  if (/^Range(?:Sum|Avg|Max|Min)\s*\(/i.test(f)) {
+    const t = _translateRange(f);
+    if (t) { f = t; }
+    else {
+      warnings?.push(`"${name}": uses an inter-record Range* aggregation (e.g. running total) — no direct Sigma equivalent; measure dropped.`);
+      return null;
+    }
+  } else if (/\bRange(?:Count|Stdev|Mode|Skew|Kurtosis|Correl|Fractile)\s*\(/i.test(f)) {
+    warnings?.push(`"${name}": uses a Qlik Range aggregation function — no direct Sigma equivalent; measure dropped.`);
     return null;
   }
-  if (/\bDual\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses Dual() — Qlik-specific function.`);
-    return null;
+
+  // --- Dual(text, num) → keep the numeric (2nd) argument; surface the label separately. ---
+  f = f.replace(/\bDual\s*\(/gi, 'DUAL(');
+  while (/DUAL\(/.test(f)) {
+    const i = f.indexOf('DUAL(');
+    const open = i + 4;
+    let depth = 0, end = -1;
+    for (let j = open; j < f.length; j++) { if (f[j] === '(') depth++; else if (f[j] === ')') { depth--; if (depth === 0) { end = j; break; } } }
+    if (end < 0) { f = f.replace(/DUAL\(/g, 'Dual('); break; }
+    const inner = f.slice(open + 1, end);
+    const parts = _splitTop(inner);
+    const numArg = parts.length >= 2 ? parts[parts.length - 1] : inner;
+    warnings?.push(`"${name}": Dual() reduced to its numeric argument; the text label was dropped.`);
+    f = f.slice(0, i) + numArg + f.slice(end + 1);
   }
-  if (/\bGet(?:Field)?(?:Selections?|CurrentSelections?|PossibleCount|SelectedCount|AlternativeCount|ExcludedCount)\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses a Qlik selection-state function — no Sigma equivalent.`);
-    return null;
-  }
-  if (/\bClass\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses Class() (Qlik data binning). Use If() ranges for bucketing in Sigma.`);
-    return null;
-  }
-  if (/\bRange(?:Sum|Avg|Min|Max|Count|Stdev|Mode|Skew|Kurtosis|Correl|Fractile)\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses a Qlik Range aggregation function — no direct Sigma equivalent.`);
-    return null;
-  }
+
+  // --- Class(field, n) binning → Floor(field / n) * n (lower bin edge). ---
+  f = f.replace(/\bClass\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*(?:,[^()]*)?\)/gi,
+    (_m, field, size) => `Floor(${_maybeBracket(field)} / ${size.trim()}) * ${size.trim()}`);
+
+  // --- Count(DISTINCT x) → CountDistinct(x) (Sigma has no DISTINCT keyword). ---
+  f = f.replace(/\bCount\s*\(\s*DISTINCT\s+(.+?)\s*\)/gi, 'CountDistinct($1)');
 
   f = f.replace(/\bOnly\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
   f = f.replace(/\bMinString\s*\(/gi, 'Min(').replace(/\bMaxString\s*\(/gi, 'Max(');

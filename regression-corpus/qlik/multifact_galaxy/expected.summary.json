@@ -1,0 +1,13 @@
+{
+  "description": "beads-sigma-uw5c + hsua repro. Two facts (ORDER_FACT, INVENTORY_FACT) share PRODUCT_KEY with PRODUCT_DIM (3-table key). Converter must hub-and-spoke each fact to the dim (NO fact-to-fact fan-trap), place Sum(UNITS_ON_HAND) on INVENTORY_FACT not elements[0], dedupe derived 'View' columns (no dup names), and translate Class(UNIT_PRICE,25) -> Floor. All real CSA.TJ columns so it POSTs against the live warehouse.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 4,
+    "minRelationships": 2,
+    "noErrorColumns": true
+  }
+}

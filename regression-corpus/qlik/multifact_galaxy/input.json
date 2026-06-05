@@ -1,0 +1,53 @@
+{
+  "appName": "Retail Multi-Fact Galaxy",
+  "qAppId": "qlik-multifact-galaxy",
+  "qtr": [
+    {
+      "qName": "ORDER_FACT",
+      "qNoOfRows": 635,
+      "qFields": [
+        { "qName": "ORDER_ID",     "qnTotalDistinctValues": 630, "qnRows": 635 },
+        { "qName": "PRODUCT_KEY",   "qnTotalDistinctValues": 25,  "qnRows": 635 },
+        { "qName": "NET_REVENUE",   "qnTotalDistinctValues": 600, "qnRows": 635 },
+        { "qName": "UNIT_PRICE",    "qnTotalDistinctValues": 120, "qnRows": 635 }
+      ]
+    },
+    {
+      "qName": "INVENTORY_FACT",
+      "qNoOfRows": 13500,
+      "qFields": [
+        { "qName": "PRODUCT_KEY",   "qnTotalDistinctValues": 25,  "qnRows": 13500 },
+        { "qName": "STORE_KEY",     "qnTotalDistinctValues": 15,  "qnRows": 13500 },
+        { "qName": "UNITS_ON_HAND", "qnTotalDistinctValues": 200, "qnRows": 13500 },
+        { "qName": "STOCKOUT_FLAG", "qnTotalDistinctValues": 2,   "qnRows": 13500 }
+      ]
+    },
+    {
+      "qName": "PRODUCT_DIM",
+      "qNoOfRows": 25,
+      "qFields": [
+        { "qName": "PRODUCT_KEY",  "qnTotalDistinctValues": 25, "qnRows": 25 },
+        { "qName": "CATEGORY",     "qnTotalDistinctValues": 5,  "qnRows": 25 },
+        { "qName": "PRODUCT_NAME", "qnTotalDistinctValues": 25, "qnRows": 25 }
+      ]
+    },
+    {
+      "qName": "STORE_DIM",
+      "qNoOfRows": 15,
+      "qFields": [
+        { "qName": "STORE_KEY",  "qnTotalDistinctValues": 15, "qnRows": 15 },
+        { "qName": "REGION",     "qnTotalDistinctValues": 4,  "qnRows": 15 },
+        { "qName": "STORE_NAME", "qnTotalDistinctValues": 15, "qnRows": 15 }
+      ]
+    }
+  ],
+  "masterMeasures": [
+    { "title": "Net Revenue",    "qDef": "Sum(NET_REVENUE)" },
+    { "title": "Order Count",    "qDef": "Count(DISTINCT ORDER_ID)" },
+    { "title": "Units On Hand",  "qDef": "Sum(UNITS_ON_HAND)" },
+    { "title": "Stockout Count", "qDef": "Sum(STOCKOUT_FLAG)" }
+  ],
+  "masterDimensions": [
+    { "title": "Price Band", "fieldDef": "=Class(UNIT_PRICE, 25)" }
+  ]
+}

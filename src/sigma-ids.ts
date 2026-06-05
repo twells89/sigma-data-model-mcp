@@ -248,19 +248,31 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     const derivedName = `${srcEl.name || sigmaDisplayName(srcTableName)} View`;
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
+    // Dedupe by display name — a derived element must not carry two columns with the
+    // same name (conformed keys appear on the base AND every related table), and a
+    // target reached by two relationships (e.g. two shared keys) must be pulled once.
+    const seenNames = new Set<string>();
+    const seenTargets = new Set<string>();
+    const addCol = (formula: string, dispName: string) => {
+      const key = dispName.toUpperCase();
+      if (seenNames.has(key)) return;
+      seenNames.add(key);
+      const cId = sigmaShortId();
+      viewCols.push({ id: cId, formula });
+      viewOrder.push(cId);
+    };
 
     for (const col of (srcEl.columns || [])) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
       const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
       if (!fm) continue; // skip calc cols
-      const dispName = fm[2];
-      const cId = sigmaShortId();
-      viewCols.push({ id: cId, formula: `[${baseName}/${dispName}]` });
-      viewOrder.push(cId);
+      addCol(`[${baseName}/${fm[2]}]`, fm[2]);
     }
 
     for (const rel of srcEl.relationships) {
       if (!rel.name) continue;
+      if (seenTargets.has(rel.targetElementId)) continue; // pull each related table once
+      seenTargets.add(rel.targetElementId);
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
       if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
       for (const col of (tgtEl.columns || [])) {
@@ -270,9 +282,7 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
         const inner = fm[1];
         const s = inner.lastIndexOf('/');
         const dispName = s >= 0 ? inner.slice(s + 1) : inner;
-        const cId = sigmaShortId();
-        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
-        viewOrder.push(cId);
+        addCol(`[${baseName}/${rel.name}/${dispName}]`, dispName);
       }
     }
 
