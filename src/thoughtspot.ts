@@ -35,11 +35,24 @@ export function convertThoughtSpotToSigma(
   const ws: any = tml.worksheet || tml.model || tml;
   const modelName: string = ws.name || 'ThoughtSpot Model';
 
-  // Build table metadata map
+  // Build table metadata map. Worksheet TML lists tables under `tables:`;
+  // model TML (the format ThoughtSpot actually exports) lists them under
+  // `model_tables:` (name + fqn, no db/schema — those come from the overrides).
   const tablesMeta: Record<string, { db: string; schema: string }> = {};
   for (const t of (ws.tables || [])) {
     tablesMeta[t.name] = { db: t.db || dbOverride || '', schema: t.schema || schOverride || '' };
   }
+  for (const mt of (ws.model_tables || [])) {
+    if (mt?.name && !tablesMeta[mt.name]) {
+      tablesMeta[mt.name] = { db: dbOverride || '', schema: schOverride || '' };
+    }
+  }
+
+  // Column type / aggregation live on the column directly in worksheet TML
+  // (`col.type`, `col.aggregation`) but under `col.properties` in model TML
+  // (`col.properties.column_type`, `col.properties.aggregation`).
+  const colType = (c: any): string => (c.type || c.properties?.column_type || '').toUpperCase();
+  const colAgg  = (c: any): string => (c.aggregation || c.properties?.aggregation || 'SUM').toUpperCase();
 
   // table_paths: alias → actual table name
   const tablePathMap: Record<string, string> = {};
@@ -104,8 +117,8 @@ export function convertThoughtSpotToSigma(
 
     for (const { col, physCol } of (colsByTable[tableName] || [])) {
       const dispName: string = col.name || sigmaDisplayName(physCol);
-      const isMeasure = (col.type || '').toUpperCase() === 'MEASURE';
-      const isDate    = (col.type || '').toUpperCase() === 'DATE';
+      const isMeasure = colType(col) === 'MEASURE';
+      const isDate    = colType(col) === 'DATE';
 
       let colId: string;
       let colObj: SigmaColumn;
@@ -125,7 +138,7 @@ export function convertThoughtSpotToSigma(
       colOrder.push(colId);
 
       if (isMeasure) {
-        const agg = (col.aggregation || 'SUM').toUpperCase();
+        const agg = colAgg(col);
         const aggMap: Record<string, string> = {
           SUM: 'Sum', COUNT: 'Count', COUNT_DISTINCT: 'CountDistinct',
           AVERAGE: 'Avg', AVG: 'Avg', MAX: 'Max', MIN: 'Min',
@@ -181,9 +194,23 @@ export function convertThoughtSpotToSigma(
   const sameElCalcsByElId: Record<string, PendingCalc[]> = {};
   const crossElCalcsByElId: Record<string, PendingCalc[]> = {};
 
+  // Collect joins. Worksheet TML has a top-level `joins:` list; model TML
+  // (the exported format) defines them inline on each table via
+  // `model_tables[].joins[]` = { with, on, type, cardinality }. The `on`
+  // clause is the same `[T::col] = [T::col]` form in both, so we normalise
+  // model-table joins into the worksheet shape and run one loop.
+  let tmlJoins: any[] = Array.isArray(ws.joins) ? ws.joins : [];
+  if (tmlJoins.length === 0 && Array.isArray(ws.model_tables)) {
+    for (const mt of ws.model_tables) {
+      for (const j of (mt.joins || [])) {
+        tmlJoins.push({ name: j.name || `${mt.name}_to_${j.with}`, on: j.on, type: j.type });
+      }
+    }
+  }
+
   // Build relationships from joins
   const joinOnRe = /\[([^\]:]+)::([^\]]+)\]\s*=\s*\[([^\]:]+)::([^\]]+)\]/;
-  for (const join of (ws.joins || [])) {
+  for (const join of tmlJoins) {
     const onStr: string = join.on || '';
     const m = joinOnRe.exec(onStr);
     if (!m) {
@@ -219,7 +246,7 @@ export function convertThoughtSpotToSigma(
     });
   }
 
-  if ((ws.joins || []).length === 0 && allTableNames.length > 1) {
+  if (tmlJoins.length === 0 && allTableNames.length > 1) {
     warnings.push('No joins defined in TML — relationships will need to be configured manually in Sigma');
   }
 
@@ -366,10 +393,18 @@ export function convertThoughtSpotToSigma(
 function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): string {
   if (!expr) return '';
   let s = expr;
+  // Model TML formula refs are `[TABLE::COL]` (e.g. `[ORDER_FACT::GROSS_REVENUE]`).
+  // Rewrite to bare `[Display Name]` so downstream column-ref handling and the
+  // single-/cross-element bucketing (which key off display names) resolve them.
+  // Worksheet TML uses bare identifiers, so this is a no-op there.
+  s = s.replace(/\[([^\]:]+)::([^\]]+)\]/g, (_, _tbl, col) => `[${sigmaDisplayName(col.trim())}]`);
   s = tsConvertIfThenElse(s);
-  s = s.replace(/(\w+)\s+in\s*\{([^}]+)\}/gi, (_, col, vals) => {
+  // `<col> in { "a", "b" }` → `In(<col>, "a", "b")`. The left side may now be a
+  // bracketed display-name ref (from the rewrite above) or a bare identifier.
+  s = s.replace(/(\[[^\]]+\]|\w+)\s+in\s*\{([^}]+)\}/gi, (_, col, vals) => {
     const vlist = vals.split(',').map((v: string) => v.trim()).join(', ');
-    return `In([${sigmaDisplayName(col.trim())}], ${vlist})`;
+    const colRef = col.startsWith('[') ? col : `[${sigmaDisplayName(col.trim())}]`;
+    return `In(${colRef}, ${vlist})`;
   });
   const tsAggMap: Record<string, string> = {
     sum: 'Sum', count: 'Count', count_distinct: 'CountDistinct',
