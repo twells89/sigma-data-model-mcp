@@ -437,3 +437,15 @@ test('dangling-ref: a metric referencing a dropped measure is pruned (not posted
   assert.ok(!names.includes('Return Rate'), 'dangling dependent metric must be pruned');
   assert.ok(names.includes('Orders'), 'clean metric retained');
 });
+
+test('mkm: ISINSCOPE/scope introspection is dropped-and-warned (no invalid passthrough)', () => {
+  for (const expr of [
+    'IF(ISINSCOPE(\'Date\'[Year]), [Total Sales], BLANK())',
+    'IF(ISFILTERED(\'Product\'[Category]), [Total Sales])',
+  ]) {
+    const warns: string[] = [];
+    const out = pbiDaxToSigma(expr, warns, 'Scoped Measure');
+    assert.equal(out, null, `must drop: ${expr}`);
+    assert.ok(warns.some(w => /scope introspection/i.test(w)), `must warn: ${expr}`);
+  }
+});

@@ -418,6 +418,15 @@ export function pbiDaxToSigma(
     if (warnings) warnings.push(`⚠ "${measureName}": uses DAX ranking (${fn}). No data-model-metric equivalent — add a workbook Rank() in an ordered table, or a grouped element. See: ${PBI_COMMUNITY_LINKS.groupings}`);
     return null;
   }
+  // Scope / filter-context introspection — ISINSCOPE/ISFILTERED/ISCROSSFILTERED/
+  // SELECTEDMEASURE inspect the live query's grouping/filter scope, which has no
+  // static data-model equivalent. Emitting them verbatim is an invalid Sigma
+  // formula that fails the DM POST (beads-sigma-mkm). Drop-and-warn instead.
+  if (/\b(ISINSCOPE|ISFILTERED|ISCROSSFILTERED|SELECTEDMEASURE)\s*\(/i.test(f)) {
+    const fn = f.match(/\b(ISINSCOPE|ISFILTERED|ISCROSSFILTERED|SELECTEDMEASURE)/i)![1];
+    if (warnings) warnings.push(`⚠ "${measureName}": uses DAX scope introspection (${fn}). No static data-model equivalent — express the level explicitly with groupings, or drop. See: ${PBI_COMMUNITY_LINKS.leveled}`);
+    return null;
+  }
   // Time intelligence
   if (/\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DATEADD|DATESYTD|PARALLELPERIOD|PREVIOUSMONTH|PREVIOUSQUARTER|PREVIOUSYEAR)\s*\(/i.test(f)) {
     const fn = f.match(/\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DATEADD|DATESYTD|PARALLELPERIOD|PREVIOUSMONTH|PREVIOUSQUARTER|PREVIOUSYEAR)/i)![1];
