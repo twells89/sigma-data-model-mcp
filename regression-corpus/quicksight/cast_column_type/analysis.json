@@ -1,0 +1,11 @@
+{
+  "_source": "Synthetic — minimal analysis binding the cast dataset (no extra calc fields). Verifies the cast column resolves at query time.",
+  "AnalysisId": "qs-orders-cast",
+  "Name": "Orders Cast Analysis",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {"DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-cast", "Identifier": "ordersc"}
+    ],
+    "CalculatedFields": []
+  }
+}

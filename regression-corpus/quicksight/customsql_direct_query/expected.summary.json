@@ -1,0 +1,5 @@
+{
+  "description": "CustomSql DIRECT_QUERY single-element dataset (beads-sigma-vy4k). Verifies: (1) the SQL element gets a non-empty name, (2) passthrough columns emit as [Custom SQL/RAW_ALIAS] and resolve, (3) analysis CalculatedFields referencing SQL columns by display name are rewritten to [Custom SQL/RAW] form (the live Profit Margin=[Net Profit]/[Net Revenue] bug), (4) zero error columns at query time.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}
