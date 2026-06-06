@@ -1,0 +1,38 @@
+{
+  "_source": "Synthetic — CustomSql DIRECT_QUERY dataset (beads-sigma-vy4k). Single CustomSql physical table over CSA.TJ.ORDER_FACT joined to dims, columns ARE the SQL aliases. Verifies the named SQL element + [Custom SQL/RAW] passthrough columns resolve at query time.",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-enriched",
+    "DataSetId": "orders-enriched",
+    "Name": "Orders Enriched",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "ordersSql": {
+        "CustomSql": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-csa-tj",
+          "Name": "orders_enriched",
+          "SqlQuery": "select f.ORDER_ID, f.NET_REVENUE, f.NET_PROFIT, c.REGION, c.CUSTOMER_SEGMENT from CSA.TJ.ORDER_FACT f left join CSA.TJ.CUSTOMER_DIM c on f.CUSTOMER_KEY=c.CUSTOMER_KEY",
+          "Columns": [
+            {"Name": "ORDER_ID",         "Type": "STRING"},
+            {"Name": "NET_REVENUE",      "Type": "DECIMAL"},
+            {"Name": "NET_PROFIT",       "Type": "DECIMAL"},
+            {"Name": "REGION",           "Type": "STRING"},
+            {"Name": "CUSTOMER_SEGMENT", "Type": "STRING"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "ordersLogical": {
+        "Alias": "orders_enriched",
+        "Source": {"PhysicalTableId": "ordersSql"}
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID", "Type": "STRING"},
+      {"Name": "NET_REVENUE", "Type": "DECIMAL"},
+      {"Name": "NET_PROFIT", "Type": "DECIMAL"},
+      {"Name": "REGION", "Type": "STRING"},
+      {"Name": "CUSTOMER_SEGMENT", "Type": "STRING"}
+    ]
+  }
+}
