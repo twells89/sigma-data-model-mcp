@@ -1,0 +1,38 @@
+{
+  "_source": "Synthetic — CustomSql dataset with a dataset-level CreateColumnsOperation whose calc references a QuickSight parameter (${OTThreshold}). Verifies the param-dependent calc degrades to a valid Null formula instead of stranding a dangling `$[...]` that breaks the POST (beads-sigma-n730).",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-param",
+    "DataSetId": "orders-param",
+    "Name": "Orders Param",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "ordersSql": {
+        "CustomSql": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-csa-tj",
+          "Name": "orders_param",
+          "SqlQuery": "select ORDER_ID, NET_REVENUE from CSA.TJ.ORDER_FACT",
+          "Columns": [
+            {"Name": "ORDER_ID",    "Type": "STRING"},
+            {"Name": "NET_REVENUE", "Type": "DECIMAL"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "ordersLogical": {
+        "Alias": "orders_param",
+        "Source": {"PhysicalTableId": "ordersSql"},
+        "DataTransforms": [
+          {"CreateColumnsOperation": {"Columns": [
+            {"ColumnId": "calc-flag", "ColumnName": "Over Threshold Flag", "Expression": "ifelse({NET_REVENUE} > ${OTThreshold}, 1, 0)"}
+          ]}}
+        ]
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID", "Type": "STRING"},
+      {"Name": "NET_REVENUE", "Type": "DECIMAL"},
+      {"Name": "Over Threshold Flag", "Type": "INTEGER"}
+    ]
+  }
+}

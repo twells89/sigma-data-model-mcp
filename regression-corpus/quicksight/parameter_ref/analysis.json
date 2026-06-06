@@ -1,0 +1,16 @@
+{
+  "_source": "Synthetic — analysis declaring a Decimal parameter (OTThreshold) and an analysis-level CalculatedField that references it via ${OTThreshold}. The parameter must still emit as a Sigma control; the dependent calc must degrade to Null (beads-sigma-n730).",
+  "AnalysisId": "qs-orders-param",
+  "Name": "Orders Param Analysis",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {"DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-param", "Identifier": "ordersp"}
+    ],
+    "ParameterDeclarations": [
+      {"DecimalParameterDeclaration": {"Name": "OTThreshold", "ParameterValueType": "SINGLE_VALUED", "DefaultValues": {"StaticValues": [100]}}}
+    ],
+    "CalculatedFields": [
+      {"DataSetIdentifier": "ordersp", "Name": "Above Threshold Revenue", "Expression": "ifelse({NET_REVENUE} >= ${OTThreshold}, {NET_REVENUE}, 0)"}
+    ]
+  }
+}
