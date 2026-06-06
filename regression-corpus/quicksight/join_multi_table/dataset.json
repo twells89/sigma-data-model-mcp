@@ -1,0 +1,70 @@
+{
+  "_source": "Synthetic — chained 3-way RelationalTable join (beads-sigma-nc6g). (ORDER_FACT join CUSTOMER_DIM) join PRODUCT_DIM. Both dim relationships must attach to the base ORDER_FACT element (transitive operand resolution). Points at CSA.TJ tables.",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-3way",
+    "DataSetId": "orders-3way",
+    "Name": "Orders 3-Way",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "orders-physical": {
+        "RelationalTable": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-prod",
+          "Catalog": "CSA", "Schema": "TJ", "Name": "ORDER_FACT",
+          "InputColumns": [
+            {"Name": "ORDER_ID", "Type": "INTEGER"},
+            {"Name": "CUSTOMER_KEY", "Type": "INTEGER"},
+            {"Name": "PRODUCT_KEY", "Type": "INTEGER"},
+            {"Name": "NET_REVENUE", "Type": "DECIMAL"}
+          ]
+        }
+      },
+      "customers-physical": {
+        "RelationalTable": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-prod",
+          "Catalog": "CSA", "Schema": "TJ", "Name": "CUSTOMER_DIM",
+          "InputColumns": [
+            {"Name": "CUSTOMER_KEY", "Type": "INTEGER"},
+            {"Name": "REGION", "Type": "STRING"},
+            {"Name": "CUSTOMER_SEGMENT", "Type": "STRING"}
+          ]
+        }
+      },
+      "products-physical": {
+        "RelationalTable": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-prod",
+          "Catalog": "CSA", "Schema": "TJ", "Name": "PRODUCT_DIM",
+          "InputColumns": [
+            {"Name": "PRODUCT_KEY", "Type": "INTEGER"},
+            {"Name": "CATEGORY", "Type": "STRING"},
+            {"Name": "BRAND", "Type": "STRING"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "orders-logical":   {"Alias": "Order Fact",   "Source": {"PhysicalTableId": "orders-physical"}},
+      "customers-logical":{"Alias": "Customer Dim",  "Source": {"PhysicalTableId": "customers-physical"}},
+      "products-logical": {"Alias": "Product Dim",   "Source": {"PhysicalTableId": "products-physical"}},
+      "join-1": {
+        "Alias": "Orders + Customers",
+        "Source": {"JoinInstruction": {
+          "LeftOperand": "orders-logical", "RightOperand": "customers-logical",
+          "Type": "LEFT", "OnClause": "{CUSTOMER_KEY[orders-logical]} = {CUSTOMER_KEY[customers-logical]}"
+        }}
+      },
+      "join-2": {
+        "Alias": "Orders + Customers + Products",
+        "Source": {"JoinInstruction": {
+          "LeftOperand": "join-1", "RightOperand": "products-logical",
+          "Type": "LEFT", "OnClause": "{PRODUCT_KEY[orders-logical]} = {PRODUCT_KEY[products-logical]}"
+        }}
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID", "Type": "INTEGER"},
+      {"Name": "NET_REVENUE", "Type": "DECIMAL"},
+      {"Name": "REGION", "Type": "STRING"},
+      {"Name": "CATEGORY", "Type": "STRING"}
+    ]
+  }
+}

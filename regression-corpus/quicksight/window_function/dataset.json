@@ -1,0 +1,40 @@
+{
+  "_source": "Synthetic — CustomSql dataset with a dataset-level CreateColumnsOperation that uses a window/table-calc function (runningSum). Verifies the window calc degrades to a valid Null formula (not a comment-only formula that fails the whole POST — beads-sigma-woaa).",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-window",
+    "DataSetId": "orders-window",
+    "Name": "Orders Window",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "ordersSql": {
+        "CustomSql": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-csa-tj",
+          "Name": "orders_window",
+          "SqlQuery": "select ORDER_ID, NET_REVENUE, ORDER_DATE_KEY from CSA.TJ.ORDER_FACT",
+          "Columns": [
+            {"Name": "ORDER_ID",       "Type": "STRING"},
+            {"Name": "NET_REVENUE",    "Type": "DECIMAL"},
+            {"Name": "ORDER_DATE_KEY", "Type": "INTEGER"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "ordersLogical": {
+        "Alias": "orders_window",
+        "Source": {"PhysicalTableId": "ordersSql"},
+        "DataTransforms": [
+          {"CreateColumnsOperation": {"Columns": [
+            {"ColumnId": "calc-run", "ColumnName": "Running Revenue", "Expression": "runningSum(sum({NET_REVENUE}), [{ORDER_DATE_KEY} ASC])"}
+          ]}}
+        ]
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID", "Type": "STRING"},
+      {"Name": "NET_REVENUE", "Type": "DECIMAL"},
+      {"Name": "ORDER_DATE_KEY", "Type": "INTEGER"},
+      {"Name": "Running Revenue", "Type": "DECIMAL"}
+    ]
+  }
+}

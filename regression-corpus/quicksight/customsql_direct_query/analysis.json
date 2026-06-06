@@ -1,0 +1,14 @@
+{
+  "_source": "Synthetic — analysis over the CustomSql dataset. CalculatedField 'Profit Margin' references two SQL columns by display name; must rewrite to [Custom SQL/NET_PROFIT]/[Custom SQL/NET_REVENUE] (beads-sigma-vy4k live bug).",
+  "AnalysisId": "qs-orders-overview",
+  "Name": "Orders Overview",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {"DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-enriched", "Identifier": "orders"}
+    ],
+    "CalculatedFields": [
+      {"DataSetIdentifier": "orders", "Name": "Profit Margin", "Expression": "{NET_PROFIT} / {NET_REVENUE}"},
+      {"DataSetIdentifier": "orders", "Name": "Profitability", "Expression": "ifelse({NET_PROFIT} >= 0, 'Profitable', 'Unprofitable')"}
+    ]
+  }
+}

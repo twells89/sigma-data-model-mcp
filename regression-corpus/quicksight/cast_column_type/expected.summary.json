@@ -1,0 +1,5 @@
+{
+  "description": "CastColumnTypeOperation on a CustomSql column (beads-sigma-23xu). Casting ORDER_ID to STRING must wrap the resolved passthrough form Text([Custom SQL/ORDER_ID]) — NOT a self-referencing Text([Order Id]) that resolves to type=error. Verifies the cast column has a concrete (text) type, zero error columns.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}
