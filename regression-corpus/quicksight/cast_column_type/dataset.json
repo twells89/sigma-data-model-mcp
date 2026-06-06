@@ -1,0 +1,35 @@
+{
+  "_source": "Synthetic — CustomSql dataset with a CastColumnTypeOperation (beads-sigma-23xu). Casting ORDER_ID to STRING must wrap the [Custom SQL/ORDER_ID] passthrough form as Text([Custom SQL/ORDER_ID]) — NOT a self-referencing Text([Order Id]) that resolves to type=error.",
+  "DataSet": {
+    "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-cast",
+    "DataSetId": "orders-cast",
+    "Name": "Orders Cast",
+    "ImportMode": "DIRECT_QUERY",
+    "PhysicalTableMap": {
+      "ordersSql": {
+        "CustomSql": {
+          "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-csa-tj",
+          "Name": "orders_cast",
+          "SqlQuery": "select ORDER_ID, NET_REVENUE from CSA.TJ.ORDER_FACT",
+          "Columns": [
+            {"Name": "ORDER_ID",    "Type": "INTEGER"},
+            {"Name": "NET_REVENUE", "Type": "DECIMAL"}
+          ]
+        }
+      }
+    },
+    "LogicalTableMap": {
+      "ordersLogical": {
+        "Alias": "orders_cast",
+        "Source": {"PhysicalTableId": "ordersSql"},
+        "DataTransforms": [
+          {"CastColumnTypeOperation": {"ColumnName": "ORDER_ID", "NewColumnType": "STRING"}}
+        ]
+      }
+    },
+    "OutputColumns": [
+      {"Name": "ORDER_ID", "Type": "STRING"},
+      {"Name": "NET_REVENUE", "Type": "DECIMAL"}
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_source": "Synthetic — analysis with an analysis-level CalculatedField that is also a window function (percentOfTotal). Both the dataset-level and analysis-level window calcs must degrade to Null (beads-sigma-woaa).",
+  "AnalysisId": "qs-orders-window",
+  "Name": "Orders Window Analysis",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {"DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-window", "Identifier": "ordersw"}
+    ],
+    "CalculatedFields": [
+      {"DataSetIdentifier": "ordersw", "Name": "Pct Of Total", "Expression": "percentOfTotal(sum({NET_REVENUE}), [])"}
+    ]
+  }
+}

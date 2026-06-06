@@ -43,6 +43,34 @@ export interface QuickSightConvertOptions {
   schema?: string;
 }
 
+// colMap value: id = Sigma column id, display = Title-Case display name,
+// raw = original-case source alias (used for [Custom SQL/RAW] refs on sql
+// elements), sql = true when the owning element is a Custom SQL / S3 / SaaS
+// element (refs into it must use the [Custom SQL/RAW] qualified form).
+interface ColMapEntry { id: string; display: string; raw: string; sql: boolean; }
+
+/** Cross-element ref form for a column living in `entry`'s element. */
+function colRefFor(entry: ColMapEntry): string {
+  return entry.sql ? `[Custom SQL/${entry.raw}]` : `[${entry.display}]`;
+}
+
+/**
+ * On a Custom SQL element, a bare display-name ref `[Net Profit]` does not
+ * resolve — it must be the SQL-alias form `[Custom SQL/NET_PROFIT]`. Rewrite any
+ * bare `[Display]` ref that matches a known base column (by display name) to
+ * that form, using the column's raw original-case alias from `colMap`.
+ */
+function rewriteSqlRefs(formula: string, colMap: Map<string, ColMapEntry>): string {
+  // Build a display-name (lowercased) → raw lookup of the element's own columns.
+  const byDisplay = new Map<string, ColMapEntry>();
+  for (const e of colMap.values()) byDisplay.set(e.display.toLowerCase(), e);
+  return formula.replace(/\[([^\]\/]+)\]/g, (match, refName) => {
+    const hit = byDisplay.get(String(refName).trim().toLowerCase());
+    if (hit && hit.sql) return `[Custom SQL/${hit.raw}]`;
+    return match;
+  });
+}
+
 export function convertQuickSightToSigma(
   files: QuickSightFile[],
   options: QuickSightConvertOptions = {},
@@ -158,6 +186,9 @@ export function convertQuickSightToSigma(
     }
   }
 
+  // Every element must have a non-empty, model-unique name (beads-sigma-vy4k/nc6g).
+  dedupeElementNames(elements);
+
   // Strip empty arrays
   for (const el of elements) {
     if (el.metrics?.length === 0) delete el.metrics;
@@ -249,6 +280,8 @@ interface DatasetEntry {
   logicalToPhysical: Map<string, string>;
   // The element that an analysis calc field should target by default
   primary: SigmaElement;
+  // The primary element's colMap (for rewriting analysis calc refs into a SQL element)
+  primaryColMap?: Map<string, ColMapEntry>;
 }
 
 function buildElementsForDataset(
@@ -260,7 +293,7 @@ function buildElementsForDataset(
   const logicalToPhysical = new Map<string, string>();
   const physicalToLogical = new Map<string, string>();
   // colNameMap[logicalId][lowercaseOriginalName] = { id, displayName }
-  const colMaps = new Map<string, Map<string, { id: string; display: string }>>();
+  const colMaps = new Map<string, Map<string, ColMapEntry>>();
 
   const phys = ds.PhysicalTableMap || {};
   const logical = ds.LogicalTableMap || {};
@@ -301,20 +334,35 @@ function buildElementsForDataset(
     }
   }
 
+  // Resolve a join operand transitively to its left-most physical-backed
+  // logical id. For a chained 3-way join `(A join B) join C`, the outer join's
+  // LeftOperand is the inner join's logicalId, which has no element of its own —
+  // follow it down to A so the C relationship attaches to the base fact element.
+  const resolveOperand = (operandId: string, seen = new Set<string>()): string => {
+    if (elementsByLogical.has(operandId)) return operandId;
+    if (seen.has(operandId)) return operandId;
+    seen.add(operandId);
+    const inner = logical[operandId]?.Source?.JoinInstruction;
+    if (inner) return resolveOperand(inner.LeftOperand, seen);
+    return operandId;
+  };
+
   // Second pass: JoinInstruction logical tables → relationships on the left
   // element. The "joined" logical table itself is not emitted as a separate
   // Sigma element; its role is captured by the relationship.
   for (const [logicalId, lt] of Object.entries(logical)) {
     const join = lt.Source?.JoinInstruction;
     if (!join) continue;
-    const leftEl = elementsByLogical.get(join.LeftOperand);
-    const rightEl = elementsByLogical.get(join.RightOperand);
+    const leftOperandId = resolveOperand(join.LeftOperand);
+    const rightOperandId = resolveOperand(join.RightOperand);
+    const leftEl = elementsByLogical.get(leftOperandId);
+    const rightEl = elementsByLogical.get(rightOperandId);
     if (!leftEl || !rightEl) {
       warnings.push(`⚠ Dataset "${dsName}": join "${lt.Alias || logicalId}" left/right operand not resolvable — relationship skipped`);
       continue;
     }
-    const leftColMap = colMaps.get(join.LeftOperand);
-    const rightColMap = colMaps.get(join.RightOperand);
+    const leftColMap = colMaps.get(leftOperandId);
+    const rightColMap = colMaps.get(rightOperandId);
     const parsed = parseJoinOnClause(join.OnClause || '', join.LeftOperand, join.RightOperand);
     let leftColId: string | undefined;
     let rightColId: string | undefined;
@@ -323,8 +371,11 @@ function buildElementsForDataset(
       rightColId = rightColMap.get(parsed.rightCol.toLowerCase())?.id;
     }
     // Relationship name = uppercase right-side alias (matches DM convention
-    // of [SRC/REL_NAME/Col] cross-element refs).
-    const rightAlias = (logical[join.RightOperand]?.Alias || join.RightOperand).toString().toUpperCase().replace(/\s+/g, '_');
+    // of [SRC/REL_NAME/Col] cross-element refs). Prefer the right element's own
+    // warehouse table name so the rel name lines up with the dim table.
+    const rightPath: string[] = (rightEl.source?.path as string[]) || [];
+    const rightAlias = (rightPath[rightPath.length - 1]
+      || logical[rightOperandId]?.Alias || rightOperandId).toString().toUpperCase().replace(/\s+/g, '_');
     const rel: any = {
       id: sigmaShortId(),
       targetElementId: rightEl.id,
@@ -345,6 +396,11 @@ function buildElementsForDataset(
     applyTransformsToElement(leftEl, lt.DataTransforms || [], leftColMap || new Map(), dsName, lt.Alias || logicalId, warnings);
   }
 
+  // Ensure every relationship's join keys are projected on both sides. parseJoin
+  // already resolves FK/PK column ids from the colMaps, so the columns exist;
+  // this is a no-op guard kept for clarity. (Grouped dims are reached via the
+  // [SRC/REL/Field] derived-view columns built later.)
+
   // Pick the primary element: prefer one with the most relationships
   // (analyses usually wire calc fields to the joined "facts" table).
   const allEls = Array.from(elementsByLogical.values());
@@ -352,11 +408,18 @@ function buildElementsForDataset(
     ? allEls[0]
     : allEls.slice().sort((a, b) => (b.relationships?.length ?? 0) - (a.relationships?.length ?? 0))[0];
 
+  // Find the logicalId whose element is the primary, to recover its colMap.
+  let primaryColMap: Map<string, ColMapEntry> | undefined;
+  for (const [lid, el] of elementsByLogical.entries()) {
+    if (el === primary) { primaryColMap = colMaps.get(lid); break; }
+  }
+
   return {
     elements: allEls,
     byLogicalId: elementsByLogical,
     logicalToPhysical,
     primary,
+    primaryColMap,
   };
 }
 
@@ -372,8 +435,8 @@ function buildElementFromPhysicalTable(
   alias: string,
   ctx: DatasetBuildContext,
   warnings: string[],
-): { element: SigmaElement; colMap: Map<string, { id: string; display: string }> } {
-  const colMap = new Map<string, { id: string; display: string }>();
+): { element: SigmaElement; colMap: Map<string, ColMapEntry> } {
+  const colMap = new Map<string, ColMapEntry>();
 
   if (phy.RelationalTable) {
     const rt = phy.RelationalTable;
@@ -398,6 +461,7 @@ function buildElementFromPhysicalTable(
     const element: SigmaElement = {
       id: sigmaShortId(),
       kind: 'table',
+      name: stripParens(sigmaDisplayName(tableName)),
       source: { connectionId: ctx.connectionId, kind: 'warehouse-table', path },
       columns: [],
       metrics: [],
@@ -407,7 +471,7 @@ function buildElementFromPhysicalTable(
     for (const ic of rt.InputColumns || []) {
       const id = sigmaInodeId(ic.Name.toUpperCase());
       const display = sigmaDisplayName(ic.Name);
-      colMap.set(ic.Name.toLowerCase(), { id, display });
+      colMap.set(ic.Name.toLowerCase(), { id, display, raw: ic.Name, sql: false });
       element.columns.push({ id, formula: sigmaColFormula(tablePathTail, ic.Name) });
       element.order.push(id);
     }
@@ -419,6 +483,7 @@ function buildElementFromPhysicalTable(
     const element: SigmaElement = {
       id: sigmaShortId(),
       kind: 'table',
+      name: stripParens(sigmaDisplayName(cs.Name || alias)),
       source: { connectionId: ctx.connectionId, kind: 'sql', statement: cs.SqlQuery || '' },
       columns: [],
       metrics: [],
@@ -432,10 +497,14 @@ function buildElementFromPhysicalTable(
       warnings.push(`⚠ CustomSql "${cs.Name}" has no Columns metadata — the SQL element will have no surfaced columns. Add them manually after save.`);
     }
     for (const ic of cols) {
+      // QuickSight CustomSql.Columns ARE the literal SQL aliases — emit the
+      // qualified [Custom SQL/RAW_ALIAS] passthrough form (raw, original case)
+      // which resolves against the SQL element. (Diverges from CLAUDE.md rule #3
+      // bare-ref default — see beads-sigma-vy4k/nc6g; the QS aliases match.)
       const id = sigmaInodeId(ic.Name.toUpperCase());
       const display = sigmaDisplayName(ic.Name);
-      colMap.set(ic.Name.toLowerCase(), { id, display });
-      element.columns.push({ id, formula: `[${display}]` });
+      colMap.set(ic.Name.toLowerCase(), { id, display, raw: ic.Name, sql: true });
+      element.columns.push({ id, name: display, formula: `[Custom SQL/${ic.Name}]` });
       element.order.push(id);
     }
     return { element, colMap };
@@ -446,6 +515,7 @@ function buildElementFromPhysicalTable(
     const element: SigmaElement = {
       id: sigmaShortId(),
       kind: 'table',
+      name: stripParens(sigmaDisplayName(alias)),
       source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with warehouse SELECT for S3 source "${alias}"\nSELECT 1 AS _placeholder` },
       columns: [],
       metrics: [],
@@ -454,8 +524,8 @@ function buildElementFromPhysicalTable(
     for (const ic of phy.S3Source.InputColumns || []) {
       const id = sigmaInodeId(ic.Name.toUpperCase());
       const display = sigmaDisplayName(ic.Name);
-      colMap.set(ic.Name.toLowerCase(), { id, display });
-      element.columns.push({ id, formula: `[${display}]` });
+      colMap.set(ic.Name.toLowerCase(), { id, display, raw: ic.Name, sql: true });
+      element.columns.push({ id, name: display, formula: `[Custom SQL/${ic.Name}]` });
       element.order.push(id);
     }
     return { element, colMap };
@@ -467,6 +537,7 @@ function buildElementFromPhysicalTable(
     const element: SigmaElement = {
       id: sigmaShortId(),
       kind: 'table',
+      name: stripParens(sigmaDisplayName(alias)),
       source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with warehouse SELECT for SaaS source "${alias}" (${(sa.TablePath || []).join('.')})\nSELECT 1 AS _placeholder` },
       columns: [],
       metrics: [],
@@ -475,8 +546,8 @@ function buildElementFromPhysicalTable(
     for (const ic of sa.InputColumns || []) {
       const id = sigmaInodeId(ic.Name.toUpperCase());
       const display = sigmaDisplayName(ic.Name);
-      colMap.set(ic.Name.toLowerCase(), { id, display });
-      element.columns.push({ id, formula: `[${display}]` });
+      colMap.set(ic.Name.toLowerCase(), { id, display, raw: ic.Name, sql: true });
+      element.columns.push({ id, name: display, formula: `[Custom SQL/${ic.Name}]` });
       element.order.push(id);
     }
     return { element, colMap };
@@ -488,6 +559,7 @@ function buildElementFromPhysicalTable(
     element: {
       id: sigmaShortId(),
       kind: 'table',
+      name: stripParens(sigmaDisplayName(alias)) || 'Stub',
       source: { connectionId: ctx.connectionId, kind: 'sql', statement: '-- empty placeholder' },
       columns: [],
       metrics: [],
@@ -500,7 +572,7 @@ function buildElementFromPhysicalTable(
 function applyTransformsToElement(
   element: SigmaElement,
   transforms: QSDataTransform[],
-  colMap: Map<string, { id: string; display: string }>,
+  colMap: Map<string, ColMapEntry>,
   dsName: string,
   logicalAlias: string,
   warnings: string[],
@@ -520,12 +592,17 @@ function applyTransformsToElement(
       const castFn = sigmaCastForType(op.NewColumnType);
       if (castFn) col.formula = `${castFn}(${col.formula})`;
     } else if (tx.CreateColumnsOperation) {
+      const elemIsSql = element.source?.kind === 'sql';
       for (const newCol of tx.CreateColumnsOperation.Columns || []) {
         const id = sigmaInodeId(newCol.ColumnName.toUpperCase());
-        const display = sigmaDisplayName(newCol.ColumnName);
-        const translated = quicksightFormulaToSigma(newCol.Expression || '', warnings);
-        colMap.set(newCol.ColumnName.toLowerCase(), { id, display });
-        element.columns.push({ id, formula: translated, name: display });
+        const display = stripParens(sigmaDisplayName(newCol.ColumnName));
+        const { formula, description } = quicksightFormulaToSigmaEx(newCol.Expression || '', warnings);
+        // On a SQL element, bare base-column refs must use [Custom SQL/RAW].
+        const rewritten = elemIsSql ? rewriteSqlRefs(formula, colMap) : formula;
+        const col: SigmaColumn = { id, formula: rewritten, name: display };
+        if (description) col.description = description;
+        colMap.set(newCol.ColumnName.toLowerCase(), { id, display, raw: newCol.ColumnName, sql: elemIsSql });
+        element.columns.push(col);
         element.order.push(id);
       }
     } else if (tx.RenameColumnOperation) {
@@ -534,10 +611,11 @@ function applyTransformsToElement(
       if (!existing) continue;
       const col = element.columns.find(c => c.id === existing.id);
       if (!col) continue;
-      const newDisplay = sigmaDisplayName(op.NewColumnName);
+      const newDisplay = stripParens(sigmaDisplayName(op.NewColumnName));
       col.name = newDisplay;
       colMap.delete(op.ColumnName.toLowerCase());
-      colMap.set(op.NewColumnName.toLowerCase(), { id: existing.id, display: newDisplay });
+      // Preserve raw/sql provenance — the underlying SQL alias is unchanged.
+      colMap.set(op.NewColumnName.toLowerCase(), { id: existing.id, display: newDisplay, raw: existing.raw, sql: existing.sql });
     } else if (tx.ProjectOperation) {
       // ProjectedColumns is the subset that survives — we reorder element.order
       // to match and drop the rest from order (Sigma still keeps them as data
@@ -554,12 +632,14 @@ function applyTransformsToElement(
       }
     } else if (tx.FilterOperation) {
       const op = tx.FilterOperation;
-      const translated = quicksightFormulaToSigma(op.ConditionExpression || '', warnings);
+      const elemIsSql = element.source?.kind === 'sql';
+      let translated = quicksightFormulaToSigma(op.ConditionExpression || '', warnings);
+      if (elemIsSql) translated = rewriteSqlRefs(translated, colMap);
       const id = sigmaShortId();
-      const name = `Filter: ${(op.ConditionExpression || '').slice(0, 40)}`;
+      const name = stripParens(`Filter: ${(op.ConditionExpression || '').slice(0, 40)}`);
       element.columns.push({ id, formula: translated, name });
       element.order.push(id);
-      warnings.push(`ℹ ${dsName}/${logicalAlias}: FilterOperation lowered to boolean calc column "${name}" — use as a workbook page filter`);
+      warnings.push(`⚠ ${dsName}/${logicalAlias}: FilterOperation "${(op.ConditionExpression || '').slice(0, 60)}" — a true row-filter genuinely cannot move into a warehouse-table data-model element; it is emitted as an UNAPPLIED boolean calc column "${name}". Downstream counts/aggregates stay UNFILTERED. Apply this as a workbook filter on the boolean column, or push it into the SQL element's WHERE clause.`);
     } else if (tx.TagColumnOperation) {
       warnings.push(`ℹ ${dsName}/${logicalAlias}: TagColumnOperation on "${tx.TagColumnOperation.ColumnName}" skipped (Sigma has no geo-role tagging)`);
     } else if (tx.UntagColumnOperation || tx.OverrideDatasetParameterOperation) {
@@ -611,6 +691,7 @@ function synthesizeStubDataset(
   const element: SigmaElement = {
     id: sigmaShortId(),
     kind: 'table',
+    name: stripParens(sigmaDisplayName(identifier)) || 'Stub',
     source: { connectionId: ctx.connectionId, kind: 'sql', statement: `-- TODO: replace with the warehouse SELECT for QuickSight dataset "${identifier}"\nSELECT 1 AS _placeholder` },
     columns: [],
     metrics: [],
@@ -618,7 +699,7 @@ function synthesizeStubDataset(
   };
   const byLogicalId = new Map([['__stub__', element]]);
   const logicalToPhysical = new Map([['__stub__', '__stub__']]);
-  return { elements: [element], byLogicalId, logicalToPhysical, primary: element };
+  return { elements: [element], byLogicalId, logicalToPhysical, primary: element, primaryColMap: new Map() };
 }
 
 /**
@@ -642,8 +723,10 @@ function addAnalysisCalcCol(
   warnings: string[],
 ): void {
   const id = sigmaInodeId(name.toUpperCase());
-  const display = sigmaDisplayName(name);
-  let formula = quicksightFormulaToSigma(expression || '', warnings);
+  const display = stripParens(sigmaDisplayName(name));
+  const ex = quicksightFormulaToSigmaEx(expression || '', warnings);
+  let formula = ex.formula;
+  const description = ex.description;
 
   const derivedView = derivedViewBySrcId.get(entry.primary.id);
   if (derivedView) {
@@ -679,10 +762,21 @@ function addAnalysisCalcCol(
       }
       return match;
     });
-    derivedView.columns.push({ id, formula, name: display });
+    const dvCol: SigmaColumn = { id, formula, name: display };
+    if (description) dvCol.description = description;
+    derivedView.columns.push(dvCol);
     derivedView.order.push(id);
   } else {
-    entry.primary.columns.push({ id, formula, name: display });
+    // No derived view (single-element dataset). If the primary is a Custom SQL
+    // element, bare base-column refs must be rewritten to [Custom SQL/RAW]
+    // (fixes the live "Profit Margin=[Net Profit]/[Net Revenue]" bug —
+    // beads-sigma-vy4k). colMap carries the raw aliases.
+    if (entry.primary.source?.kind === 'sql' && entry.primaryColMap) {
+      formula = rewriteSqlRefs(formula, entry.primaryColMap);
+    }
+    const pCol: SigmaColumn = { id, formula, name: display };
+    if (description) pCol.description = description;
+    entry.primary.columns.push(pCol);
     entry.primary.order.push(id);
   }
 }
@@ -699,7 +793,7 @@ function buildRelatedNameMap(
     const tgtEl = allElements.find(e => e.id === rel.targetElementId);
     if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
     for (const c of tgtEl.columns || []) {
-      if (!c.formula || c.formula.startsWith('/*')) continue;
+      if (!c.formula || c.formula === 'Null') continue;
       const fm = c.formula.match(/^\[([^\]]+)\]$/);
       if (!fm) continue;
       const inner = fm[1];
@@ -751,7 +845,7 @@ function buildDerivedView(srcEl: SigmaElement, allElements: SigmaElement[]): Sig
   const viewOrder: string[] = [];
 
   for (const col of srcEl.columns || []) {
-    if (!col.formula || col.formula.startsWith('/*')) continue;
+    if (!col.formula || col.formula === 'Null') continue;
     if (col.name) continue; // skip calc cols (would need rewrite, handled by base element)
     const m = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
     if (!m) continue;
@@ -766,7 +860,7 @@ function buildDerivedView(srcEl: SigmaElement, allElements: SigmaElement[]): Sig
     const tgtEl = allElements.find(e => e.id === rel.targetElementId);
     if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
     for (const col of tgtEl.columns || []) {
-      if (!col.formula || col.formula.startsWith('/*')) continue;
+      if (!col.formula || col.formula === 'Null') continue;
       const fm = col.formula.match(/^\[([^\]]+)\]$/);
       if (!fm) continue;
       const inner = fm[1];
@@ -807,8 +901,17 @@ function buildDerivedView(srcEl: SigmaElement, allElements: SigmaElement[]): Sig
  * Translate them to a comment placeholder and emit a warning suggesting a
  * Custom SQL element.
  */
-export function quicksightFormulaToSigma(expr: string, warnings: string[]): string {
-  if (!expr || typeof expr !== 'string') return '';
+export interface QSFormulaResult { formula: string; description?: string; }
+
+/**
+ * Extended translation: returns a Sigma formula plus optional description.
+ * Window/table-calc functions silently error in Sigma DM calc columns, so they
+ * degrade to a valid `Null` formula with the original QuickSight expression
+ * preserved in the column description (beads-sigma-woaa). Everything else
+ * returns `{ formula: <translated> }`.
+ */
+export function quicksightFormulaToSigmaEx(expr: string, warnings: string[]): QSFormulaResult {
+  if (!expr || typeof expr !== 'string') return { formula: '' };
   let s = expr.trim();
 
   // 1. Block-out string literals so we don't munge their contents.
@@ -835,8 +938,8 @@ export function quicksightFormulaToSigma(expr: string, warnings: string[]): stri
   ];
   const windowRe = new RegExp(`\\b(${windowFns.join('|')})\\s*\\(`, 'i');
   if (windowRe.test(s)) {
-    warnings.push(`⚠ Formula uses a QuickSight table-calculation function (${s.match(windowRe)![1]}) — Sigma DM calc columns silently error on window functions. Translated to a comment placeholder; re-author this column as a Custom SQL element or in the workbook layer.`);
-    return `/* TODO QuickSight table-calc — re-author in Sigma: ${expr.replace(/\*\//g, '* /').slice(0, 200)} */`;
+    warnings.push(`⚠ Formula uses a QuickSight table-calculation function (${s.match(windowRe)![1]}) — Sigma DM calc columns silently error on window functions. Degraded to a Null calc column with the original expression in its description; re-author as a Custom SQL element or a workbook-layer calculation.`);
+    return { formula: 'Null', description: `QuickSight table-calc (re-author in Sigma): ${expr}` };
   }
 
   // 3. Identifier substitution {col name} → [Col Name].
@@ -864,7 +967,13 @@ export function quicksightFormulaToSigma(expr: string, warnings: string[]): stri
   // 8. Restore string literals.
   s = s.replace(/__STR(\d+)__/g, (_, i) => strings[Number(i)]);
 
-  return s;
+  return { formula: s };
+}
+
+/** Back-compat string-only wrapper (used where a description has no home — e.g.
+ *  join FK/filter expressions). Window funcs collapse to the literal `Null`. */
+export function quicksightFormulaToSigma(expr: string, warnings: string[]): string {
+  return quicksightFormulaToSigmaEx(expr, warnings).formula;
 }
 
 function transformIfElse(s: string): string {
@@ -974,6 +1083,27 @@ function remapFunctions(s: string): string {
 
 function emptyModel(name: string): any {
   return { name, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [] }] };
+}
+
+/** Strip parentheses (and their contents) from a name — parens collide with
+ *  Sigma's function-call syntax inside [refs] and break column/element resolution. */
+function stripParens(name: string): string {
+  return (name || '').replace(/\s*\([^)]*\)/g, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Ensure every element has a non-empty, unique `name`. Mutates in place. */
+function dedupeElementNames(elements: SigmaElement[]): void {
+  const seen = new Set<string>();
+  for (const el of elements) {
+    let base = stripParens(el.name || '') || 'Element';
+    let candidate = base;
+    let n = 2;
+    while (seen.has(candidate.toLowerCase())) {
+      candidate = `${base} ${n++}`;
+    }
+    seen.add(candidate.toLowerCase());
+    el.name = candidate;
+  }
 }
 
 // ── Type defs (subset of AWS shape used by the converter) ───────────────────

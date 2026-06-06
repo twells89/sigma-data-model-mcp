@@ -1,0 +1,13 @@
+{
+  "_source": "Synthetic — analysis over the 3-way join dataset; a CalculatedField references a base column. Verifies the derived-view + [SRC/REL/Field] cross-element refs work for both hops.",
+  "AnalysisId": "qs-orders-3way",
+  "Name": "Orders 3-Way Analysis",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {"DataSetArn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-3way", "Identifier": "orders3"}
+    ],
+    "CalculatedFields": [
+      {"DataSetIdentifier": "orders3", "Name": "Revenue Doubled", "Expression": "{NET_REVENUE} * 2"}
+    ]
+  }
+}
