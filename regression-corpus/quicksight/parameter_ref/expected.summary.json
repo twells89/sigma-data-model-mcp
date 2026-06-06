@@ -1,0 +1,5 @@
+{
+  "description": "QuickSight parameter ref ${param} degradation (beads-sigma-n730). A dataset-level CreateColumnsOperation and an analysis-level CalculatedField both reference a QS parameter (${OTThreshold}). The parameter is emitted as a Sigma control (params >= 1); the dependent calcs degrade to a valid 'Null' formula (original expr preserved in description) so the WHOLE model POSTs cleanly with zero error columns — instead of stranding a dangling '$[...]' that errors the column and breaks the POST.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}
