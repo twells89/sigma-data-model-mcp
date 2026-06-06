@@ -1,0 +1,5 @@
+{
+  "description": "Window / table-calc degradation (beads-sigma-woaa). A dataset-level CreateColumnsOperation (runningSum) and an analysis-level CalculatedField (percentOfTotal) both use window functions, which silently error in Sigma DM calc columns. Verifies they degrade to a valid 'Null' formula (original expr preserved in description) so the WHOLE model POSTs cleanly with zero error columns — not a comment-only formula that fails all-or-nothing.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}

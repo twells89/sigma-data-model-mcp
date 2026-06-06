@@ -1,0 +1,5 @@
+{
+  "description": "Chained 3-way RelationalTable join (beads-sigma-nc6g): (ORDER_FACT join CUSTOMER_DIM) join PRODUCT_DIM. Verifies: (1) three named warehouse-table elements, (2) BOTH dim relationships attach to the base ORDER_FACT element via transitive operand resolution (the 2nd hop is not dropped), (3) a derived view surfacing [SRC/REL/Field] cross-element columns, (4) zero error columns.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a" },
+  "asserts": { "minElements": 3, "minRelationships": 2, "noErrorColumns": true }
+}
