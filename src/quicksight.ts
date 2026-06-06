@@ -942,6 +942,22 @@ export function quicksightFormulaToSigmaEx(expr: string, warnings: string[]): QS
     return { formula: 'Null', description: `QuickSight table-calc (re-author in Sigma): ${expr}` };
   }
 
+  // 2b. QuickSight parameter refs ${Param} can NOT be lowered into a DM calc
+  //     column: Sigma controls are workbook-scoped, and a data-model formula
+  //     that references a control silently errors at query time (same class as
+  //     window funcs above). The parameter is still emitted as a Sigma control
+  //     from its ParameterDeclaration; degrade the dependent calc to a valid
+  //     Null + description so it can be re-authored at the workbook layer,
+  //     instead of leaving a dangling `$[...]` that breaks the whole POST
+  //     (beads-sigma-n730). Must run BEFORE the {col} substitution below, which
+  //     would otherwise eat the inner braces and strand the `$`.
+  const paramRe = /\$\{([^{}]+)\}/;
+  if (paramRe.test(s)) {
+    const pname = String(s.match(paramRe)![1]).replace(/\[[^\]]+\]\s*$/, '').trim();
+    warnings.push(`⚠ Formula references QuickSight parameter \${${pname}} — Sigma controls are workbook-scoped and can't be referenced from a data-model calc column. Degraded to a Null calc column with the original expression in its description; the parameter is emitted as a Sigma control, so re-author this calculation at the workbook layer using the "${sigmaDisplayName(pname)}" control.`);
+    return { formula: 'Null', description: `QuickSight parameter-dependent calc (re-author at the Sigma workbook layer using the "${sigmaDisplayName(pname)}" control): ${expr}` };
+  }
+
   // 3. Identifier substitution {col name} → [Col Name].
   //    QuickSight braces can NOT be nested. Qualifiers like {col[dsId]} are
   //    permitted but only appear inside join ON clauses (not calc-field
