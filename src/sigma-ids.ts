@@ -117,13 +117,30 @@ export function inferSigmaFormat(formula: string, displayName?: string, sourceMa
   if (alreadyPctScale && /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
     return { kind: 'number', formatString: ',.2f', suffix: '%' };
   }
-  if (/^[A-Za-z]+\s*\([^)]+\)\s*\/\s*[A-Za-z]+\s*\([^)]+\)$/.test(f)) {
-    return { kind: 'number', formatString: ',.2%' };
+  const currencyWord = /\b(revenue|sales|profit|cost|spend|amount|discounts?|price|value|aov|arpu)\b/;
+  // A ratio of two aggregates is a PERCENTAGE only when both operands are the same unit
+  // (e.g. count/count, revenue/revenue) — NOT when it's a per-unit measure like
+  // Sum(Revenue)/CountDistinct(Order) (a dollar amount) or Sum(Revenue)/Count(*) (AOV).
+  const ratio = f.match(/^([A-Za-z]+)\s*\(([^)]*)\)\s*\/\s*([A-Za-z]+)\s*\(([^)]*)\)$/);
+  if (ratio) {
+    const [, numFn, numArg, denFn, denArg] = ratio;
+    const isCount = (fn: string) => /^Count/i.test(fn);
+    const numIsCurrency = currencyWord.test(numArg.toLowerCase());
+    const nameSaysPct = /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n);
+    if (nameSaysPct || (isCount(numFn) && isCount(denFn))) {
+      return { kind: 'number', formatString: ',.2%' };
+    }
+    // Currency numerator over a non-currency denominator (count / quantity) → $ per-unit.
+    if (numIsCurrency) {
+      return { kind: 'number', formatString: '$,.2f', currencySymbol: '$' };
+    }
+    // Otherwise a plain decimal ratio.
+    return { kind: 'number', formatString: ',.2f' };
   }
   if (/\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
     return { kind: 'number', formatString: ',.2%' };
   }
-  if (/\b(revenue|sales|profit|cost|spend|amount|discounts?|price|value)\b/.test(n)) {
+  if (currencyWord.test(n)) {
     return { kind: 'number', formatString: '$,.2f', currencySymbol: '$' };
   }
   if (/^Count(?:Distinct|If|DistinctIf)?\s*\(/.test(f)) {
@@ -254,6 +271,8 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
       if (!fm) continue; // skip calc cols
       const dispName = fm[2];
+      // A "/" in the display name breaks Sigma's slash-delimited bracket ref — skip.
+      if (dispName.includes('/')) continue;
       const cId = sigmaShortId();
       viewCols.push({ id: cId, formula: `[${baseName}/${dispName}]` });
       viewOrder.push(cId);
@@ -268,8 +287,16 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
         const fm = col.formula.match(/^\[([^\]]+)\]$/);
         if (!fm) continue;
         const inner = fm[1];
-        const s = inner.lastIndexOf('/');
+        // The display name is everything after the FIRST slash (the table/element
+        // prefix). Use indexOf, not lastIndexOf — a display name may itself contain a
+        // slash (e.g. Tableau caption "Product Key/Name").
+        const s = inner.indexOf('/');
         const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        // A display name containing a "/" cannot be referenced via Sigma's
+        // slash-delimited bracket syntax ([Base/Rel/Field] would over-segment). Such a
+        // column stays accessible on its own dimension element; just don't surface it as
+        // a denormalized cross-element passthrough (it would compile to type "error").
+        if (dispName.includes('/')) continue;
         const cId = sigmaShortId();
         viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);

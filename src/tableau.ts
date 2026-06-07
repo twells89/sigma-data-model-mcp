@@ -719,6 +719,77 @@ export function convertTableauToSigma(
   const elements: SigmaElement[] = [];
   const connId = connectionId || '<CONNECTION_ID>';
 
+  // ── Virtual-connection GUID resolution index ─────────────────────────────
+  // In a Tableau 2020.2+ "virtual connection" (relation type='collection') every
+  // field is referenced internally by a UUID. The datasource carries the authoritative
+  // GUID→(caption, owning-table) mapping in two places:
+  //   <cols><map key='[GUID]' value='[REL_NAME].[GUID]'/>   → GUID → owning relation name
+  //   <column caption='…' name='[GUID]'/> + <metadata-records> → GUID → display caption
+  // We build a lookup so that (a) calc/metric formulas referencing bare GUIDs can be
+  // rewritten to their display captions, and (b) flattened dimension columns the
+  // virtual connection invents on the fact relation can be recognised and skipped
+  // (they belong to a related DIM element, not the physical fact table).
+  const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const guidCaption: Record<string, string> = {};   // guid(lower) → display caption (suffix-stripped)
+  const guidOwnerRel: Record<string, string> = {};   // guid(lower) → owning relation name (e.g. "ORDER_FACT (CSA.ORDER_FACT)")
+  {
+    // (1) <cols><map> — GUID → owning relation. Key/value carry the GUID; the value's
+    // leading bracket segment is the owning relation name.
+    for (const mp of asArray((ds.ds as any)?.cols?.map || [])) {
+      const key = (attr(mp, 'key') || '').replace(/^\[|\]$/g, '');
+      const val = (attr(mp, 'value') || '');
+      const guid = (key.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+      const ownerRel = (val.match(/^\[([^\]]+)\]/) || [])[1];
+      if (guid && ownerRel) guidOwnerRel[guid.toLowerCase()] = ownerRel;
+    }
+    // (2) metadata-records — GUID → caption (most authoritative; carries <caption>).
+    for (const mr of asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || [])) {
+      if (attr(mr, 'class') !== 'column') continue;
+      const guid = ((mr['remote-name'] as string) || '').trim();
+      const cap  = ((mr['caption'] as string) || '').trim();
+      if (guid && GUID_RE.test(guid) && cap) guidCaption[guid.toLowerCase()] = cap;
+    }
+    // (3) datasource <column caption=… name='[GUID]'> defs — fill any gaps. Strip the
+    // virtual-connection flatten suffix " (TABLE (schema.TABLE))" and role-playing tail.
+    for (const col of asArray(ds.ds?.column || [])) {
+      const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
+      const guid = (nm.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+      if (!guid) continue;
+      const cap = (attr(col, 'caption') || '').replace(/\s*\([^()]*\([^)]*\)\)\s*$/, '').trim();
+      if (cap && !guidCaption[guid.toLowerCase()]) guidCaption[guid.toLowerCase()] = cap;
+    }
+  }
+
+  // The relation name of the fact (the relation that carries physical measure columns,
+  // i.e. the one whose <relation> child declares its own <columns>). Set in the
+  // collection branch below; used to decide whether a GUID column is a genuine fact
+  // column or a flattened dimension column.
+  let factRelName: string | null = null;
+
+  // GUIDs of relation columns that are Tableau-DERIVED, not physical warehouse columns —
+  // e.g. a date-parsed field `<column date-parse-format='yyyyMMdd' name='guid'/>` inside
+  // a <relation>. These have no physical counterpart in the warehouse table (the parse
+  // is a Tableau transform), so emitting them as base columns invents phantoms.
+  const derivedRelColGuids = new Set<string>();
+  for (const rel of asArray((ds.connection as any)?.relation || [])) {
+    const scanRel = (r: any) => {
+      for (const col of asArray(r?.columns?.column || [])) {
+        const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
+        const g = (nm.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+        // date-parse-format / calculation marks a derived (non-physical) relation column.
+        if (g && (attr(col, 'date-parse-format') || col.calculation)) derivedRelColGuids.add(g.toLowerCase());
+      }
+      for (const child of asArray(r?.relation || [])) scanRel(child);
+    };
+    scanRel(rel);
+  }
+
+  // Rewrite bare [GUID] references in a Tableau formula to [Caption] so the
+  // downstream formula translator + cross-element placement work on display names.
+  const rewriteGuidRefs = (formula: string): string =>
+    formula.replace(/\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/gi,
+      (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; });
+
   // ── Build elements from relation structure ──────────────────────────────
   const rootRelation = ds.connection ? asArray(ds.connection.relation || [])[0] : null;
 
@@ -854,6 +925,12 @@ export function convertTableauToSigma(
         type EntryType = { element: any; colIdMap: Record<string, string>; cleanName: string; objId?: string | null };
         const elementMap: Record<string, EntryType> = {};
 
+        // The fact relation is the child <relation> that declares its own inline
+        // <columns> (the physical fact table). Dimension relations are bare. We use
+        // this to resolve which GUID columns are genuine fact columns vs flattened dims.
+        const factChild = childRels.find((r: any) => asArray(r?.columns?.column || []).length > 0);
+        factRelName = factChild ? (attr(factChild, 'name') || attr(factChild, 'table') || null) : null;
+
         for (const rel of childRels) {
           const fullName  = attr(rel, 'name') || attr(rel, 'table') || 'TABLE';
           const path      = extractPath(rel, dbOverride, schOverride);
@@ -959,19 +1036,42 @@ export function convertTableauToSigma(
           const innerExprs = asArray(eqExpr.expression || []);
           if (innerExprs.length < 2) continue;
 
-          const srcKey = parseOpRef(attr(innerExprs[0], 'op') || '');
-          const tgtKey = parseOpRef(attr(innerExprs[1], 'op') || '');
+          const srcOpRaw = attr(innerExprs[0], 'op') || '';
+          const tgtOpRaw = attr(innerExprs[1], 'op') || '';
+          const srcKey = parseOpRef(srcOpRaw);
+          const tgtKey = parseOpRef(tgtOpRaw);
           if (!srcKey || !tgtKey) continue;
+
+          // A join key wrapped in a function (e.g. DATE([order_date])) is a computed
+          // key, not a plain physical column. Sigma relationships join on physical
+          // columns only; emitting one keyed on a derived value yields a dangling join
+          // whose cross-element refs all error-type. Route to manual authoring instead.
+          const isFnWrappedKey = (op: string) =>
+            /^[A-Za-z_]\w*\(\s*\[?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]?\s*\)$/i.test(op.trim());
+          if (isFnWrappedKey(srcOpRaw) || isFnWrappedKey(tgtOpRaw)) {
+            warnings.push(`⚠ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} joins on a computed key (${(srcOpRaw || tgtOpRaw).slice(0, 40)}); Sigma joins on physical columns only — skipped, needs manual authoring.`);
+            continue;
+          }
 
           const ensureCol = (entry: EntryType, key: string): string => {
             let id = entry.colIdMap[key] || entry.colIdMap[key.replace(/-/g, '_')];
             if (!id) {
               id = sigmaInodeId(key.replace(/\s+/g, '_'));
               const isUuid    = /^[0-9A-F]{8}-[0-9A-F]{4}-/i.test(key);
-              const dispName  = isUuid ? key : sigmaDisplayName(key);
-              entry.element.columns.push({ id, formula: `[${entry.cleanName}/${dispName}]` });
+              // Resolve a relationship-key GUID to its display caption so the join-key
+              // column carries a readable name instead of a bare UUID. The caption is
+              // also tracked so a later <column> pass dedupes against this column.
+              const cap       = isUuid ? guidCaption[key.toLowerCase()] : undefined;
+              const dispName  = cap || (isUuid ? key : sigmaDisplayName(key));
+              const colObj: any = { id, formula: `[${entry.cleanName}/${dispName}]` };
+              if (cap) colObj.name = cap;
+              entry.element.columns.push(colObj);
               entry.element.order.push(id);
               entry.colIdMap[key] = id;
+              if (cap) {
+                entry.colIdMap[cap.toUpperCase()] = id;
+                entry.colIdMap[cap.toUpperCase().replace(/\s+/g, '_')] = id;
+              }
             }
             return id;
           };
@@ -1041,7 +1141,7 @@ export function convertTableauToSigma(
     }> = {};
     const usedAliases = new Set<string>();
 
-    function _resolveDimDisplayName(dimNameRaw: string): { dimUpper: string; displayName: string; baseColId?: string } | null {
+    function _resolveDimDisplayName(dimNameRaw: string): { dimUpper: string; displayName: string; baseColId?: string; onFact: boolean } | null {
       const found = displayNameMap[dimNameRaw.toUpperCase()]
         || displayNameMap[sigmaDisplayName(dimNameRaw).toUpperCase()];
       if (!found) return null;
@@ -1054,7 +1154,10 @@ export function convertTableauToSigma(
       // Prefer the actual warehouse name if we can derive it from the parent col formula
       // (since Sigma display names are derived from SNAKE_CASE).
       const physicalUpper = (fm ? fm[1] : dispName).replace(/\s+/g, '_').toUpperCase();
-      return { dimUpper: physicalUpper, displayName: dispName, baseColId: found.colId };
+      // onFact: the resolved column physically lives on the fact element. SQL helpers
+      // (LOD / window / Top-N) query the fact table directly, so a dim that resolves
+      // to a *related* dimension element cannot be expressed as a single-table helper.
+      return { dimUpper: physicalUpper, displayName: dispName, baseColId: found.colId, onFact: found.el === factEl };
     }
 
     function _ensureHelper(
@@ -1619,10 +1722,13 @@ export function convertTableauToSigma(
 
     for (const col of asArray(ds.ds?.column || [])) {
       const rawName = attr(col, 'name') || '';
-      const caption = attr(col, 'caption') || rawName.replace(/^\[|\]$/g, '');
+      let caption = attr(col, 'caption') || rawName.replace(/^\[|\]$/g, '');
       const hidden = attr(col, 'hidden') === 'true';
       const calcEl = col.calculation;
-      const formula = calcEl ? attr(calcEl, 'formula') : '';
+      // Resolve any internal-GUID field references in the calc formula to their display
+      // captions up front, so LOD/window/set/regular-calc translation and cross-element
+      // placement all operate on resolvable display names rather than opaque UUIDs.
+      const formula = calcEl ? rewriteGuidRefs(attr(calcEl, 'formula') || '') : '';
       const fieldKey = rawName.replace(/^\[|\]$/g, '');
 
       // Skip Tableau-internal / derived columns that don't exist in the warehouse:
@@ -1638,6 +1744,36 @@ export function convertTableauToSigma(
         /\(group\)\s*$/i.test(fieldKey) ||
         /\(bin\)\s*$/i.test(fieldKey)
       ) continue;
+
+      // ── Virtual-connection (collection) GUID / flattened-dimension handling ──
+      // In a collection datasource, the physical fact + dimension columns are listed
+      // here as GUID-named <column> entries (and dimension columns are flattened onto
+      // the fact with a " (TABLE (schema.TABLE))" caption suffix). Emitting those as
+      // [ORDER_FACT/…] columns invents columns that don't exist in the physical fact
+      // table (phantoms) and leaves UUID display names. We:
+      //   * SKIP a non-calc GUID column whose owning relation (per <cols><map>) is NOT
+      //     the fact relation — it belongs to a related DIM element, reachable via the
+      //     relationship, not a physical fact column.
+      //   * SKIP a non-calc column whose caption carries the flatten suffix (a
+      //     dimension column denormalised onto the fact).
+      //   * For a genuine fact GUID column, resolve its display caption so it isn't
+      //     emitted with a bare UUID name.
+      const guidMatch = (fieldKey.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+      if (factRelName && !formula) {
+        const flattenSuffix = /\s\([^()]*\([^)]*\)\)\s*$/.test(caption);
+        if (guidMatch) {
+          // Tableau-derived relation column (e.g. date-parsed) → no physical column; skip.
+          if (derivedRelColGuids.has(guidMatch.toLowerCase())) continue;
+          const owner = guidOwnerRel[guidMatch.toLowerCase()];
+          const cap   = guidCaption[guidMatch.toLowerCase()];
+          // Owned by a non-fact relation, or caption is a flattened dim → skip.
+          if ((owner && owner !== factRelName) || flattenSuffix) continue;
+          // Genuine fact column: use the resolved display caption.
+          if (cap) caption = cap.trim();
+        } else if (flattenSuffix) {
+          continue;
+        }
+      }
 
       // ── Top-N / Bottom-N Set → kind:sql RANK helper element ─────────
       if (calcEl && attr(calcEl, 'class') === 'categorical-set') {
@@ -1743,10 +1879,23 @@ export function convertTableauToSigma(
           // Resolve LOD dim names → display + warehouse identifiers
           const lodDimsResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
           let allFound = true;
+          let dimOffFact = false;
           for (const dimName of lod.dims) {
             const r = _resolveDimDisplayName(dimName);
-            if (r) lodDimsResolved.push(r);
+            if (r) {
+              lodDimsResolved.push(r);
+              // The LOD helper SELECT runs against the fact table. A declared dim that
+              // physically lives on a related dimension element (virtual-connection
+              // flattening) can't be projected from the fact alone — that needs a join,
+              // not a single-table helper. Route to OPEN QUESTIONS rather than emit
+              // SQL referencing a column the fact table doesn't have.
+              if (r.onFact === false) dimOffFact = true;
+            }
             else { allFound = false; warnings.push(`⚠ LOD "${caption}" dim [${dimName}] not found`); }
+          }
+          if (dimOffFact) {
+            warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) groups by a dimension-table column (cross-table grain); not mechanizable as a single-table helper — needs manual Sigma authoring. Skipped.`);
+            continue;
           }
 
           // Determine view contexts where this calc field is used
@@ -1942,6 +2091,26 @@ export function convertTableauToSigma(
         if (!sigmaFormula || sigmaFormula.startsWith('/*')) continue;
 
         if (tableauIsAggregate(formula)) {
+          // A fact metric can only aggregate columns that physically live on the fact
+          // element. In a virtual connection a calc may aggregate a flattened dimension
+          // column (e.g. Sum([Promo Cost]) where Promo Cost is on PROMO_DIM). Sigma
+          // metrics have no cross-element [SRC/REL/Field] form, so such a metric would
+          // error-type the element. Detect any bare ref that resolves to a non-fact
+          // (or unknown) column and route the whole metric to OPEN QUESTIONS instead.
+          const refNames = (sigmaFormula.match(/\[([^\]\/]+)\]/g) || [])
+            .map(r => r.replace(/^\[|\]$/g, ''));
+          const offFactRef = refNames.find(n => {
+            if (/^(true|false|null)$/i.test(n)) return false;
+            const hit = displayNameMap[n.toUpperCase()]
+              || displayNameMap[n.replace(/\s+/g, '_').toUpperCase()];
+            // Unknown ref (not a tracked column) is left alone — could be a metric name
+            // or constant; only drop when we KNOW it resolves to a non-fact element.
+            return hit && hit.el !== factEl;
+          });
+          if (offFactRef) {
+            warnings.push(`⚠ Metric "${caption}" aggregates a dimension-table column [${offFactRef}] (cross-element); Sigma metrics can't reference related-element columns — needs manual authoring. Skipped.`);
+            continue;
+          }
           if (!(factEl as any).metrics) (factEl as any).metrics = [];
           const _mFmt = inferSigmaFormat(sigmaFormula, caption);
           const _m: any = { id: sigmaShortId(), formula: sigmaFormula, name: caption };

@@ -255,6 +255,34 @@ function rewriteCombineValues(f: string): string {
   return f;
 }
 
+// DAX SEARCH/FIND(find_text, within_text[, start[, not_found]]) -> Sigma
+//   Find(text, search_for[, start]). Sigma's Find takes the WITHIN text first,
+//   then the substring to look for — the OPPOSITE arg order from DAX — so swap
+//   args 0/1. DAX is 1-based and so is Sigma Find, so `start` passes through.
+//   DAX's optional 4th not_found arg has no Sigma equivalent and is dropped.
+//   (DAX SEARCH is case-insensitive, FIND case-sensitive; Sigma Find is
+//   case-sensitive — acceptable approximation for the common SEARCH("@",[Email])
+//   substring-presence idiom.)
+function rewriteSearch(f: string): string {
+  // Uppercase-only (no `i` flag): runs on RAW DAX (functions are uppercase) so
+  // the generated mixed-case `Find(...)` is NOT re-matched and re-swapped.
+  const re = /\b(SEARCH|FIND)\s*\(/g;
+  for (let guard = 0; guard < 50; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (args.length < 2) break;
+    const findText = args[0];
+    const withinText = args[1];
+    const passthrough = args.slice(2, 3); // keep start; drop not_found (arg 3)
+    const newArgs = [withinText, findText, ...passthrough].map(a => a.trim());
+    const rep = `Find(${newArgs.join(', ')})`;
+    f = f.slice(0, m.index) + rep + f.slice(endPos);
+  }
+  return f;
+}
+
 // IF(HASONEVALUE(col), SELECTEDVALUE(col), default) and standalone
 //   HASONEVALUE / SELECTEDVALUE. (beads-sigma-9l2)
 //   HASONEVALUE(col)      -> CountDistinct(col) = 1
@@ -497,6 +525,7 @@ export function pbiDaxToSigma(
   f = rewriteEarlierRank(f);    // COUNTROWS(FILTER(ALL,..EARLIER..))+1 -> RankDense
   f = rewriteStatIterators(f);  // MEDIANX/PERCENTILEX.INC/STDEVX.P/VARX.P/GEOMEANX
   f = rewriteCombineValues(f);  // COMBINEVALUES(sep,a,b) -> [a] & sep & [b]
+  f = rewriteSearch(f);         // SEARCH/FIND(find,within[,start]) -> Find(within,find[,start]) (arg-order swap)
   f = rewriteSingleValue(f);    // HASONEVALUE / SELECTEDVALUE
   f = rewriteSwitchTrue(f);     // SWITCH(TRUE(), c,v,...) -> nested If
   f = rewriteCountRowsFilter(f);// COUNTROWS/COUNT(FILTER(t,pred)) -> CountIf(pred) (r9oz)
@@ -576,6 +605,10 @@ export function pbiDaxToSigma(
           const bareRef = (x: string) =>
             x.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]').replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
           pred = bareRef(pred);
+          // This branch RETURNS early (before the generic TRUE()/FALSE() rename),
+          // so normalize boolean literals in the predicate here — otherwise a
+          // `[Col] = TRUE()` filter ships verbatim and error-types in Sigma.
+          pred = pred.replace(/\bTRUE\s*\(\s*\)/gi, 'True').replace(/\bFALSE\s*\(\s*\)/gi, 'False');
           // Refuse predicates that compare a column to ANOTHER bracketed ref on
           // the RHS — e.g. FILTER(T, T[Salary] > [Company Avg Salary]). That RHS
           // is a measure/aggregate, not a row literal, so a row-level CountIf
@@ -698,6 +731,8 @@ export function pbiDaxToSigma(
   f = f.replace(/\bINT\s*\(/gi, 'Int(');
   f = f.replace(/\bSQRT\s*\(/gi, 'Sqrt(');
   f = f.replace(/\bPOWER\s*\(/gi, 'Power(');
+  f = f.replace(/\bMOD\s*\(/gi, 'Mod(');   // DAX MOD(n,d) == Sigma Mod(n,d) (1:1)
+  f = f.replace(/\bEXP\s*\(/gi, 'Exp(');   // DAX EXP(x) == Sigma Exp(x) (1:1)
   // Date
   f = f.replace(/\bYEAR\s*\(/gi, 'Year(');
   f = f.replace(/\bMONTH\s*\(/gi, 'Month(');
@@ -1111,21 +1146,11 @@ export function convertPowerBIToSigma(
       const firstColName = ctColDisplayNames.length ? ctColDisplayNames[0] : 'Value';
       const built = buildCalcTableSql(ctExpr, firstColName, ctColDisplayNames);
 
-      const ctColumns: SigmaColumn[] = [];
-      const ctOrder: string[] = [];
-      for (const c of ctCols) {
-        const sourceCol = (c.sourceColumn || c.name || '').replace(/^\[|\]$/g, '');
-        const displayName = sigmaDisplayName(sourceCol);
-        const colId = sigmaInodeId((sourceCol || c.name).toUpperCase().replace(/\s+/g, '_'));
-        tableColMap[tableName][c.name] = colId;
-        allPbiToSigmaNames[c.name] = displayName;
-        const col: SigmaColumn = { id: colId, formula: `[${displayName}]` };
-        if (c.isHidden) (col as any).hidden = true;
-        if (c.description) col.description = c.description;
-        ctColumns.push(col);
-        ctOrder.push(colId);
-      }
-
+      // Compute the SQL statement FIRST so the column loop can verify which
+      // aliases the SQL actually emits (Bug E: a multi-column VALUES calc-table
+      // like SalaryBands emits only the numeric series; the DAX-ADDCOLUMNS string
+      // column "Band" is NOT in the SQL, so a `[Custom SQL/Band]` ref would be an
+      // unresolvable dependency that fails the whole DM POST).
       let statement: string;
       if (built.ok) {
         statement = built.sql;
@@ -1141,8 +1166,41 @@ export function convertPowerBIToSigma(
         warnings.push(`⛔ Calculated table "${tableName}": ${built.reason} Emitted a placeholder SQL element (NOT a warehouse-table). Original DAX preserved as a comment.`);
       }
 
+      const ctColumns: SigmaColumn[] = [];
+      const ctOrder: string[] = [];
+      const droppedCols: string[] = [];
+      for (const c of ctCols) {
+        const sourceCol = (c.sourceColumn || c.name || '').replace(/^\[|\]$/g, '');
+        const displayName = sigmaDisplayName(sourceCol);
+        // Only surface a column the SQL statement actually emits (alias `AS
+        // "Display Name"`). Skip any DAX-derived column the synthesizer couldn't
+        // translate — otherwise its `[Custom SQL/X]` ref breaks the DM POST.
+        const aliasEmitted = built.ok &&
+          new RegExp(`AS\\s+"${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i').test(statement);
+        if (built.ok && !aliasEmitted) { droppedCols.push(displayName); continue; }
+        const colId = sigmaInodeId((sourceCol || c.name).toUpperCase().replace(/\s+/g, '_'));
+        tableColMap[tableName][c.name] = colId;
+        allPbiToSigmaNames[c.name] = displayName;
+        // Bug E: reference the SQL alias with the QUALIFIED `[Custom SQL/Display
+        // Name]` form (verified to resolve). The element-level `name` is OMITTED
+        // below (rule 3) so the element resolves as "Custom SQL".
+        const col: SigmaColumn = { id: colId, formula: `[Custom SQL/${displayName}]` };
+        if (c.isHidden) (col as any).hidden = true;
+        if (c.description) col.description = c.description;
+        ctColumns.push(col);
+        ctOrder.push(colId);
+      }
+      if (droppedCols.length) {
+        warnings.push(`⚠ Calculated table "${tableName}": dropped column(s) ${droppedCols.join(', ')} — their DAX (ADDCOLUMNS/SELECTCOLUMNS) expression wasn't translated into the synthesized SQL, so they have no warehouse source. Add them to the SQL statement manually or as Sigma calc columns.`);
+      }
+
+      // Rule 3 (CLAUDE.md): a Custom SQL element MUST OMIT the element-level
+      // `name` — Sigma resolves it as "Custom SQL", which the `[Custom SQL/...]`
+      // column formulas (and relationship targetElementId refs) depend on.
+      // Relationships/Views reference this element by id + rel-name, never by the
+      // element name, so omitting it is safe. (Bug E)
       const ctElement: SigmaElement = {
-        id: elementId, kind: 'table', name: tableName.toUpperCase(),
+        id: elementId, kind: 'table',
         source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'sql', statement },
         columns: ctColumns, order: ctOrder,
       };
