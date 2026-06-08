@@ -118,8 +118,19 @@ export function convertQuickSightToSigma(
   const datasetRegistry = new Map<string, DatasetEntry>();
   const elements: SigmaElement[] = [];
 
+  // Shared window/table-calc lowering context: window calcs across all datasets
+  // + analyses are lowered to kind:'sql' helper elements (SQL OVER clauses),
+  // grouped by (source, partition, order) signature so calcs that share an axis
+  // coexist in one element. Finalized into real SQL statements at the end.
+  const winCtx: QSWindowContext = {
+    helpers: new Map(),
+    usedAliases: new Set(),
+    extraElements: [],
+    connectionId,
+  };
+
   for (const ds of datasets) {
-    const entry = buildElementsForDataset(ds, { connectionId, dbOverride, schemaOverride }, warnings);
+    const entry = buildElementsForDataset(ds, { connectionId, dbOverride, schemaOverride, winCtx }, warnings);
     elements.push(...entry.elements);
     if (ds.Arn) datasetRegistry.set(ds.Arn, entry);
     if (ds.DataSetId) datasetRegistry.set(ds.DataSetId, entry);
@@ -147,6 +158,13 @@ export function convertQuickSightToSigma(
 
   for (const analysis of analyses) {
     const def = analysis.Definition || {};
+    // Per-dataset visual grouping grain: the set of dimension columns a window
+    // calc's value must be computed AT (the visual's GroupBy/Category dims).
+    // QuickSight table-calc partition/order axes describe how the calc resets
+    // *within* that grain — so the helper SQL must aggregate to this grain first,
+    // then apply the OVER. Without it, partition-only grain collapses rows and
+    // breaks rank / percentOfTotal (always 1 / 100%).
+    const visualDimsByDataset = collectVisualGroupingDims(def);
     const identifierMap = new Map<string, DatasetEntry>();
     for (const decl of def.DataSetIdentifierDeclarations || []) {
       const ident = decl.Identifier;
@@ -169,7 +187,8 @@ export function convertQuickSightToSigma(
         warnings.push(`⚠ Analysis calc field "${cf.Name}": DataSetIdentifier "${cf.DataSetIdentifier}" not in DataSetIdentifierDeclarations — skipped`);
         continue;
       }
-      addAnalysisCalcCol(entry, cf.Name, cf.Expression, derivedViewBySrcId, elements, warnings);
+      const grain = (cf.DataSetIdentifier && visualDimsByDataset.get(cf.DataSetIdentifier)) || [];
+      addAnalysisCalcCol(entry, cf.Name, cf.Expression, derivedViewBySrcId, elements, winCtx, grain, warnings);
     }
 
     for (const decl of def.ParameterDeclarations || []) {
@@ -184,6 +203,14 @@ export function convertQuickSightToSigma(
     if (filterCount > 0) {
       warnings.push(`ℹ ${filterCount} analysis-level FilterGroup(s) skipped — these are visual page filters in QuickSight. Re-create as workbook filters/page controls in Sigma.`);
     }
+  }
+
+  // ── Finalize window/table-calc SQL helper elements ───────────────────────
+  // Each accumulated helper now gets its real WITH base AS (...) SELECT ... OVER
+  // statement built; then the helper elements are appended to the model.
+  for (const helper of winCtx.helpers.values()) finalizeQSWindowHelper(helper);
+  if (winCtx.extraElements.length) {
+    elements.push(...winCtx.extraElements);
   }
 
   // Every element must have a non-empty, model-unique name (beads-sigma-vy4k/nc6g).
@@ -267,6 +294,9 @@ interface DatasetBuildContext {
   connectionId: string;
   dbOverride: string;
   schemaOverride: string;
+  // Window/table-calc lowering context (shared across datasets+analyses). Optional
+  // so the stub/test paths that don't translate window calcs can omit it.
+  winCtx?: QSWindowContext;
 }
 
 interface DatasetEntry {
@@ -316,7 +346,7 @@ function buildElementsForDataset(
       physicalToLogical.set(physId, logicalId);
       colMaps.set(logicalId, colMap);
       // Apply this logical table's DataTransforms
-      applyTransformsToElement(element, lt.DataTransforms || [], colMap, dsName, lt.Alias || logicalId, warnings);
+      applyTransformsToElement(element, lt.DataTransforms || [], colMap, dsName, lt.Alias || logicalId, warnings, ctx.winCtx);
     }
   }
 
@@ -393,7 +423,7 @@ function buildElementsForDataset(
     // join "produces" a combined row set in QuickSight, but in Sigma the
     // joined dim cols are reached via the relationship — so transforms on
     // the joined output that affect left-side columns still apply).
-    applyTransformsToElement(leftEl, lt.DataTransforms || [], leftColMap || new Map(), dsName, lt.Alias || logicalId, warnings);
+    applyTransformsToElement(leftEl, lt.DataTransforms || [], leftColMap || new Map(), dsName, lt.Alias || logicalId, warnings, ctx.winCtx);
   }
 
   // Ensure every relationship's join keys are projected on both sides. parseJoin
@@ -576,6 +606,7 @@ function applyTransformsToElement(
   dsName: string,
   logicalAlias: string,
   warnings: string[],
+  winCtx?: QSWindowContext,
 ): void {
   for (const tx of transforms) {
     if (tx.CastColumnTypeOperation) {
@@ -596,6 +627,16 @@ function applyTransformsToElement(
       for (const newCol of tx.CreateColumnsOperation.Columns || []) {
         const id = sigmaInodeId(newCol.ColumnName.toUpperCase());
         const display = stripParens(sigmaDisplayName(newCol.ColumnName));
+        // Window/table-calc functions silently error in Sigma DM calc columns.
+        // Try to lower them to a kind:'sql' helper element (SQL OVER clause)
+        // before falling back to the Null degrade in quicksightFormulaToSigmaEx.
+        const win = winCtx ? quicksightParseWindow(newCol.Expression || '') : null;
+        if (win && winCtx) {
+          // Dataset-level calcs have no analysis visual grain available — the
+          // helper grain falls back to (partition ∪ order) from the expression.
+          const ok = lowerQSWindowCalc(win, newCol.ColumnName, element, colMap, winCtx.helpers, winCtx.usedAliases, winCtx.extraElements, winCtx.connectionId, [], warnings);
+          if (ok) continue; // lowered to helper element; no calc col on this element
+        }
         const { formula, description } = quicksightFormulaToSigmaEx(newCol.Expression || '', warnings);
         // On a SQL element, bare base-column refs must use [Custom SQL/RAW].
         const rewritten = elemIsSql ? rewriteSqlRefs(formula, colMap) : formula;
@@ -681,6 +722,567 @@ function parseJoinOnClause(onClause: string, leftId: string, rightId: string): {
   return { leftCol: c1.trim(), rightCol: c2.trim() };
 }
 
+// ── QuickSight window / table-calc parser + SQL-window lowering ─────────────
+// QuickSight window & table-calc functions (runningSum, percentOfTotal, rank,
+// lag/lead, difference, windowSum, sumOver, period*, etc.) carry their PARTITION
+// and ORDER axes inside the expression itself, e.g.
+//   runningSum(sum({NET_REVENUE}), [{MONTH_NUMBER} ASC], [{ORDER_CHANNEL}])
+//   percentOfTotal(sum({Sales}), [{Region}])
+//   rank([sum({Sales}) DESC], [{Region}])
+//   difference(sum({rev}), [{month} ASC], -1, [{channel}])
+// Sigma DM calc columns silently error on window functions (see
+// feedback_sigma_window_functions.md), so — mirroring src/tableau.ts — we lower
+// each translatable window calc to a kind:'sql' helper element with an explicit
+// SQL `OVER (PARTITION BY ... ORDER BY ...)` clause projected over the dataset's
+// underlying physical source. Where the partition/order can't be determined we
+// fall back to the existing Null+description degrade.
+
+// Walk an analysis Definition and collect, per DataSetIdentifier, the union of
+// dimension column names placed on any visual's grouping shelf (GroupBy /
+// Category / Rows / Columns / etc.). These define the grain a window/table-calc
+// is evaluated at. Returns datasetIdentifier → array of raw column names.
+function collectVisualGroupingDims(def: any): Map<string, string[]> {
+  const out = new Map<string, Set<string>>();
+  const add = (col: any) => {
+    if (!col || !col.DataSetIdentifier || !col.ColumnName) return;
+    let s = out.get(col.DataSetIdentifier);
+    if (!s) { s = new Set(); out.set(col.DataSetIdentifier, s); }
+    s.add(col.ColumnName);
+  };
+  // CategoricalDimensionField / DateDimensionField / NumericalDimensionField
+  // are the dimension wrappers QuickSight uses on grouping shelves.
+  const DIM_KEYS = new Set(['CategoricalDimensionField', 'DateDimensionField', 'NumericalDimensionField']);
+  const walk = (o: any) => {
+    if (Array.isArray(o)) { for (const x of o) walk(x); return; }
+    if (!o || typeof o !== 'object') return;
+    for (const [k, v] of Object.entries(o)) {
+      if (DIM_KEYS.has(k) && v && typeof v === 'object') add((v as any).Column);
+      walk(v);
+    }
+  };
+  walk(def?.Sheets || []);
+  const result = new Map<string, string[]>();
+  for (const [k, s] of out) result.set(k, Array.from(s));
+  return result;
+}
+
+interface QSWindowResult {
+  _isWindow: true;
+  // canonical operation, mapped to a SQL window construction below
+  op:
+    | 'RUNNING_SUM' | 'RUNNING_AVG' | 'RUNNING_COUNT' | 'RUNNING_MAX' | 'RUNNING_MIN'
+    | 'PERCENT_OF_TOTAL'
+    | 'RANK' | 'DENSE_RANK'
+    | 'LAG' | 'LEAD'
+    | 'FIRST_VALUE' | 'LAST_VALUE'
+    | 'DIFFERENCE' | 'PERCENT_DIFFERENCE'
+    | 'WINDOW_SUM' | 'WINDOW_AVG' | 'WINDOW_COUNT' | 'WINDOW_MAX' | 'WINDOW_MIN'
+    | 'OVER_SUM' | 'OVER_AVG' | 'OVER_COUNT' | 'OVER_DISTINCT_COUNT' | 'OVER_MAX' | 'OVER_MIN';
+  innerAggFunc: string;      // SUM/AVG/COUNT/COUNT_DISTINCT/MIN/MAX — '' for RANK/DENSE_RANK
+  innerColRaw: string;       // raw inner column name (original case), '' for RANK-by-measure handled via innerExprSql
+  innerExprSql: string;      // SQL form of inner aggregate's *argument* (uppercased identifier), '' for bare rank
+  sortFields: { col: string; dir: 'ASC' | 'DESC' }[];  // ORDER BY (raw col names)
+  partitionFields: string[]; // PARTITION BY (raw col names)
+  offset?: number;           // for LAG/LEAD/DIFFERENCE/PERCENT_DIFFERENCE
+  rankSortExprSql?: string;  // for RANK/DENSE_RANK — SQL of the measure to ORDER BY (e.g. SUM(NET_REVENUE))
+  rankDir?: 'ASC' | 'DESC';
+}
+
+// QS window fn name (lowercased) → canonical op.
+const QS_WINDOW_OP: Record<string, QSWindowResult['op']> = {
+  runningsum: 'RUNNING_SUM', runningavg: 'RUNNING_AVG', runningcount: 'RUNNING_COUNT',
+  runningmax: 'RUNNING_MAX', runningmin: 'RUNNING_MIN',
+  percentoftotal: 'PERCENT_OF_TOTAL',
+  rank: 'RANK', denserank: 'DENSE_RANK',
+  lag: 'LAG', lead: 'LEAD',
+  firstvalue: 'FIRST_VALUE', lastvalue: 'LAST_VALUE',
+  difference: 'DIFFERENCE', percentdifference: 'PERCENT_DIFFERENCE',
+  // periodOverPeriod* are time-LAG variants — treat like difference/lag with offset -1
+  periodoverperioddifference: 'DIFFERENCE',
+  periodoverperiodpercentdifference: 'PERCENT_DIFFERENCE',
+  periodoverperiodlastvalue: 'LAG',
+  windowsum: 'WINDOW_SUM', windowavg: 'WINDOW_AVG', windowcount: 'WINDOW_COUNT',
+  windowmax: 'WINDOW_MAX', windowmin: 'WINDOW_MIN',
+  sumover: 'OVER_SUM', avgover: 'OVER_AVG', countover: 'OVER_COUNT',
+  distinctcountover: 'OVER_DISTINCT_COUNT', maxover: 'OVER_MAX', minover: 'OVER_MIN',
+};
+
+const QS_AGG_TO_SQL: Record<string, string> = {
+  sum: 'SUM', avg: 'AVG', count: 'COUNT', min: 'MIN', max: 'MAX',
+  distinct_count: 'COUNT_DISTINCT', distinctcount: 'COUNT_DISTINCT',
+};
+
+// Strip the QS {brace} from a field token and return the bare original-case name.
+function _qsStripBrace(tok: string): string {
+  const m = tok.trim().match(/^\{([^{}]+)\}$/);
+  let inner = m ? m[1] : tok.trim();
+  // strip a trailing dataset qualifier [dsId]
+  inner = inner.replace(/\[[^\]]+\]\s*$/, '').trim();
+  return inner;
+}
+
+// Parse a sort-spec list token "[{COL} ASC, {COL2} DESC]" → fields with dir.
+function _qsParseSortList(tok: string): { col: string; dir: 'ASC' | 'DESC' }[] {
+  const inner = tok.trim().replace(/^\[/, '').replace(/\]$/, '');
+  if (!inner.trim()) return [];
+  return splitTopLevel(inner, ',').map(part => {
+    const mm = part.trim().match(/^(.*?)(?:\s+(ASC|DESC))?$/i);
+    const rawField = (mm ? mm[1] : part).trim();
+    const dir = (mm && mm[2] ? mm[2].toUpperCase() : 'ASC') as 'ASC' | 'DESC';
+    return { col: _qsStripBrace(rawField), dir };
+  }).filter(f => f.col);
+}
+
+// Parse a partition-spec list token "[{COL}, {COL2}]" → bare field names.
+function _qsParsePartitionList(tok: string): string[] {
+  const inner = tok.trim().replace(/^\[/, '').replace(/\]$/, '');
+  if (!inner.trim()) return [];
+  return splitTopLevel(inner, ',').map(_qsStripBrace).filter(Boolean);
+}
+
+// Parse the inner aggregate measure "sum({NET_REVENUE})" → {func, col}.
+function _qsParseInnerAgg(tok: string): { func: string; col: string } | null {
+  const m = tok.trim().match(/^([A-Za-z_]+)\s*\(\s*\{([^{}]+)\}\s*\)$/);
+  if (!m) return null;
+  const func = QS_AGG_TO_SQL[m[1].toLowerCase()];
+  if (!func) return null;
+  return { func, col: m[2].replace(/\[[^\]]+\]\s*$/, '').trim() };
+}
+
+// Uppercase, SQL-identifier-safe form of a raw QS column name.
+function _qsColToSql(raw: string): string {
+  return raw.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+}
+
+/**
+ * Parse a QuickSight window/table-calc expression into a structured form, or
+ * return null when the expression is not a (recognized) window calc OR its
+ * partition/order axes cannot be extracted (caller then degrades to Null).
+ */
+function quicksightParseWindow(expr: string): QSWindowResult | null {
+  const s = (expr || '').trim();
+  const m = s.match(/^([A-Za-z_]+)\s*\(([\s\S]*)\)\s*$/);
+  if (!m) return null;
+  const fn = m[1].toLowerCase();
+  const op = QS_WINDOW_OP[fn];
+  if (!op) return null;
+  const args = splitTopLevel(m[2], ',');
+  if (args.length === 0) return null;
+
+  const base = (sortFields: QSWindowResult['sortFields'], partitionFields: string[],
+                inner: { func: string; col: string } | null,
+                extra: Partial<QSWindowResult> = {}): QSWindowResult => ({
+    _isWindow: true, op,
+    innerAggFunc: inner?.func || '',
+    innerColRaw: inner?.col || '',
+    innerExprSql: inner ? _qsColToSql(inner.col) : '',
+    sortFields, partitionFields, ...extra,
+  });
+
+  switch (op) {
+    // measure, [sort], [partition?]
+    case 'RUNNING_SUM': case 'RUNNING_AVG': case 'RUNNING_COUNT':
+    case 'RUNNING_MAX': case 'RUNNING_MIN': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const sort = args[1] ? _qsParseSortList(args[1]) : [];
+      const part = args[2] ? _qsParsePartitionList(args[2]) : [];
+      if (sort.length === 0) return null; // running needs an order
+      return base(sort, part, inner);
+    }
+    // measure, [partition]
+    case 'PERCENT_OF_TOTAL': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const part = args[1] ? _qsParsePartitionList(args[1]) : [];
+      return base([], part, inner);
+    }
+    // sumOver(measure, [partition], calcLevel?) — partition list is the OVER scope
+    case 'OVER_SUM': case 'OVER_AVG': case 'OVER_COUNT':
+    case 'OVER_DISTINCT_COUNT': case 'OVER_MAX': case 'OVER_MIN': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const part = args[1] ? _qsParsePartitionList(args[1]) : [];
+      return base([], part, inner);
+    }
+    // rank([sort], [partition]) — sort token may carry a measure expr with ASC/DESC
+    case 'RANK': case 'DENSE_RANK': {
+      const sortTok = args[0] || '';
+      const inner = sortTok.replace(/^\[/, '').replace(/\]$/, '').trim();
+      // try measure form: "sum({col}) DESC" or "{col} DESC"
+      const dm = inner.match(/^([\s\S]*?)\s+(ASC|DESC)\s*$/i);
+      const exprPart = dm ? dm[1].trim() : inner;
+      const dir = (dm && dm[2] ? dm[2].toUpperCase() : 'DESC') as 'ASC' | 'DESC';
+      let rankSortExprSql = '';
+      const innerAgg = _qsParseInnerAgg(exprPart);
+      if (innerAgg) {
+        rankSortExprSql = innerAgg.func === 'COUNT_DISTINCT'
+          ? `COUNT(DISTINCT ${_qsColToSql(innerAgg.col)})`
+          : `${innerAgg.func}(${_qsColToSql(innerAgg.col)})`;
+      } else {
+        const fld = _qsStripBrace(exprPart);
+        if (!fld) return null;
+        rankSortExprSql = _qsColToSql(fld);
+      }
+      const part = args[1] ? _qsParsePartitionList(args[1]) : [];
+      return base([], part, null, { rankSortExprSql, rankDir: dir });
+    }
+    // lag/lead(measure, [sort], offset?, [partition?])
+    case 'LAG': case 'LEAD': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const sort = args[1] ? _qsParseSortList(args[1]) : [];
+      if (sort.length === 0) return null;
+      let offset = 1; let partIdx = 2;
+      if (args[2] && /^-?\d+$/.test(args[2].trim())) { offset = Math.abs(parseInt(args[2], 10)) || 1; partIdx = 3; }
+      const part = args[partIdx] ? _qsParsePartitionList(args[partIdx]) : [];
+      return base(sort, part, inner, { offset });
+    }
+    case 'FIRST_VALUE': case 'LAST_VALUE': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const sort = args[1] ? _qsParseSortList(args[1]) : [];
+      if (sort.length === 0) return null;
+      const part = args[2] ? _qsParsePartitionList(args[2]) : [];
+      return base(sort, part, inner);
+    }
+    // difference(measure, [sort], offset, [partition]) — LAG-based delta
+    case 'DIFFERENCE': case 'PERCENT_DIFFERENCE': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const sort = args[1] ? _qsParseSortList(args[1]) : [];
+      if (sort.length === 0) return null;
+      let offset = 1; let partIdx = 2;
+      if (args[2] && /^-?\d+$/.test(args[2].trim())) { offset = Math.abs(parseInt(args[2], 10)) || 1; partIdx = 3; }
+      const part = args[partIdx] ? _qsParsePartitionList(args[partIdx]) : [];
+      return base(sort, part, inner, { offset });
+    }
+    // windowSum(measure, startIndex, endIndex, [partition]) — full-partition agg
+    case 'WINDOW_SUM': case 'WINDOW_AVG': case 'WINDOW_COUNT':
+    case 'WINDOW_MAX': case 'WINDOW_MIN': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      // last arg may be a partition list; numeric start/end indices are ignored
+      const last = args[args.length - 1];
+      const part = last && /^\[/.test(last.trim()) ? _qsParsePartitionList(last) : [];
+      return base([], part, inner);
+    }
+  }
+  return null;
+}
+
+// ── QS window helper-element registry ───────────────────────────────────────
+// Groups window calcs that share the same (partition, order) signature onto one
+// kind:'sql' helper element so multiple OVER columns coexist in a single SELECT.
+interface QSWindowContext {
+  helpers: Map<string, QSWindowHelper>;
+  usedAliases: Set<string>;
+  extraElements: SigmaElement[];
+  connectionId: string;
+}
+
+interface QSWindowHelper {
+  element: SigmaElement;
+  grainRaw: string[];              // raw base-grain dim col names (visual grouping dims ∪ partition ∪ order)
+  partitionRaw: string[];          // raw partition col names (original case)
+  orderSpec: { col: string; dir: 'ASC' | 'DESC' }[]; // raw order col names + dir
+  innerAggs: Record<string, { alias: string }>;       // dedup base aggregates keyed by func::sqlexpr
+  windowAliases: Set<string>;
+  overParts: string[];             // "<over sql> AS <ALIAS>" strings
+  baseFromSql: string;             // the FROM source: a fq table or "(<custom sql>)"
+}
+
+function _qsWindowAlias(name: string, used: Set<string>): string {
+  let b = (name || 'WIN_VAL').toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '').replace(/_+/g, '_');
+  if (!b) b = 'WIN_VAL';
+  let a = b, n = 2;
+  while (used.has(a)) a = `${b}_${n++}`;
+  used.add(a);
+  return a;
+}
+
+/**
+ * Lower a parsed QS window calc to a column on a shared kind:'sql' helper element.
+ * Returns true if it translated, false if it should degrade (caller emits Null).
+ *
+ *  - `primary` is the element the calc would otherwise have landed on; we read
+ *    its underlying physical source (warehouse-table path or CustomSql statement)
+ *    to build the helper's FROM.
+ *  - `primaryColMap` maps lowercased col display-name → ColMapEntry (for raw names).
+ *  - `helpers`/`usedAliases` accumulate across calls so calcs SHARE a helper.
+ *  - `extraElements` collects newly-created helper elements (caller appends them).
+ */
+function lowerQSWindowCalc(
+  win: QSWindowResult,
+  calcName: string,
+  primary: SigmaElement,
+  primaryColMap: Map<string, ColMapEntry> | undefined,
+  helpers: Map<string, QSWindowHelper>,
+  usedAliases: Set<string>,
+  extraElements: SigmaElement[],
+  connectionId: string,
+  visualGrainDims: string[],
+  warnings: string[],
+): boolean {
+  // 1. Resolve the underlying FROM source for the helper SQL.
+  const baseFromSql = qsResolveBaseFrom(primary);
+  if (!baseFromSql) {
+    warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — could not resolve a warehouse FROM source for the primary element; degraded to Null.`);
+    return false;
+  }
+
+  // 2. Validate partition / order field availability against the source.
+  //    We require every partition + order field to be a known raw column so the
+  //    generated SQL references real columns (else degrade).
+  const knownRaw = qsKnownRawColumns(primary, primaryColMap);
+  const resolveRaw = (name: string): string | null => {
+    // direct case-insensitive match on raw col names
+    const hit = knownRaw.find(r => r.toLowerCase() === name.toLowerCase());
+    return hit || (knownRaw.length === 0 ? name : null); // if we have no col metadata, trust the name
+  };
+  const partitionRaw: string[] = [];
+  for (const p of win.partitionFields) {
+    const r = resolveRaw(p);
+    if (!r) { warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — partition field "${p}" not found in source columns; degraded to Null.`); return false; }
+    partitionRaw.push(r);
+  }
+  const orderSpec: { col: string; dir: 'ASC' | 'DESC' }[] = [];
+  for (const sf of win.sortFields) {
+    const r = resolveRaw(sf.col);
+    if (!r) { warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — order field "${sf.col}" not found in source columns; degraded to Null.`); return false; }
+    orderSpec.push({ col: r, dir: sf.dir });
+  }
+
+  // Ops that need an order dim but have none → degrade.
+  const needsOrder = ['RUNNING_SUM','RUNNING_AVG','RUNNING_COUNT','RUNNING_MAX','RUNNING_MIN',
+    'LAG','LEAD','FIRST_VALUE','LAST_VALUE','DIFFERENCE','PERCENT_DIFFERENCE'].includes(win.op);
+  if (needsOrder && orderSpec.length === 0) {
+    warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — no order field could be determined; degraded to Null.`);
+    return false;
+  }
+  // PERCENT_OF_TOTAL / WINDOW_* / OVER_* / RANK with empty partition → global; allowed.
+
+  // 2b. Base aggregation grain = visual grouping dims (the grain the calc is
+  //     evaluated at) ∪ partition fields ∪ order fields. Aggregating only to the
+  //     partition/order axes collapses rows and breaks rank/percentOfTotal
+  //     (always 1 / 100%). Resolve the visual grain dims to raw cols too.
+  const grainRaw: string[] = [];
+  const grainSeen = new Set<string>();
+  const pushGrain = (raw: string) => {
+    const a = _qsColToSql(raw);
+    if (grainSeen.has(a)) return; grainSeen.add(a);
+    grainRaw.push(raw);
+  };
+  for (const g of visualGrainDims) {
+    const r = resolveRaw(g);
+    if (r) pushGrain(r); // silently skip visual dims not on this source (e.g. dims from a joined element)
+  }
+  for (const p of partitionRaw) pushGrain(p);
+  for (const o of orderSpec) pushGrain(o.col);
+
+  // 3. Get-or-create the shared helper element keyed by (source, grain, partition, order).
+  const grainKey = grainRaw.map(_qsColToSql).slice().sort().join(',');
+  const partKey = partitionRaw.map(_qsColToSql).slice().sort().join(',');
+  const orderKey = orderSpec.map(o => `${_qsColToSql(o.col)} ${o.dir}`).join(',');
+  const key = `${baseFromSql}||${grainKey}||${partKey}||${orderKey}`;
+  let helper = helpers.get(key);
+  if (!helper) {
+    const cols: SigmaColumn[] = [];
+    const order: string[] = [];
+    // Project every grain dim (passthrough) so the workbook can group/join on
+    // them. Use [Custom SQL/<SQL_ALIAS>] refs (SQL element rule).
+    for (const g of grainRaw) {
+      const a = _qsColToSql(g);
+      const id = sigmaShortId();
+      cols.push({ id, name: sigmaDisplayName(g), formula: `[Custom SQL/${a}]` });
+      order.push(id);
+    }
+    const el: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      // SQL elements normally omit element-level name (DM rule #3), but every
+      // element needs a unique name for dedupeElementNames — give a descriptive
+      // one (dedupe keeps it unique).
+      name: `Window ${partitionRaw.join(', ') || 'All'}${orderSpec.length ? ' by ' + orderSpec.map(o => o.col).join(', ') : ''}`,
+      source: { connectionId, kind: 'sql', statement: '__QS_WINDOW_PLACEHOLDER__' },
+      columns: cols,
+      order,
+    };
+    helper = { element: el, grainRaw, partitionRaw, orderSpec, innerAggs: {}, windowAliases: new Set(), overParts: [], baseFromSql };
+    helpers.set(key, helper);
+    extraElements.push(el);
+  }
+
+  // 4. Register the inner aggregate (e.g. SUM(NET_REVENUE) AS NET_REVENUE).
+  let innerAlias = '';
+  if (win.innerAggFunc && win.innerExprSql) {
+    innerAlias = qsRegisterInnerAgg(helper, win.innerAggFunc, win.innerExprSql);
+  }
+  // RANK/DENSE_RANK order by a measure expr (e.g. SUM(NET_REVENUE)). Register it
+  // as a base aggregate so the OVER orders by the pre-aggregated alias, not a
+  // double-aggregate of the base column.
+  if ((win.op === 'RANK' || win.op === 'DENSE_RANK') && win.rankSortExprSql) {
+    const am = win.rankSortExprSql.match(/^([A-Z_]+)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_]+)\s*\)$/i);
+    if (am) {
+      const fn = /distinct/i.test(win.rankSortExprSql) ? 'COUNT_DISTINCT' : am[1].toUpperCase();
+      qsRegisterInnerAgg(helper, fn, am[2].toUpperCase());
+    }
+  }
+
+  // 5. Build the OVER clause.
+  const winAlias = _qsWindowAlias(calcName, usedAliases);
+  const overSql = qsBuildOverClause(win, helper, innerAlias);
+  if (!overSql) {
+    warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — could not build an OVER clause; degraded to Null.`);
+    return false;
+  }
+  helper.overParts.push(`${overSql} AS ${winAlias}`);
+  helper.windowAliases.add(winAlias);
+  const calcId = sigmaShortId();
+  helper.element.columns.push({ id: calcId, name: stripParens(sigmaDisplayName(calcName)), formula: `[Custom SQL/${winAlias}]` });
+  helper.element.order.push(calcId);
+  warnings.push(`✅ Window "${calcName}" (${win.op}) → SQL helper "${helper.element.name}" alias ${winAlias}`);
+  return true;
+}
+
+// Resolve the FROM source for a window helper from the primary element.
+//   warehouse-table → "DB.SCHEMA.TABLE"
+//   sql (CustomSql)  → "(<statement>)" subquery
+function qsResolveBaseFrom(primary: SigmaElement): string | null {
+  const src = primary.source || {};
+  if (src.kind === 'warehouse-table' && Array.isArray(src.path) && src.path.length) {
+    return src.path.join('.');
+  }
+  if (src.kind === 'sql' && typeof src.statement === 'string' && src.statement.trim()
+      && !src.statement.includes('_placeholder') && !/^--/.test(src.statement.trim())) {
+    // Wrap the custom SQL as a derived table.
+    return `(${src.statement.trim().replace(/;\s*$/, '')})`;
+  }
+  return null;
+}
+
+// Known raw column names available on the primary's source (for validation).
+function qsKnownRawColumns(primary: SigmaElement, colMap?: Map<string, ColMapEntry>): string[] {
+  const out: string[] = [];
+  if (colMap) for (const e of colMap.values()) out.push(e.raw);
+  return out;
+}
+
+function qsRegisterInnerAgg(helper: QSWindowHelper, aggFunc: string, exprSql: string): string {
+  const key = `${aggFunc}::${exprSql}`;
+  if (helper.innerAggs[key]) return helper.innerAggs[key].alias;
+  const idMatch = exprSql.match(/[A-Z][A-Z0-9_]*/);
+  let alias = idMatch ? idMatch[0] : 'VAL';
+  let n = 2;
+  while (helper.windowAliases.has(alias) || Object.values(helper.innerAggs).some(v => v.alias === alias)) {
+    alias = idMatch ? `${idMatch[0]}_${n++}` : `VAL_${n++}`;
+  }
+  helper.innerAggs[key] = { alias };
+  return alias;
+}
+
+function qsBuildOverClause(win: QSWindowResult, helper: QSWindowHelper, innerAlias: string): string | null {
+  const partBy = helper.partitionRaw.length
+    ? `PARTITION BY ${helper.partitionRaw.map(_qsColToSql).join(', ')}`
+    : '';
+  const orderBy = helper.orderSpec.length
+    ? `ORDER BY ${helper.orderSpec.map(o => `${_qsColToSql(o.col)} ${o.dir}`).join(', ')}`
+    : '';
+  const spec = (parts: string[]) => parts.filter(Boolean).join(' ');
+
+  switch (win.op) {
+    case 'RUNNING_SUM': case 'RUNNING_AVG': case 'RUNNING_COUNT':
+    case 'RUNNING_MAX': case 'RUNNING_MIN': {
+      if (!innerAlias || !orderBy) return null;
+      const fn = win.op.replace('RUNNING_', '');
+      return `${fn}(${innerAlias}) OVER (${spec([partBy, orderBy])} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`;
+    }
+    case 'PERCENT_OF_TOTAL': {
+      if (!innerAlias) return null;
+      // x / SUM(x) OVER (partition) * 100
+      return `(${innerAlias} / NULLIF(SUM(${innerAlias}) OVER (${partBy}), 0)) * 100`;
+    }
+    case 'OVER_SUM': case 'OVER_AVG': case 'OVER_COUNT':
+    case 'OVER_DISTINCT_COUNT': case 'OVER_MAX': case 'OVER_MIN': {
+      if (!innerAlias) return null;
+      const fn = win.op === 'OVER_DISTINCT_COUNT' ? 'COUNT'
+        : win.op.replace('OVER_', '');
+      return `${fn}(${innerAlias}) OVER (${partBy})`;
+    }
+    case 'WINDOW_SUM': case 'WINDOW_AVG': case 'WINDOW_COUNT':
+    case 'WINDOW_MAX': case 'WINDOW_MIN': {
+      if (!innerAlias) return null;
+      const fn = win.op.replace('WINDOW_', '');
+      return `${fn}(${innerAlias}) OVER (${partBy})`;
+    }
+    case 'RANK': case 'DENSE_RANK': {
+      const sortExpr = win.rankSortExprSql;
+      if (!sortExpr) return null;
+      // The rank measure is computed over the pre-aggregated base alias; if it is
+      // an aggregate of an inner col registered as an alias, use that alias.
+      let orderExpr = sortExpr;
+      // map a "SUM(NET_REVENUE)"-style sort expr to its registered alias if present
+      for (const k of Object.keys(helper.innerAggs)) {
+        const [fnK, exprK] = k.split('::');
+        const reconstructed = fnK === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${exprK})` : `${fnK}(${exprK})`;
+        if (reconstructed === sortExpr) { orderExpr = helper.innerAggs[k].alias; break; }
+      }
+      const fn = win.op === 'DENSE_RANK' ? 'DENSE_RANK' : 'RANK';
+      return `${fn}() OVER (${spec([partBy, `ORDER BY ${orderExpr} ${win.rankDir || 'DESC'}`])})`;
+    }
+    case 'LAG': case 'LEAD': {
+      if (!innerAlias || !orderBy) return null;
+      const fn = win.op;
+      return `${fn}(${innerAlias}, ${win.offset ?? 1}) OVER (${spec([partBy, orderBy])})`;
+    }
+    case 'FIRST_VALUE': case 'LAST_VALUE': {
+      if (!innerAlias || !orderBy) return null;
+      const frame = win.op === 'LAST_VALUE'
+        ? 'ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING' : '';
+      return `${win.op}(${innerAlias}) OVER (${spec([partBy, orderBy, frame])})`;
+    }
+    case 'DIFFERENCE': {
+      if (!innerAlias || !orderBy) return null;
+      return `(${innerAlias} - LAG(${innerAlias}, ${win.offset ?? 1}) OVER (${spec([partBy, orderBy])}))`;
+    }
+    case 'PERCENT_DIFFERENCE': {
+      if (!innerAlias || !orderBy) return null;
+      const prev = `LAG(${innerAlias}, ${win.offset ?? 1}) OVER (${spec([partBy, orderBy])})`;
+      return `((${innerAlias} - ${prev}) / NULLIF(${prev}, 0)) * 100`;
+    }
+  }
+  return null;
+}
+
+// Finalize a helper: build the WITH base AS (...) SELECT ... OVER ... statement.
+function finalizeQSWindowHelper(helper: QSWindowHelper): void {
+  const selectParts: string[] = [];
+  // Base grain dims (visual grouping ∪ partition ∪ order) — pass through, grouped.
+  const groupCols: string[] = [];
+  const seen = new Set<string>();
+  for (const g of helper.grainRaw) {
+    const a = _qsColToSql(g);
+    if (seen.has(a)) continue; seen.add(a);
+    selectParts.push(a); groupCols.push(a);
+  }
+  // inner aggregates
+  for (const k of Object.keys(helper.innerAggs)) {
+    const [aggFunc, exprSql] = k.split('::');
+    const a = helper.innerAggs[k];
+    const sqlFn = aggFunc === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${exprSql})` : `${aggFunc}(${exprSql})`;
+    selectParts.push(`${sqlFn} AS ${a.alias}`);
+  }
+  const groupByClause = groupCols.length ? ` GROUP BY ${groupCols.map((_, i) => i + 1).join(', ')}` : '';
+  const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${helper.baseFromSql}${groupByClause}`;
+
+  const innerProjection: string[] = [
+    ...groupCols,
+    ...Object.values(helper.innerAggs).map(v => v.alias),
+  ];
+  const outerProjection = innerProjection.concat(helper.overParts);
+  helper.element.source.statement = `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
+}
+
 // ── Stub for analyses with no DescribeDataSet supplied ──────────────────────
 
 function synthesizeStubDataset(
@@ -720,10 +1322,21 @@ function addAnalysisCalcCol(
   expression: string,
   derivedViewBySrcId: Map<string, SigmaElement>,
   allElements: SigmaElement[],
+  winCtx: QSWindowContext,
+  visualGrainDims: string[],
   warnings: string[],
 ): void {
   const id = sigmaInodeId(name.toUpperCase());
   const display = stripParens(sigmaDisplayName(name));
+
+  // Window/table-calc functions silently error in Sigma DM calc columns. Try to
+  // lower to a kind:'sql' helper element (SQL OVER clause) before degrading.
+  const win = quicksightParseWindow(expression || '');
+  if (win) {
+    const ok = lowerQSWindowCalc(win, name, entry.primary, entry.primaryColMap, winCtx.helpers, winCtx.usedAliases, winCtx.extraElements, winCtx.connectionId, visualGrainDims, warnings);
+    if (ok) return; // lowered to helper element
+  }
+
   const ex = quicksightFormulaToSigmaEx(expression || '', warnings);
   let formula = ex.formula;
   const description = ex.description;
