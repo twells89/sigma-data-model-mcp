@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { pbiDaxToSigma, convertPowerBIToSigma } from './powerbi.js';
+import { pbiDaxToSigma, convertPowerBIToSigma, hasBareWindowFn } from './powerbi.js';
 
 const COMP_BIM = '/tmp/pbi-migrate/workforce-comp-distribution-untested-dax/model/model.bim';
 
@@ -33,6 +33,23 @@ test('qx16: CALCULATE([measureRef], KEEPFILTERS(SEARCH..>0)) → CountDistinctIf
   assert.match(out!, /CountDistinctIf\(/, `expected CountDistinctIf, got: ${out}`);
   assert.match(out!, /Find\(\[ROLE\]/, `expected SEARCH→Find on [ROLE], got: ${out}`);
   assert.doesNotMatch(out!, /KEEPFILTERS/i, `KEEPFILTERS not stripped: ${out}`);
+});
+
+test('qx16 guard: a non-simple measure ref (SUM(a)-SUM(b)) is NOT inlined into a broken formula', () => {
+  // CALCULATE([Net], <pred>) where [Net] is a multi-aggregate measure must NOT be
+  // inlined (greedy aggM would mis-split it). It drops to a warning instead.
+  const out = pbiDaxToSigma('CALCULATE([Net], [Region] = "West")', [], 'X',
+    { Net: 'SUM(Sales[Amt]) - SUM(Sales[Cost])' });
+  // either dropped (null) or, if it ever translates, must not be a broken SumIf split
+  if (out !== null) {
+    assert.doesNotMatch(out, /\)\s*-\s*(SUM|Sum)\(/, `broken multi-aggregate split leaked: ${out}`);
+  }
+});
+
+test('jzd8 false-positive: a string literal containing "Rank (" is not dropped', () => {
+  // The window-fn guard must ignore matches inside string literals.
+  assert.equal(hasBareWindowFn('If([Score] > 90, "Top Rank (1)", "Other")'), false);
+  assert.equal(hasBareWindowFn('RankDense([Salary], "desc", [Dept])'), true);
 });
 
 test('jzd8: window calc column never lands as a base-table column formula', () => {
