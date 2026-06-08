@@ -1,0 +1,12 @@
+{
+  "description": "DATENAME calc translation. Tableau DATENAME('month'|'weekday', date) → MonthName/WeekdayName; numeric units ('year'|'quarter') → Text(Year(...))/Text(Quarter(...)). Before the fix, DATENAME was absent from the function map, so the unit got quote-fixed but the function name stayed DATENAME(...) — an untranslated SQL function that resolves to a type:error column at query time (noErrorColumns catches it). Targets CSA.TJ.DATE_DIM (FULL_DATE is a real date column).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

@@ -369,6 +369,23 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     const fn = partMap[part.toLowerCase()];
     return fn ? fn + '(' + dateArg.trim() + ')' : m;
   });
+  // DATENAME('month', [Date]) → MonthName([Date]); 'weekday' → WeekdayName([Date]);
+  // numeric units (year/quarter/day) have no name fn in Sigma → Text(<numeric part>).
+  f = f.replace(/\bDATENAME\s*\(\s*'(\w+)'\s*,\s*([^,)]+)(?:,[^)]*)?\)/gi, (m, part, dateArg) => {
+    const arg = dateArg.trim();
+    switch (part.toLowerCase()) {
+      case 'month':                  return 'MonthName(' + arg + ')';
+      case 'weekday': case 'dayofweek': return 'WeekdayName(' + arg + ')';
+      case 'year':    return 'Text(Year(' + arg + '))';
+      case 'quarter': return 'Text(Quarter(' + arg + '))';
+      case 'day':     return 'Text(Day(' + arg + '))';
+      case 'week':    return 'Text(Week(' + arg + '))';
+      case 'hour':    return 'Text(Hour(' + arg + '))';
+      case 'minute':  return 'Text(Minute(' + arg + '))';
+      case 'second':  return 'Text(Second(' + arg + '))';
+      default:        return m;
+    }
+  });
   f = f.replace(/\bDATETRUNC\s*\(\s*'([^']+)'\s*,/gi, 'DateTrunc("$1",');
   f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
   f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
