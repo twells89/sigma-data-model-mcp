@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Date Dim' inline='true' name='federated.datedim' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0' />
+        </named-connections>
+        <relation connection='snowflake.0' name='DATE_DIM' table='[CSA].[TJ].[DATE_DIM]' type='table'>
+          <columns>
+            <column datatype='date' name='FULL_DATE' ordinal='1' />
+            <column datatype='integer' name='YEAR' ordinal='2' />
+          </columns>
+        </relation>
+      </connection>
+      <!-- DATENAME('month',...) → MonthName(...). Pre-fix this stayed DATENAME(...) → type:error. -->
+      <column caption='Calc Month Name' datatype='string' name='[Calc Month Name]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula="DATENAME('month',[FULL_DATE])" />
+      </column>
+      <!-- DATENAME('weekday',...) → WeekdayName(...). -->
+      <column caption='Calc Weekday Name' datatype='string' name='[Calc Weekday Name]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula="DATENAME('weekday',[FULL_DATE])" />
+      </column>
+      <!-- DATENAME('year',...) → Text(Year(...)); numeric unit has no name fn in Sigma. -->
+      <column caption='Calc Year Text' datatype='string' name='[Calc Year Text]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula="DATENAME('year',[FULL_DATE])" />
+      </column>
+      <!-- DATENAME('quarter',...) → Text(Quarter(...)). -->
+      <column caption='Calc Quarter Text' datatype='string' name='[Calc Quarter Text]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula="DATENAME('quarter',[FULL_DATE])" />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>
