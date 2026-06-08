@@ -1,5 +1,5 @@
 {
-  "_source": "Synthetic — CustomSql dataset with a dataset-level CreateColumnsOperation that uses a window/table-calc function (runningSum). Verifies the window calc degrades to a valid Null formula (not a comment-only formula that fails the whole POST — beads-sigma-woaa).",
+  "_source": "Synthetic — CustomSql dataset whose LogicalTableMap CreateColumnsOperation adds FIVE window/table-calc columns spanning every translated family: runningSum (running), stdevOver (statistical), percentileOver (windowed PERCENTILE_CONT), percentileRank (PERCENT_RANK), and periodToDateSumOverTime YEAR (date-anchored YTD). The CustomSql synthesizes a real ORDER_DATE (DATE) from the YYYYMMDD ORDER_DATE_KEY and surfaces REGION so the partition/period anchors resolve to real warehouse columns. Each calc must lower to a kind:'sql' helper element with an explicit OVER / WITHIN GROUP clause and resolve to a concrete (non-error) column at query time (beads-sigma-woaa + statistical/periodToDate extension).",
   "DataSet": {
     "Arn": "arn:aws:quicksight:us-east-1:111122223333:dataset/orders-window",
     "DataSetId": "orders-window",
@@ -10,11 +10,13 @@
         "CustomSql": {
           "DataSourceArn": "arn:aws:quicksight:us-east-1:111122223333:datasource/snowflake-csa-tj",
           "Name": "orders_window",
-          "SqlQuery": "select ORDER_ID, NET_REVENUE, ORDER_DATE_KEY from CSA.TJ.ORDER_FACT",
+          "SqlQuery": "select f.ORDER_ID, f.NET_REVENUE, f.ORDER_DATE_KEY, TO_DATE(TO_VARCHAR(f.ORDER_DATE_KEY), 'YYYYMMDD') as ORDER_DATE, c.REGION from CSA.TJ.ORDER_FACT f left join CSA.TJ.CUSTOMER_DIM c on f.CUSTOMER_KEY = c.CUSTOMER_KEY",
           "Columns": [
             {"Name": "ORDER_ID",       "Type": "STRING"},
             {"Name": "NET_REVENUE",    "Type": "DECIMAL"},
-            {"Name": "ORDER_DATE_KEY", "Type": "INTEGER"}
+            {"Name": "ORDER_DATE_KEY", "Type": "INTEGER"},
+            {"Name": "ORDER_DATE",     "Type": "DATETIME"},
+            {"Name": "REGION",         "Type": "STRING"}
           ]
         }
       }
@@ -25,7 +27,11 @@
         "Source": {"PhysicalTableId": "ordersSql"},
         "DataTransforms": [
           {"CreateColumnsOperation": {"Columns": [
-            {"ColumnId": "calc-run", "ColumnName": "Running Revenue", "Expression": "runningSum(sum({NET_REVENUE}), [{ORDER_DATE_KEY} ASC])"}
+            {"ColumnId": "calc-run",  "ColumnName": "Running Revenue",   "Expression": "runningSum(sum({NET_REVENUE}), [{ORDER_DATE_KEY} ASC])"},
+            {"ColumnId": "calc-std",  "ColumnName": "Revenue StdDev",    "Expression": "stdevOver(sum({NET_REVENUE}), [{REGION}])"},
+            {"ColumnId": "calc-p90",  "ColumnName": "Revenue P90",       "Expression": "percentileOver(sum({NET_REVENUE}), 90, [{REGION}])"},
+            {"ColumnId": "calc-prnk", "ColumnName": "Revenue Pct Rank",  "Expression": "percentileRank([sum({NET_REVENUE}) DESC], [{REGION}])"},
+            {"ColumnId": "calc-ytd",  "ColumnName": "Revenue YTD",       "Expression": "periodToDateSumOverTime(sum({NET_REVENUE}), {ORDER_DATE}, YEAR)"}
           ]}}
         ]
       }
@@ -34,7 +40,13 @@
       {"Name": "ORDER_ID", "Type": "STRING"},
       {"Name": "NET_REVENUE", "Type": "DECIMAL"},
       {"Name": "ORDER_DATE_KEY", "Type": "INTEGER"},
-      {"Name": "Running Revenue", "Type": "DECIMAL"}
+      {"Name": "ORDER_DATE", "Type": "DATETIME"},
+      {"Name": "REGION", "Type": "STRING"},
+      {"Name": "Running Revenue", "Type": "DECIMAL"},
+      {"Name": "Revenue StdDev", "Type": "DECIMAL"},
+      {"Name": "Revenue P90", "Type": "DECIMAL"},
+      {"Name": "Revenue Pct Rank", "Type": "DECIMAL"},
+      {"Name": "Revenue YTD", "Type": "DECIMAL"}
     ]
   }
 }

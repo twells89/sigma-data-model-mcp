@@ -777,15 +777,26 @@ interface QSWindowResult {
     | 'FIRST_VALUE' | 'LAST_VALUE'
     | 'DIFFERENCE' | 'PERCENT_DIFFERENCE'
     | 'WINDOW_SUM' | 'WINDOW_AVG' | 'WINDOW_COUNT' | 'WINDOW_MAX' | 'WINDOW_MIN'
-    | 'OVER_SUM' | 'OVER_AVG' | 'OVER_COUNT' | 'OVER_DISTINCT_COUNT' | 'OVER_MAX' | 'OVER_MIN';
+    | 'OVER_SUM' | 'OVER_AVG' | 'OVER_COUNT' | 'OVER_DISTINCT_COUNT' | 'OVER_MAX' | 'OVER_MIN'
+    // statistical OVER windows
+    | 'OVER_STDDEV_SAMP' | 'OVER_STDDEV_POP' | 'OVER_VAR_SAMP' | 'OVER_VAR_POP'
+    // windowed percentiles (PERCENTILE_CONT/DISC WITHIN GROUP ... OVER (PARTITION BY))
+    | 'OVER_PCT_CONT' | 'OVER_PCT_DISC'
+    // PERCENT_RANK()-based percentile rank (rank-shaped: sort + partition, no inner measure)
+    | 'PERCENTILE_RANK'
+    // periodToDate* — date-anchored running aggregate
+    | 'PTD_SUM' | 'PTD_AVG' | 'PTD_MAX' | 'PTD_MIN' | 'PTD_COUNT';
   innerAggFunc: string;      // SUM/AVG/COUNT/COUNT_DISTINCT/MIN/MAX — '' for RANK/DENSE_RANK
   innerColRaw: string;       // raw inner column name (original case), '' for RANK-by-measure handled via innerExprSql
   innerExprSql: string;      // SQL form of inner aggregate's *argument* (uppercased identifier), '' for bare rank
   sortFields: { col: string; dir: 'ASC' | 'DESC' }[];  // ORDER BY (raw col names)
   partitionFields: string[]; // PARTITION BY (raw col names)
   offset?: number;           // for LAG/LEAD/DIFFERENCE/PERCENT_DIFFERENCE
-  rankSortExprSql?: string;  // for RANK/DENSE_RANK — SQL of the measure to ORDER BY (e.g. SUM(NET_REVENUE))
+  rankSortExprSql?: string;  // for RANK/DENSE_RANK/PERCENTILE_RANK — SQL of the measure to ORDER BY (e.g. SUM(NET_REVENUE))
   rankDir?: 'ASC' | 'DESC';
+  percentile?: number;       // for OVER_PCT_CONT/OVER_PCT_DISC — quantile 0..1
+  ptdDateRaw?: string;       // for PTD_* — raw date dimension column name
+  ptdPeriod?: 'YEAR' | 'QUARTER' | 'MONTH' | 'WEEK' | 'DAY'; // DATE_TRUNC unit for periodToDate partition
 }
 
 // QS window fn name (lowercased) → canonical op.
@@ -805,6 +816,18 @@ const QS_WINDOW_OP: Record<string, QSWindowResult['op']> = {
   windowmax: 'WINDOW_MAX', windowmin: 'WINDOW_MIN',
   sumover: 'OVER_SUM', avgover: 'OVER_AVG', countover: 'OVER_COUNT',
   distinctcountover: 'OVER_DISTINCT_COUNT', maxover: 'OVER_MAX', minover: 'OVER_MIN',
+  // statistical OVER windows
+  stdevover: 'OVER_STDDEV_SAMP', stdevpover: 'OVER_STDDEV_POP',
+  varover: 'OVER_VAR_SAMP', varpover: 'OVER_VAR_POP',
+  // windowed percentiles. percentileOver == percentileContOver (continuous).
+  percentileover: 'OVER_PCT_CONT', percentilecontover: 'OVER_PCT_CONT',
+  percentilediscover: 'OVER_PCT_DISC',
+  // percentile rank (rank-shaped)
+  percentilerank: 'PERCENTILE_RANK',
+  // periodToDate* — date-anchored running aggregates
+  periodtodatesumovertime: 'PTD_SUM', periodtodateavgovertime: 'PTD_AVG',
+  periodtodatemaxovertime: 'PTD_MAX', periodtodateminovertime: 'PTD_MIN',
+  periodtodatecountovertime: 'PTD_COUNT',
 };
 
 const QS_AGG_TO_SQL: Record<string, string> = {
@@ -899,11 +922,64 @@ function quicksightParseWindow(expr: string): QSWindowResult | null {
     }
     // sumOver(measure, [partition], calcLevel?) — partition list is the OVER scope
     case 'OVER_SUM': case 'OVER_AVG': case 'OVER_COUNT':
-    case 'OVER_DISTINCT_COUNT': case 'OVER_MAX': case 'OVER_MIN': {
+    case 'OVER_DISTINCT_COUNT': case 'OVER_MAX': case 'OVER_MIN':
+    // statistical *Over share the same arg shape (measure, [partition], calcLevel?)
+    case 'OVER_STDDEV_SAMP': case 'OVER_STDDEV_POP':
+    case 'OVER_VAR_SAMP': case 'OVER_VAR_POP': {
       const inner = _qsParseInnerAgg(args[0]);
       if (!inner) return null;
       const part = args[1] ? _qsParsePartitionList(args[1]) : [];
       return base([], part, inner);
+    }
+    // percentileOver(measure, percentile, [partition], calcLevel?)
+    //   percentile is a literal 0..1 (or 0..100 → normalized).
+    case 'OVER_PCT_CONT': case 'OVER_PCT_DISC': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const pRaw = (args[1] || '').trim();
+      const pNum = parseFloat(pRaw);
+      if (!Number.isFinite(pNum)) return null;          // need a literal quantile
+      const percentile = pNum > 1 ? pNum / 100 : pNum;  // accept 0.9 or 90
+      if (percentile < 0 || percentile > 1) return null;
+      const part = args[2] ? _qsParsePartitionList(args[2]) : [];
+      return base([], part, inner, { percentile });
+    }
+    // percentileRank([sort], [partition]) — rank-shaped: order by a measure/dim, no inner agg
+    case 'PERCENTILE_RANK': {
+      const sortTok = args[0] || '';
+      const inner = sortTok.replace(/^\[/, '').replace(/\]$/, '').trim();
+      const dm = inner.match(/^([\s\S]*?)\s+(ASC|DESC)\s*$/i);
+      const exprPart = dm ? dm[1].trim() : inner;
+      const dir = (dm && dm[2] ? dm[2].toUpperCase() : 'ASC') as 'ASC' | 'DESC';
+      let rankSortExprSql = '';
+      const innerAgg = _qsParseInnerAgg(exprPart);
+      if (innerAgg) {
+        rankSortExprSql = innerAgg.func === 'COUNT_DISTINCT'
+          ? `COUNT(DISTINCT ${_qsColToSql(innerAgg.col)})`
+          : `${innerAgg.func}(${_qsColToSql(innerAgg.col)})`;
+      } else {
+        const fld = _qsStripBrace(exprPart);
+        if (!fld) return null;
+        rankSortExprSql = _qsColToSql(fld);
+      }
+      const part = args[1] ? _qsParsePartitionList(args[1]) : [];
+      return base([], part, null, { rankSortExprSql, rankDir: dir });
+    }
+    // periodToDate*(measure, dateDim, period?) — date-anchored running aggregate
+    case 'PTD_SUM': case 'PTD_AVG': case 'PTD_MAX': case 'PTD_MIN': case 'PTD_COUNT': {
+      const inner = _qsParseInnerAgg(args[0]);
+      if (!inner) return null;
+      const dateRaw = args[1] ? _qsStripBrace(args[1]) : '';
+      if (!dateRaw) return null; // need the date dimension to anchor the period
+      const periodTok = (args[2] || 'MONTH').trim().replace(/['"]/g, '').toUpperCase();
+      const periodMap: Record<string, QSWindowResult['ptdPeriod']> = {
+        YEAR: 'YEAR', QUARTER: 'QUARTER', MONTH: 'MONTH', WEEK: 'WEEK', DAY: 'DAY',
+      };
+      // HOUR/MINUTE/SECONDS aren't typical period-to-date anchors; fall back to DAY.
+      const period = periodMap[periodTok] || (['HOUR', 'MINUTE', 'SECONDS', 'SECOND'].includes(periodTok) ? 'DAY' : 'MONTH');
+      // The order field is the date dimension (ASC running). Sort + a synthetic
+      // partition on DATE_TRUNC(period, date) are built in lowering/over-clause.
+      return base([{ col: dateRaw, dir: 'ASC' }], [], inner, { ptdDateRaw: dateRaw, ptdPeriod: period });
     }
     // rank([sort], [partition]) — sort token may carry a measure expr with ASC/DESC
     case 'RANK': case 'DENSE_RANK': {
@@ -990,6 +1066,8 @@ interface QSWindowHelper {
   windowAliases: Set<string>;
   overParts: string[];             // "<over sql> AS <ALIAS>" strings
   baseFromSql: string;             // the FROM source: a fq table or "(<custom sql>)"
+  ptdPeriod?: 'YEAR' | 'QUARTER' | 'MONTH' | 'WEEK' | 'DAY'; // periodToDate DATE_TRUNC unit
+  ptdDateRaw?: string;             // periodToDate anchoring date column (raw)
 }
 
 function _qsWindowAlias(name: string, used: Set<string>): string {
@@ -1053,9 +1131,22 @@ function lowerQSWindowCalc(
     orderSpec.push({ col: r, dir: sf.dir });
   }
 
+  // periodToDate*: resolve the date dimension; its DATE_TRUNC(period, date) is a
+  // synthetic partition (re-anchors the running aggregate per period). Persist a
+  // resolved raw date col on the parsed win for the over-clause builder.
+  let ptdDateResolved: string | null = null;
+  if (win.op.startsWith('PTD_')) {
+    ptdDateResolved = win.ptdDateRaw ? resolveRaw(win.ptdDateRaw) : null;
+    if (!ptdDateResolved) {
+      warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — period-to-date date dimension "${win.ptdDateRaw}" not found in source columns; degraded to Null.`);
+      return false;
+    }
+  }
+
   // Ops that need an order dim but have none → degrade.
   const needsOrder = ['RUNNING_SUM','RUNNING_AVG','RUNNING_COUNT','RUNNING_MAX','RUNNING_MIN',
-    'LAG','LEAD','FIRST_VALUE','LAST_VALUE','DIFFERENCE','PERCENT_DIFFERENCE'].includes(win.op);
+    'LAG','LEAD','FIRST_VALUE','LAST_VALUE','DIFFERENCE','PERCENT_DIFFERENCE',
+    'PTD_SUM','PTD_AVG','PTD_MAX','PTD_MIN','PTD_COUNT'].includes(win.op);
   if (needsOrder && orderSpec.length === 0) {
     warnings.push(`⚠ Window calc "${calcName}" (${win.op}) — no order field could be determined; degraded to Null.`);
     return false;
@@ -1084,7 +1175,11 @@ function lowerQSWindowCalc(
   const grainKey = grainRaw.map(_qsColToSql).slice().sort().join(',');
   const partKey = partitionRaw.map(_qsColToSql).slice().sort().join(',');
   const orderKey = orderSpec.map(o => `${_qsColToSql(o.col)} ${o.dir}`).join(',');
-  const key = `${baseFromSql}||${grainKey}||${partKey}||${orderKey}`;
+  // periodToDate calcs carry a synthetic DATE_TRUNC(period, date) partition — keep
+  // distinct periods/dates on separate helpers so the OVER partition is unambiguous.
+  const ptdKey = win.op.startsWith('PTD_') && ptdDateResolved
+    ? `ptd:${win.ptdPeriod}:${_qsColToSql(ptdDateResolved)}` : '';
+  const key = `${baseFromSql}||${grainKey}||${partKey}||${orderKey}||${ptdKey}`;
   let helper = helpers.get(key);
   if (!helper) {
     const cols: SigmaColumn[] = [];
@@ -1108,7 +1203,8 @@ function lowerQSWindowCalc(
       columns: cols,
       order,
     };
-    helper = { element: el, grainRaw, partitionRaw, orderSpec, innerAggs: {}, windowAliases: new Set(), overParts: [], baseFromSql };
+    helper = { element: el, grainRaw, partitionRaw, orderSpec, innerAggs: {}, windowAliases: new Set(), overParts: [], baseFromSql,
+      ...(win.op.startsWith('PTD_') ? { ptdPeriod: win.ptdPeriod, ptdDateRaw: ptdDateResolved || undefined } : {}) };
     helpers.set(key, helper);
     extraElements.push(el);
   }
@@ -1121,7 +1217,7 @@ function lowerQSWindowCalc(
   // RANK/DENSE_RANK order by a measure expr (e.g. SUM(NET_REVENUE)). Register it
   // as a base aggregate so the OVER orders by the pre-aggregated alias, not a
   // double-aggregate of the base column.
-  if ((win.op === 'RANK' || win.op === 'DENSE_RANK') && win.rankSortExprSql) {
+  if ((win.op === 'RANK' || win.op === 'DENSE_RANK' || win.op === 'PERCENTILE_RANK') && win.rankSortExprSql) {
     const am = win.rankSortExprSql.match(/^([A-Z_]+)\s*\(\s*(?:DISTINCT\s+)?([A-Z0-9_]+)\s*\)$/i);
     if (am) {
       const fn = /distinct/i.test(win.rankSortExprSql) ? 'COUNT_DISTINCT' : am[1].toUpperCase();
@@ -1208,6 +1304,51 @@ function qsBuildOverClause(win: QSWindowResult, helper: QSWindowHelper, innerAli
       const fn = win.op === 'OVER_DISTINCT_COUNT' ? 'COUNT'
         : win.op.replace('OVER_', '');
       return `${fn}(${innerAlias}) OVER (${partBy})`;
+    }
+    // statistical OVER windows → STDDEV_SAMP / STDDEV_POP / VAR_SAMP / VAR_POP
+    case 'OVER_STDDEV_SAMP': case 'OVER_STDDEV_POP':
+    case 'OVER_VAR_SAMP': case 'OVER_VAR_POP': {
+      if (!innerAlias) return null;
+      const fn = win.op.replace('OVER_', ''); // STDDEV_SAMP | STDDEV_POP | VAR_SAMP | VAR_POP
+      return `${fn}(${innerAlias}) OVER (${partBy})`;
+    }
+    // windowed percentiles. Snowflake supports the OVER form, but the OVER clause
+    // may carry ONLY a PARTITION BY (no ORDER BY / frame) — the order lives in the
+    // mandatory WITHIN GROUP (ORDER BY ...).
+    case 'OVER_PCT_CONT': case 'OVER_PCT_DISC': {
+      if (!innerAlias) return null;
+      if (win.percentile == null) return null;
+      const fn = win.op === 'OVER_PCT_DISC' ? 'PERCENTILE_DISC' : 'PERCENTILE_CONT';
+      return `${fn}(${win.percentile}) WITHIN GROUP (ORDER BY ${innerAlias}) OVER (${partBy})`;
+    }
+    // percentileRank → PERCENT_RANK() OVER (... ORDER BY <measure>) × 100
+    // QuickSight returns 0 (inclusive)..100 (exclusive); PERCENT_RANK gives
+    // (rank-1)/(n-1) in [0,1] — lowest value → 0 — so ×100 matches QS semantics.
+    case 'PERCENTILE_RANK': {
+      const sortExpr = win.rankSortExprSql;
+      if (!sortExpr) return null;
+      let orderExpr = sortExpr;
+      for (const k of Object.keys(helper.innerAggs)) {
+        const [fnK, exprK] = k.split('::');
+        const reconstructed = fnK === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${exprK})` : `${fnK}(${exprK})`;
+        if (reconstructed === sortExpr) { orderExpr = helper.innerAggs[k].alias; break; }
+      }
+      return `PERCENT_RANK() OVER (${spec([partBy, `ORDER BY ${orderExpr} ${win.rankDir || 'ASC'}`])}) * 100`;
+    }
+    // periodToDate* → date-anchored running aggregate. Partition by
+    // DATE_TRUNC('<period>', date) so the running sum resets each period; order by
+    // the date ASC with an UNBOUNDED PRECEDING → CURRENT ROW frame (to-date).
+    case 'PTD_SUM': case 'PTD_AVG': case 'PTD_MAX': case 'PTD_MIN': case 'PTD_COUNT': {
+      if (!innerAlias) return null;
+      if (!helper.ptdDateRaw || !helper.ptdPeriod) return null;
+      const fnMap: Record<string, string> = {
+        PTD_SUM: 'SUM', PTD_AVG: 'AVG', PTD_MAX: 'MAX', PTD_MIN: 'MIN', PTD_COUNT: 'COUNT',
+      };
+      const fn = fnMap[win.op];
+      const dateCol = _qsColToSql(helper.ptdDateRaw);
+      const trunc = `DATE_TRUNC('${helper.ptdPeriod}', ${dateCol})`;
+      const ptdPart = partBy ? `${partBy}, ${trunc}` : `PARTITION BY ${trunc}`;
+      return `${fn}(${innerAlias}) OVER (${ptdPart} ORDER BY ${dateCol} ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`;
     }
     case 'WINDOW_SUM': case 'WINDOW_AVG': case 'WINDOW_COUNT':
     case 'WINDOW_MAX': case 'WINDOW_MIN': {
