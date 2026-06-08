@@ -508,10 +508,20 @@ function pruneDanglingMetrics(metrics: any[], droppedNames: Set<string>, warning
   }
 }
 
+// bead jzd8: a base-table calc column / DM metric may not carry a window function
+// (Rank/RankDense/Lag/Lead/RowNumber/NTile/FirstValue/LastValue) — Sigma silently
+// errors there. Test with string/character literals stripped so a label like
+// "Top Rank (1)" doesn't false-trigger the drop.
+export function hasBareWindowFn(formula: string): boolean {
+  const noStr = String(formula).replace(/"[^"]*"/g, '').replace(/'[^']*'/g, '');
+  return /\b(Rank|RankDense|Lag|Lead|RowNumber|NTile|FirstValue|LastValue)\s*\(/.test(noStr);
+}
+
 export function pbiDaxToSigma(
   dax: string | string[],
   warnings: string[] | null,
-  measureName: string
+  measureName: string,
+  measureDax: Record<string, string> = {}
 ): string | null {
   // BIM/TMSL serializes multi-line DAX expressions as a string[] (one entry per line)
   if (Array.isArray(dax)) dax = dax.join('\n');
@@ -587,8 +597,30 @@ export function pbiDaxToSigma(
       const { args } = splitCallArgs(f, cm.index! + cm[0].length);
       // exactly: [ aggExpr, predicate ]
       if (args.length === 2) {
-        const aggExpr = args[0];
+        // bead qx16: CALCULATE's first arg may be a bare MEASURE ref (e.g.
+        // [Headcount]) rather than an inline aggregate. Resolve it to the
+        // measure's own DAX so a simple-aggregate measure flows through the
+        // conditional-aggregate path below instead of dropping to a warning.
+        let aggExpr = args[0].trim();
+        const aggRef = aggExpr.match(/^\[([^\]]+)\]$/);
+        if (aggRef && measureDax[aggRef[1]]) {
+          const refDax = measureDax[aggRef[1]].trim();
+          // qx16 guard: only inline a SINGLE simple aggregate (one call, no nested
+          // parens / top-level operators). Otherwise the greedy aggM below would
+          // mis-split a multi-aggregate body like "SUM(a) - SUM(b)" into a broken
+          // formula. A non-simple measure ref falls through and drops (as before).
+          if (/^(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\([^()]*\)$/i.test(refDax)) {
+            aggExpr = refDax;
+          }
+        }
         let pred = args[1];
+        // bead qx16: unwrap a KEEPFILTERS(<predicate>) wrapper — it modifies
+        // filter-merge semantics, not the row predicate Sigma needs.
+        const keepM = pred.match(/^\s*KEEPFILTERS\s*\(/i);
+        if (keepM) {
+          const kr = splitCallArgs(pred, keepM.index! + keepM[0].length);
+          if (kr.args.length >= 1) pred = kr.args.join(', ').trim();
+        }
         const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
         if (aggM) {
           const aggFn = aggM[1].toUpperCase();
@@ -670,11 +702,14 @@ export function pbiDaxToSigma(
         if (f[endPos] === '(') d2++;
         else if (f[endPos] === ')') d2--;
       }
+      // bead hs5h: parenthesize BOTH operands. A numerator like "DeptMed - CoMed"
+      // (from an inlined VAR/RETURN DIVIDE(a-b, c)) otherwise emits "a - b / c",
+      // which Sigma parses as "a - (b/c)" — a wrong number. (x)/(y) is always safe.
       let replacement: string;
       if (alt && alt.trim()) {
-        replacement = `If(${den} = 0, ${alt.trim()}, ${num} / ${den})`;
+        replacement = `If((${den}) = 0, ${alt.trim()}, (${num}) / (${den}))`;
       } else {
-        replacement = `${num} / ${den}`;
+        replacement = `(${num}) / (${den})`;
       }
       f = f.slice(0, divideMatch.index!) + replacement + f.slice(endPos);
     }
@@ -1451,6 +1486,15 @@ export function convertPowerBIToSigma(
   // (SQL OVER clauses) instead of dropping to Null. measureAggMap resolves a
   // RANKX order-measure ref ([Total Salary]) to its inner SQL aggregate.
   const measureAggMap = pbiBuildMeasureAggMap(model);
+  // bead qx16: model-wide measure name → raw DAX, so pbiDaxToSigma can inline a
+  // bare measure ref used as CALCULATE's first arg (e.g. CALCULATE([Headcount], …)).
+  const measureDaxMap: Record<string, string> = {};
+  for (const t of (model.tables || [])) {
+    for (const meas of (t.measures || [])) {
+      measureDaxMap[meas.name] = Array.isArray(meas.expression)
+        ? meas.expression.join('\n') : String(meas.expression || '');
+    }
+  }
   const winCtx: PBIWindowContext = {
     helpers: new Map(),
     usedAliases: new Set(),
@@ -1657,7 +1701,17 @@ export function convertPowerBIToSigma(
         pbiToSigmaName[c.name] = c.name;
         continue;
       }
-      let sigmaFormula = pbiDaxToSigma(c.expression, warnings, c.name);
+      let sigmaFormula = pbiDaxToSigma(c.expression, warnings, c.name, measureDaxMap);
+      // bead jzd8: a base-table calc COLUMN may not carry a window function —
+      // Sigma's Rank/RankDense/Lag/Lead silently ERROR there (the column posts as
+      // type "error"). If lowering to a helper element degraded above and the
+      // generic translator still produced a window-function formula (e.g.
+      // rewriteEarlierRank → RankDense), DROP-and-warn instead of emitting an
+      // error column. Window calcs must live on a sql/grouped helper element.
+      if (sigmaFormula && hasBareWindowFn(sigmaFormula)) {
+        warnings.push(`⛔ "${c.name}": window-function calc column (${sigmaFormula.slice(0, 48)}…) cannot live in a base-table calc column (errors in Sigma) — express it as a workbook Rank() in an ordered table or a grouped element. Dropped.`);
+        sigmaFormula = null;
+      }
       if (sigmaFormula) {
         // Rewrite PBI column names → Sigma display names. Try local table
         // first, fall back to the global map so cross-table refs (e.g. from
@@ -1695,7 +1749,14 @@ export function convertPowerBIToSigma(
       if (mWin && lowerPBIWindowCalc(mWin, m.name, srcElProxy, winCtx, warnings)) {
         continue; // lowered to helper element; no metric on this element
       }
-      let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
+      let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name, measureDaxMap);
+      // bead jzd8 (measure path): a measure that translated to a window fn (e.g. an
+      // EARLIER idiom → RankDense that lowering didn't claim) would post as an
+      // error-typed DM metric. Drop-and-warn instead.
+      if (sigmaFormula && hasBareWindowFn(sigmaFormula)) {
+        warnings.push(`⛔ "${m.name}": window-function measure has no Sigma DM-metric equivalent — use a workbook Rank()/ordered table or a grouped element. Dropped.`);
+        sigmaFormula = null;
+      }
       if (sigmaFormula) {
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
           return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
@@ -1759,7 +1820,11 @@ export function convertPowerBIToSigma(
         if (!t) continue;
         for (const m of (t.measures || [])) {
           if (m.name) measureToElementId[m.name] = factEl.id; // m1a cross-table detection
-          let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
+          let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name, measureDaxMap);
+          if (sigmaFormula && hasBareWindowFn(sigmaFormula)) {  // bead jzd8 (measure path)
+            warnings.push(`⛔ "${m.name}": window-function measure has no Sigma DM-metric equivalent — use a workbook Rank()/ordered table or a grouped element. Dropped.`);
+            sigmaFormula = null;
+          }
           if (sigmaFormula) {
             sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
               return allPbiToSigmaNames[colName] ? `[${allPbiToSigmaNames[colName]}]` : `[${colName}]`;
