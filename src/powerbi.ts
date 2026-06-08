@@ -981,6 +981,365 @@ function buildCalcTableSql(
   return { ok: true, sql };
 }
 
+// ── DAX ranking / window → SQL window-function lowering ─────────────────────
+// DAX RANKX / RANK / the COUNTROWS(FILTER(..EARLIER..)) dense-rank idiom land in
+// Sigma DM calc columns / metrics where Sigma's window functions (Rank/RankDense)
+// SILENTLY ERROR (feedback_sigma_window_functions.md) — the whole chart blanks.
+// Mirroring src/quicksight.ts + src/tableau.ts, we lower each translatable rank/
+// window to a kind:'sql' helper element carrying an explicit
+//   <RANK|DENSE_RANK>() OVER (PARTITION BY <p> ORDER BY <measure> DESC)
+// (or SUM(..) OVER (ORDER BY .. ROWS UNBOUNDED PRECEDING) for running totals)
+// projected over the model's underlying warehouse table.
+//
+// DAX carries no explicit partition/order args like QuickSight — they're inferred
+// from the FILTER CONTEXT the rank removes:
+//   RANKX(ALL(T[Dim]), <m>[, , DESC|ASC[, DENSE]])
+//     ALL(T[Dim]) removes filter context on Dim → the rank is computed across all
+//     values of Dim. So Dim is the BASE GRAIN (GROUP BY), ORDER BY = <m>, and the
+//     PARTITION is the report visual's grouping dims MINUS the ranked Dim (empty
+//     here = a single global ranking, which is the overwhelmingly common case).
+//   COUNTROWS(FILTER(T, T[p]=EARLIER(T[p]) && T[x] (>|<) EARLIER(T[x]))) + 1
+//     is the canonical row-level dense-rank idiom (a calc COLUMN): PARTITION BY p,
+//     ORDER BY x DESC|ASC, evaluated at ROW grain (no GROUP BY). DENSE_RANK().
+// Where the rank scope / order measure can't be resolved we DEGRADE (return false
+// and let the existing Null+warning path run) — genuinely-no-equivalent DAX
+// (ALLSELECTED with a sliced visual, multi-filter CALCULATE) stays flagged.
+
+// Uppercase, SQL-identifier-safe form of a raw PBI column ref. Handles the
+// qualified Table[Col] / 'Table'[Col] / [Col] forms — extracts just the bracketed
+// column name (the warehouse column), discarding the table qualifier.
+function _pbiColToSql(raw: string): string {
+  const r = (raw || '').trim();
+  const m = r.match(/\[([^\]]+)\]\s*$/); // last [..] = the column
+  const col = m ? m[1] : r;
+  return col.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+}
+
+// A resolver: PBI measure display-name → its inner SQL aggregate, derived from
+// the model's own simple single-aggregate measures (e.g. "Total Salary" =
+// SUM(EMPLOYEES[ANNUAL_SALARY]) → "SUM(ANNUAL_SALARY)"). Returns null for a
+// measure that is itself a window / CALCULATE / ratio (can't be a base agg).
+export interface PBIMeasureAggMap { [displayName: string]: { fn: string; colSql: string } | null; }
+
+// Parse a single simple aggregate DAX measure into { fn, colSql }. Handles the
+// SUM/AVERAGE/MIN/MAX/COUNT/DISTINCTCOUNT(Table[Col]) and COUNTROWS(Table) forms.
+function pbiParseSimpleAgg(dax: string): { fn: string; colSql: string } | null {
+  const d = (dax || '').trim();
+  let m = d.match(/^(SUM|AVERAGE|MIN|MAX|COUNT|DISTINCTCOUNT)\s*\(\s*'?[^'\[]*'?\[([^\]]+)\]\s*\)$/i);
+  if (m) {
+    const fnMap: Record<string, string> = { SUM: 'SUM', AVERAGE: 'AVG', MIN: 'MIN', MAX: 'MAX', COUNT: 'COUNT', DISTINCTCOUNT: 'COUNT_DISTINCT' };
+    return { fn: fnMap[m[1].toUpperCase()], colSql: _pbiColToSql(m[2]) };
+  }
+  // COUNTROWS('Table') / COUNTROWS(Table) → COUNT(*)
+  if (/^COUNTROWS\s*\(\s*'?[A-Za-z_][\w ]*'?\s*\)$/i.test(d)) {
+    return { fn: 'COUNT', colSql: '*' };
+  }
+  return null;
+}
+
+// Build the measure→agg resolver across the whole model (used to resolve a
+// RANKX order-measure ref like [Total Salary] to its SQL aggregate).
+function pbiBuildMeasureAggMap(model: any): PBIMeasureAggMap {
+  const out: PBIMeasureAggMap = {};
+  for (const t of (model.tables || [])) {
+    for (const meas of (t.measures || [])) {
+      const dax = Array.isArray(meas.expression) ? meas.expression.join('\n') : String(meas.expression || '');
+      out[meas.name] = pbiParseSimpleAgg(dax);
+    }
+  }
+  return out;
+}
+
+interface PBIWindowResult {
+  _isWindow: true;
+  op: 'RANK' | 'DENSE_RANK';
+  grainRaw: string[];          // base GROUP BY dim raw names (the ranked dim). [] = row-level (no GROUP BY).
+  partitionRaw: string[];      // PARTITION BY raw names
+  orderFn: string;             // SQL agg fn for the ORDER BY measure (SUM/AVG/COUNT/COUNT_DISTINCT) — '' at row grain
+  orderColSql: string;         // SQL identifier of the order measure's column, or a raw row column at row grain
+  orderDir: 'ASC' | 'DESC';
+  rowLevel: boolean;           // true = COUNTROWS-EARLIER row-rank (no GROUP BY)
+}
+
+// Parse a RANKX measure DAX into a structured rank. Resolves the order-measure
+// ref via the model measure-agg map. Returns null to DEGRADE.
+//   RANKX(ALL(T[Dim]), <orderMeasureRef-or-agg>[, , DESC|ASC[, DENSE]])
+function pbiParseRankx(dax: string, measureAggMap: PBIMeasureAggMap): PBIWindowResult | null {
+  const d = (dax || '').trim();
+  const rm = d.match(/^RANKX\s*\(/i);
+  if (!rm) return null;
+  const { args, endPos } = splitCallArgs(d, rm.index! + rm[0].length);
+  // RANKX must be the whole expression (a bare ranking measure), not wrapped.
+  if (endPos < d.length) return null;
+  if (args.length < 2) return null;
+  // arg0 = the table-scope: ALL(T[Dim]) → rank across Dim. Whole-table ALL(T)
+  // (no [col]) has no determinable grain → degrade.
+  const scope = args[0].trim();
+  const sm = scope.match(/^ALL\s*\(\s*'?[A-Za-z_][\w ]*'?\s*\[([^\]]+)\]\s*\)$/i);
+  if (!sm) return null; // ALLSELECTED, whole-table ALL, VALUES(), etc. → degrade
+  const rankedDim = _pbiColToSql(sm[1]);
+  // arg1 = the order expression: a measure ref [m] or an inline aggregate.
+  const orderExpr = args[1].trim();
+  let orderFn = '', orderColSql = '';
+  const refM = orderExpr.match(/^\[([^\]]+)\]$/);
+  if (refM) {
+    const agg = measureAggMap[refM[1]];
+    if (!agg) return null; // order measure isn't a simple aggregate → degrade
+    orderFn = agg.fn; orderColSql = agg.colSql;
+  } else {
+    const inline = pbiParseSimpleAgg(orderExpr);
+    if (!inline) return null;
+    orderFn = inline.fn; orderColSql = inline.colSql;
+  }
+  // arg2 = value/scalar (ignored). arg3 = order (ASC/DESC). arg4 = ties (DENSE/SKIP).
+  let dir: 'ASC' | 'DESC' = 'DESC';
+  let dense = false;
+  for (let i = 2; i < args.length; i++) {
+    const a = args[i].trim().toUpperCase();
+    if (a === 'ASC' || a === 'DESC') dir = a as 'ASC' | 'DESC';
+    else if (a === 'DENSE') dense = true;
+    else if (a === 'SKIP') dense = false;
+  }
+  return {
+    _isWindow: true,
+    op: dense ? 'DENSE_RANK' : 'RANK',
+    grainRaw: [rankedDim],
+    partitionRaw: [],
+    orderFn, orderColSql, orderDir: dir,
+    rowLevel: false,
+  };
+}
+
+// Parse the COUNTROWS(FILTER(T, p=EARLIER(p) && x (>|<) EARLIER(x))) + 1 idiom
+// (a calc COLUMN row-level dense rank). Returns null to DEGRADE.
+function pbiParseEarlierRank(dax: string): PBIWindowResult | null {
+  const d = (dax || '').trim();
+  const cm = d.match(/^COUNTROWS\s*\(\s*FILTER\s*\(/i);
+  if (!cm) return null;
+  const filterOpen = cm.index! + cm[0].length;
+  const { args: filterArgs, endPos: filterEnd } = splitCallArgs(d, filterOpen);
+  if (filterArgs.length < 2) return null;
+  // COUNTROWS close + trailing "+ 1"
+  let j = filterEnd;
+  while (j < d.length && /\s/.test(d[j])) j++;
+  if (d[j] !== ')') return null;
+  const after = d.slice(j + 1).trim();
+  if (!/^\+\s*1$/.test(after)) return null;
+  const pred = filterArgs.slice(1).join(', ');
+  // ranked term: <ref> (>|<) EARLIER(<ref>)
+  const cmp = pred.match(/(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*(>|<)\s*EARLIER\s*\(\s*([^)]+?)\s*\)/i);
+  if (!cmp) return null;
+  const orderColSql = _pbiColToSql(cmp[1]);
+  const dir: 'ASC' | 'DESC' = cmp[2] === '>' ? 'DESC' : 'ASC';
+  // partition terms: any <ref> = EARLIER(<ref>) (split on &&)
+  const partitionRaw: string[] = [];
+  for (const term of pred.split(/&&/)) {
+    const pm = term.match(/(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*=\s*EARLIER\s*\(\s*[^)]+?\s*\)/i);
+    if (pm) partitionRaw.push(_pbiColToSql(pm[1]));
+  }
+  return {
+    _isWindow: true,
+    op: 'DENSE_RANK', // the idiom counts strictly-greater rows + 1 = dense rank
+    grainRaw: [],     // row level — no GROUP BY
+    partitionRaw,
+    orderFn: '', orderColSql, orderDir: dir,
+    rowLevel: true,
+  };
+}
+
+// ── PBI window helper-element registry (shared kind:'sql' elements) ─────────
+export interface PBIWindowContext {
+  helpers: Map<string, PBIWindowHelper>;
+  usedAliases: Set<string>;
+  extraElements: SigmaElement[];
+  connectionId: string;
+}
+interface PBIWindowHelper {
+  element: SigmaElement;
+  grainRaw: string[];          // base GROUP BY dims (empty = row level)
+  partitionRaw: string[];
+  rowLevel: boolean;
+  innerAggs: Record<string, { alias: string }>; // base aggregates keyed fn::colSql
+  windowAliases: Set<string>;
+  overParts: string[];         // "<over sql> AS <ALIAS>"
+  baseFromSql: string;         // fully-qualified table or "(<custom sql>)"
+  rowCols: Set<string>;        // row-level passthrough cols (partition + order) for row grain
+}
+
+function _pbiWindowAlias(name: string, used: Set<string>): string {
+  let b = (name || 'WIN_VAL').toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '').replace(/_+/g, '_');
+  if (!b) b = 'WIN_VAL';
+  let a = b, n = 2;
+  while (used.has(a)) a = `${b}_${n++}`;
+  used.add(a);
+  return a;
+}
+
+function pbiRegisterInnerAgg(helper: PBIWindowHelper, fn: string, colSql: string): string {
+  const key = `${fn}::${colSql}`;
+  if (helper.innerAggs[key]) return helper.innerAggs[key].alias;
+  const base = colSql === '*' ? 'CNT' : colSql.replace(/[^A-Z0-9_]/gi, '_').toUpperCase();
+  let alias = base || 'VAL', n = 2;
+  while (helper.windowAliases.has(alias) || Object.values(helper.innerAggs).some(v => v.alias === alias)) {
+    alias = `${base}_${n++}`;
+  }
+  helper.innerAggs[key] = { alias };
+  return alias;
+}
+
+// Resolve the FROM source for the helper SQL from the source element.
+function pbiResolveBaseFrom(srcEl: SigmaElement): string | null {
+  const src = srcEl.source || {};
+  if (src.kind === 'warehouse-table' && Array.isArray(src.path) && src.path.length) {
+    return src.path.join('.');
+  }
+  if (src.kind === 'sql' && typeof src.statement === 'string' && src.statement.trim()
+      && !src.statement.includes('_placeholder') && !/^--/.test(src.statement.trim())) {
+    return `(${src.statement.trim().replace(/;\s*$/, '')})`;
+  }
+  return null;
+}
+
+// Known raw (uppercased SQL) column names available on a source element.
+function pbiKnownRawColumns(srcEl: SigmaElement): Set<string> {
+  const out = new Set<string>();
+  for (const c of (srcEl.columns || [])) {
+    const fm = (c.formula || '').match(/^\[[^\]\/]+\/([^\]]+)\]$/);
+    if (fm) out.add(_pbiColToSql(fm[1]));
+  }
+  return out;
+}
+
+/**
+ * Lower a parsed PBI rank/window onto a shared kind:'sql' helper element.
+ * Returns true if translated, false to DEGRADE (caller emits Null + warning).
+ *   - srcEl  = the warehouse-table element the rank measure/column belongs to.
+ *   - calcName = the metric/column display name (becomes the surfaced col).
+ */
+function lowerPBIWindowCalc(
+  win: PBIWindowResult,
+  calcName: string,
+  srcEl: SigmaElement,
+  winCtx: PBIWindowContext,
+  warnings: string[],
+): boolean {
+  const baseFromSql = pbiResolveBaseFrom(srcEl);
+  if (!baseFromSql) {
+    warnings.push(`⚠ "${calcName}" (${win.op}): could not resolve a warehouse FROM source for "${srcEl.name}"; degraded to Null.`);
+    return false;
+  }
+  // Validate partition / order / grain cols against the source's known columns.
+  const known = pbiKnownRawColumns(srcEl);
+  const checkCol = (c: string): boolean => c === '*' || known.size === 0 || known.has(c);
+  for (const p of win.partitionRaw) {
+    if (!checkCol(p)) { warnings.push(`⚠ "${calcName}" (${win.op}): partition column ${p} not found on "${srcEl.name}"; degraded to Null.`); return false; }
+  }
+  for (const g of win.grainRaw) {
+    if (!checkCol(g)) { warnings.push(`⚠ "${calcName}" (${win.op}): rank dimension ${g} not found on "${srcEl.name}"; degraded to Null.`); return false; }
+  }
+  if (win.orderColSql && !checkCol(win.orderColSql)) {
+    warnings.push(`⚠ "${calcName}" (${win.op}): order column ${win.orderColSql} not found on "${srcEl.name}"; degraded to Null.`);
+    return false;
+  }
+
+  // Helper grain/partition key: a row-level rank and an aggregated rank never
+  // share a helper (different base shape).
+  const grainKey = win.grainRaw.slice().sort().join(',');
+  const partKey = win.partitionRaw.slice().sort().join(',');
+  const key = `${baseFromSql}||${win.rowLevel ? 'ROW' : 'AGG'}||${grainKey}||${partKey}`;
+  let helper = winCtx.helpers.get(key);
+  if (!helper) {
+    const cols: SigmaColumn[] = [];
+    const order: string[] = [];
+    // Project grain dims (aggregated rank) or partition+order cols (row rank) so
+    // the workbook can group/join on them. SQL element → [Custom SQL/ALIAS] refs.
+    const passthrough = win.rowLevel
+      ? [...new Set([...win.partitionRaw, ...(win.orderColSql ? [win.orderColSql] : [])])]
+      : win.grainRaw;
+    for (const g of passthrough) {
+      if (g === '*') continue;
+      const id = sigmaShortId();
+      cols.push({ id, name: sigmaDisplayName(g), formula: `[Custom SQL/${g}]` });
+      order.push(id);
+    }
+    const el: SigmaElement = {
+      id: sigmaShortId(),
+      kind: 'table',
+      name: `${win.op === 'DENSE_RANK' ? 'Dense Rank' : 'Rank'} ${(win.partitionRaw[0] || win.grainRaw[0] || 'Window')}`,
+      source: { connectionId: winCtx.connectionId, kind: 'sql', statement: '__PBI_WINDOW_PLACEHOLDER__' },
+      columns: cols,
+      order,
+    };
+    helper = {
+      element: el, grainRaw: win.grainRaw, partitionRaw: win.partitionRaw, rowLevel: win.rowLevel,
+      innerAggs: {}, windowAliases: new Set(), overParts: [], baseFromSql,
+      rowCols: new Set(passthrough.filter(c => c !== '*')),
+    };
+    winCtx.helpers.set(key, helper);
+    winCtx.extraElements.push(el);
+  }
+
+  // Build the OVER clause.
+  const partBy = win.partitionRaw.length ? `PARTITION BY ${win.partitionRaw.join(', ')}` : '';
+  const fn = win.op === 'DENSE_RANK' ? 'DENSE_RANK' : 'RANK';
+  let orderExprSql: string;
+  if (win.rowLevel) {
+    // row grain: ORDER BY the raw column directly.
+    orderExprSql = win.orderColSql;
+  } else {
+    // aggregated grain: ORDER BY a pre-aggregated alias registered on the helper.
+    const sqlAgg = win.orderFn === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${win.orderColSql})`
+      : win.orderColSql === '*' ? 'COUNT(*)' : `${win.orderFn}(${win.orderColSql})`;
+    void sqlAgg;
+    orderExprSql = pbiRegisterInnerAgg(helper, win.orderFn, win.orderColSql);
+  }
+  const overSql = `${fn}() OVER (${[partBy, `ORDER BY ${orderExprSql} ${win.orderDir}`].filter(Boolean).join(' ')})`;
+  const winAlias = _pbiWindowAlias(calcName, winCtx.usedAliases);
+  helper.overParts.push(`${overSql} AS ${winAlias}`);
+  helper.windowAliases.add(winAlias);
+  const calcId = sigmaShortId();
+  helper.element.columns.push({ id: calcId, name: stripParens(sigmaDisplayName(calcName)), formula: `[Custom SQL/${winAlias}]` });
+  helper.element.order.push(calcId);
+  warnings.push(`✅ "${calcName}" (${win.op}) → SQL window helper "${helper.element.name}" alias ${winAlias} (${win.rowLevel ? 'row-level' : 'grouped by ' + win.grainRaw.join(', ')}${win.partitionRaw.length ? ', partition ' + win.partitionRaw.join(', ') : ''}).`);
+  return true;
+}
+
+// Finalize a helper into its real WITH base AS (...) SELECT ... OVER statement.
+function finalizePBIWindowHelper(helper: PBIWindowHelper): void {
+  if (helper.rowLevel) {
+    // Row grain: no GROUP BY. SELECT the passthrough cols + the OVER expressions
+    // straight off the base table.
+    const proj = [...helper.rowCols, ...helper.overParts];
+    helper.element.source.statement = `SELECT ${proj.join(', ')} FROM ${helper.baseFromSql}`;
+    return;
+  }
+  // Aggregated grain: GROUP BY the grain dims, compute base aggregates, then OVER.
+  const groupCols: string[] = [];
+  const seen = new Set<string>();
+  for (const g of helper.grainRaw) {
+    if (g === '*' || seen.has(g)) continue; seen.add(g);
+    groupCols.push(g);
+  }
+  const selectParts: string[] = [...groupCols];
+  for (const k of Object.keys(helper.innerAggs)) {
+    const [fn, colSql] = k.split('::');
+    const a = helper.innerAggs[k];
+    const sqlFn = fn === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${colSql})`
+      : colSql === '*' ? 'COUNT(*)' : `${fn}(${colSql})`;
+    selectParts.push(`${sqlFn} AS ${a.alias}`);
+  }
+  const groupBy = groupCols.length ? ` GROUP BY ${groupCols.map((_, i) => i + 1).join(', ')}` : '';
+  const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${helper.baseFromSql}${groupBy}`;
+  const innerProj = [...groupCols, ...Object.values(helper.innerAggs).map(v => v.alias)];
+  const outerProj = innerProj.concat(helper.overParts);
+  helper.element.source.statement = `WITH base AS (${baseSelect}) SELECT ${outerProj.join(', ')} FROM base`;
+}
+
+/** Strip parentheses from a name (parens collide with Sigma ref/function syntax). */
+function stripParens(name: string): string {
+  return (name || '').replace(/\s*\([^)]*\)/g, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 // ── Main conversion ───────────────────────────────────────────────────────────
 
 export interface PowerBIConvertOptions {
@@ -1085,6 +1444,19 @@ export function convertPowerBIToSigma(
   // measure (PBI) name -> owning element id, for cross-table ratio detection
   // (beads-sigma-m1a). Includes measures later moved to the fact element.
   const measureToElementId: Record<string, string> = {};
+
+  // ── Rank / window DAX → SQL window-function lowering context ──────────────
+  // RANKX / the COUNTROWS(FILTER(..EARLIER..)) dense-rank idiom silently error in
+  // Sigma DM metrics/calc cols; lower them to shared kind:'sql' helper elements
+  // (SQL OVER clauses) instead of dropping to Null. measureAggMap resolves a
+  // RANKX order-measure ref ([Total Salary]) to its inner SQL aggregate.
+  const measureAggMap = pbiBuildMeasureAggMap(model);
+  const winCtx: PBIWindowContext = {
+    helpers: new Map(),
+    usedAliases: new Set(),
+    extraElements: [],
+    connectionId: connectionId || '<CONNECTION_ID>',
+  };
 
   // Detect "measures only" tables and calculation group tables
   const measureOnlyTables = new Set<string>();
@@ -1259,9 +1631,32 @@ export function convertPowerBIToSigma(
       order.push(colId);
     }
 
+    // Proxy of the source warehouse-table element (path + base passthrough cols
+    // built so far) — passed to the rank/window lowering so it can resolve a
+    // FROM source and validate partition/order/grain columns against real cols.
+    const srcElProxy: SigmaElement = {
+      id: elementId, kind: 'table',
+      name: (path && path.length ? path[path.length - 1] : tableName.toUpperCase()),
+      source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path },
+      columns, order,
+    };
+
     // Calculated columns
     for (const c of (t.columns || [])) {
       if (c.type !== 'calculated') continue;
+      // Rank / window calc COLUMN → SQL window helper element (Sigma's Rank /
+      // RankDense silently error in DM calc cols). The COUNTROWS(FILTER(..EARLIER
+      // ..))+1 row-level dense-rank idiom is the canonical PBI calc-col rank.
+      // Parse the ORIGINAL DAX (before pbiDaxToSigma's rewriteEarlierRank would
+      // emit a RankDense() that error-types). DEGRADE → fall through to the
+      // normal path which then drops to a warning.
+      const cExpr = Array.isArray(c.expression) ? c.expression.join('\n') : String(c.expression || '');
+      const cWin = pbiParseEarlierRank(cExpr);
+      if (cWin && lowerPBIWindowCalc(cWin, c.name, srcElProxy, winCtx, warnings)) {
+        tableColMap[tableName][c.name] = sigmaShortId(); // placeholder id; ref lives on helper
+        pbiToSigmaName[c.name] = c.name;
+        continue;
+      }
       let sigmaFormula = pbiDaxToSigma(c.expression, warnings, c.name);
       if (sigmaFormula) {
         // Rewrite PBI column names → Sigma display names. Try local table
@@ -1291,6 +1686,15 @@ export function convertPowerBIToSigma(
     const metrics: any[] = [];
     for (const m of (t.measures || [])) {
       if (m.name) measureToElementId[m.name] = elementId; // m1a cross-table detection
+      // RANKX measure → SQL window helper element (Sigma DM metrics silently
+      // error on Rank()). Parse the ORIGINAL DAX before pbiDaxToSigma drops it to
+      // a warning; resolve the order-measure ref via the model measure-agg map.
+      // DEGRADE → fall through to the existing drop-and-warn path.
+      const mExpr = Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || '');
+      const mWin = pbiParseRankx(mExpr, measureAggMap);
+      if (mWin && lowerPBIWindowCalc(mWin, m.name, srcElProxy, winCtx, warnings)) {
+        continue; // lowered to helper element; no metric on this element
+      }
       let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name);
       if (sigmaFormula) {
         sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
@@ -1656,6 +2060,26 @@ export function convertPowerBIToSigma(
     for (const c of pbiCrossElCalcsByElId[elId]) {
       warnings.push(`⚠ "${c.name}" cross-element refs but no derived element — column dropped`);
     }
+  }
+
+  // ── Finalize rank/window SQL helper elements ──────────────────────────────
+  // Each accumulated helper now gets its real WITH base AS (...) SELECT ... OVER
+  // statement built, then is appended to the model as a kind:'sql' element.
+  // Names must be model-unique (two "Dense Rank DEPARTMENT" helpers from different
+  // fact tables would otherwise collide); dedupe against existing element names.
+  if (winCtx.extraElements.length) {
+    const usedNames = new Set<string>();
+    for (const e of elements) if (e.name) usedNames.add(e.name.toLowerCase());
+    for (const helper of winCtx.helpers.values()) {
+      finalizePBIWindowHelper(helper);
+      const el = helper.element;
+      let base = el.name || 'Window';
+      let cand = base, n = 2;
+      while (usedNames.has(cand.toLowerCase())) cand = `${base} ${n++}`;
+      usedNames.add(cand.toLowerCase());
+      el.name = cand;
+    }
+    elements.push(...winCtx.extraElements);
   }
 
   // ── Build output ──────────────────────────────────────────────────────────
