@@ -18,6 +18,7 @@ import { convertQlikToSigma } from './qlik.js';
 import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
+import { convertBobjToSigma } from './bobj.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
@@ -1063,6 +1064,51 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
           database: database || undefined,
           schema: schema || undefined,
           physicalMap,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_bobj_to_sigma ─────────────────────────────────────────────────
+
+  server.tool(
+    'convert_bobj_to_sigma',
+    `Convert a SAP BusinessObjects Universe to Sigma Computing data model JSON.
+
+Accepts BI RESTful Web Service (RWS) universe JSON — as returned by
+GET /biprws/sl/v1/universes/{id} on an on-prem BO 4.x server. The ingest is
+tolerant of the common RWS shape variants (nested outline/items, class/objects,
+or a flat objects[] array).
+
+Mapping: physical tables → warehouse-table elements; dimensions/details →
+columns (business names preserved); measures → metrics (Sum/Count/Avg/...);
+object expressions → calculated columns; joins → relationships. Predefined
+filters and universe @-functions (@Prompt/@Select/@Variable/@Aggregate_Aware)
+are surfaced as warnings.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      universe_json: z.string().describe('BusinessObjects universe JSON (RWS /sl/v1/universes/{id} format)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ universe_json, connection_id, database, schema }) => {
+      try {
+        const parsed = JSON.parse(universe_json);
+        const result = convertBobjToSigma(parsed, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{
