@@ -1,0 +1,9 @@
+{
+  "description": "SAP BusinessObjects universe (RWS JSON): 2 classes over ORDER_FACT + CUSTOMER_DIM, a many-to-one join, measures with Sum/Count, and a concat detail. Exercises measure→metric, dimension→named column, join→relationship (FK parsed from join SQL), and the name-aware denormalized View element. Regression guard for the universe converter (convert_bobj_to_sigma).",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "universe": {
+    "name": "Retail Universe (CSA.TJ)",
+    "classes": [
+      {
+        "name": "Orders",
+        "objects": [
+          { "name": "Order Channel", "type": "Dimension", "select": "ORDER_FACT.ORDER_CHANNEL" },
+          { "name": "Order Status",  "type": "Dimension", "select": "ORDER_FACT.ORDER_STATUS" },
+          { "name": "Net Revenue",   "type": "Measure",   "aggregation": "Sum", "select": "ORDER_FACT.NET_REVENUE" },
+          { "name": "Gross Revenue", "type": "Measure",   "select": "sum(ORDER_FACT.GROSS_REVENUE)" },
+          { "name": "Order Count",   "type": "Measure",   "select": "count(ORDER_FACT.ORDER_ID)" }
+        ]
+      },
+      {
+        "name": "Customer",
+        "objects": [
+          { "name": "Customer Region",  "type": "Dimension", "select": "CUSTOMER_DIM.REGION" },
+          { "name": "Customer Segment", "type": "Dimension", "select": "CUSTOMER_DIM.CUSTOMER_SEGMENT" },
+          { "name": "Full Name", "type": "Detail", "select": "CUSTOMER_DIM.FIRST_NAME || ' ' || CUSTOMER_DIM.LAST_NAME" }
+        ]
+      }
+    ],
+    "joins": [
+      { "expression": "ORDER_FACT.CUSTOMER_KEY = CUSTOMER_DIM.CUSTOMER_KEY", "cardinality": "many-to-one" }
+    ],
+    "filters": [
+      { "name": "Recent Orders", "where": "ORDER_FACT.ORDER_DATE_KEY >= 20240101" }
+    ]
+  }
+}
