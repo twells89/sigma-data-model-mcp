@@ -83,6 +83,7 @@ const FMT_TO_KEY = {
   tableau:     'tableau',
   thoughtspot: 'thoughtspot',
   quicksight:  'quicksight',
+  bobj:        'bobj',
   // Not yet covered by fixtures: contract (atlan), snow, sql, ssas
 };
 
@@ -471,6 +472,18 @@ async function driveThoughtSpot(page, fx, opts) {
   });
 }
 
+async function driveBobj(page, fx, opts) {
+  // bobj fixture is a single RWS universe JSON, pasted into the bobjJsonInput textarea.
+  return drivePaste(page, fx, opts, {
+    inputId: 'bobjJsonInput',
+    connId: 'bobjConnectionId',
+    dbId: 'bobjDatabase',
+    schemaId: 'bobjSchema',
+    runFn: 'runBobjConversion',
+    outputId: 'bobjJsonOutput',
+  });
+}
+
 async function driveQuickSight(page, fx, opts) {
   // Multi-file: paste each JSON separated by `---` markers (matches the
   // textarea split-and-parse path in runQuickSightConversion).
@@ -658,6 +671,7 @@ const DRIVERS = {
   qlik:        driveQlik,
   thoughtspot: driveThoughtSpot,
   quicksight:  driveQuickSight,
+  bobj:        driveBobj,
 };
 
 // ── Per-fixture runner ────────────────────────────────────────────────────
