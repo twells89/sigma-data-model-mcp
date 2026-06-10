@@ -1629,7 +1629,14 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
       if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
 
+      // Don't denormalize the relationship's OWN key column across the join — the base
+      // element already carries that value, and the cross-element passthrough of a join
+      // key compiles to type "error" in Sigma (verified via readback). Skip it.
+      // (Same fix as the shared buildDerivedElements in sigma-ids.ts —
+      // feedback_sigma_derived_view_skip_join_key.)
+      const tgtKeyIds = new Set((rel.keys ?? []).map((k: any) => k.targetColumnId));
       for (const col of tgtEl.columns ?? []) {
+        if (tgtKeyIds.has(col.id)) continue;
         if (!col.formula || col.formula.startsWith('/*')) continue;
         // Named/computed columns (e.g. dimension_group DateTrunc timeframes, CASE
         // dims) are referenced cross-element by their display name; physical refs
