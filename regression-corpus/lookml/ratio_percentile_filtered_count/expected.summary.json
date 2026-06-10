@@ -1,0 +1,12 @@
+{
+  "description": "Regression for LookML measure fixes (branch tj/lookml-robustness-ratio-percentile-html-fixes, commit 77b819b). BUG3: ratio measures referencing OTHER measures — avg_order_value (${total_net_revenue}/${order_count}) and gross_margin_pct (1.0 * ${total_gross_profit} / NULLIF(${total_net_revenue}, 0)) — pre-fix leaked ${...} tokens into formulas and fabricated phantom columns; the 1.0 literal must pass through and NULLIF must map to Sigma NullIf(). BUG5: type:percentile measure with percentile:90 → Percentile([Days to Ship], 0.9). BUG6: a type:count measure with filters: and no sql: (delivered_order_count) must become CountIf([Order Status] = \"Delivered\") without fabricating a phantom value column. A correctly-fixed converter produces zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
