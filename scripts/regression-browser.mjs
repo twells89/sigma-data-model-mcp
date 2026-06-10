@@ -188,6 +188,11 @@ function shapeSummary(model) {
     relationships: elements.reduce((n, e) => n + (e.relationships?.length || 0), 0),
     folders: elements.reduce((n, e) => n + (e.folders?.length || 0), 0),
     helperElements: elements.filter(e => e.source?.kind === 'sql').length,
+    filters: elements.reduce((n, e) => n + (e.filters?.length || 0), 0),
+    rlsColumns: elements.reduce(
+      (n, e) => n + (e.columns?.filter(c => /CurrentUserAttribute(Text|Number)?\s*\(/.test(c.formula || '')).length || 0),
+      0
+    ),
   };
 }
 
@@ -201,6 +206,12 @@ function checkAsserts(asserts, summary) {
   }
   if (asserts?.minHelperElements != null && summary.helperElements < asserts.minHelperElements) {
     issues.push(`helper elements ${summary.helperElements} < expected min ${asserts.minHelperElements}`);
+  }
+  if (asserts?.minFilters != null && summary.filters < asserts.minFilters) {
+    issues.push(`filters ${summary.filters} < expected min ${asserts.minFilters}`);
+  }
+  if (asserts?.minRlsColumns != null && summary.rlsColumns < asserts.minRlsColumns) {
+    issues.push(`RLS columns ${summary.rlsColumns} < expected min ${asserts.minRlsColumns}`);
   }
   return issues;
 }
