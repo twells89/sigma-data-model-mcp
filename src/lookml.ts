@@ -1284,13 +1284,19 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
       for (const col of tgtEl.columns ?? []) {
         if (!col.formula || col.formula.startsWith('/*')) continue;
-        if (col.name) continue;
-        // Extract the display name from a [TABLE/ColName] or [ColName] formula
-        const fm = col.formula.match(/^\[([^\]]+)\]$/);
-        if (!fm) continue;
-        const inner = fm[1];
-        const slashIdx = inner.lastIndexOf('/');
-        const dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        // Named/computed columns (e.g. dimension_group DateTrunc timeframes, CASE
+        // dims) are referenced cross-element by their display name; physical refs
+        // use the column inside the [TABLE/Col] formula.
+        let dispName: string;
+        if (col.name) {
+          dispName = col.name;
+        } else {
+          const fm = col.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const slashIdx = inner.lastIndexOf('/');
+          dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        }
         const cId = sigmaShortId();
         viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);
