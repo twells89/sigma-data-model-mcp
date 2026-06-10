@@ -69,6 +69,21 @@ view: order_fact {
     type: count
     filters: [order_status: "Delivered"]
   }
+
+  # ── NUMBER FORMAT preservation ──
+  # value_format_name percent_1 (1-decimal percent), and a custom value_format
+  # mask ($#,##0.0"K") with a thousands scale suffix. The Sigma format object
+  # must carry the currency/percent/suffix, not render as a bare number.
+  measure: delivery_rate {
+    type: number
+    sql: 1.0 * ${delivered_order_count} / NULLIF(${order_count}, 0) ;;
+    value_format_name: percent_1
+  }
+  measure: revenue_thousands {
+    type: sum
+    sql: ${net_revenue} ;;
+    value_format: "$#,##0.0\"K\""
+  }
 }
 
 explore: order_fact {}
