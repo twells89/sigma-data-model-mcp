@@ -422,7 +422,7 @@ export function convertThoughtSpotToSigma(
 // column — its value is one number per group, not per row. Such formulas must
 // become Sigma metrics, not row-level calc columns.
 function tsIsAggregateFormula(expr: string): boolean {
-  return /\b(sum|count|count_distinct|unique_count|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total)\s*\(/i
+  return /\b(sum|count|count_distinct|unique_count|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total|sum_if|count_if|average_if|max_if|min_if|unique_count_if)\s*\(/i
     .test(expr || '');
 }
 
@@ -454,6 +454,54 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
       return `${sigmaFn}(${tsWrapColumnRefs(arg.trim())})`;
     });
   s = tsRewriteSafeDivide(s);
+  // Conditional aggregates. ThoughtSpot puts the condition FIRST
+  // (sum_if(cond, measure)); Sigma's SumIf(field, condition) puts it LAST —
+  // so these two-arg forms are swapped. count_if(cond) maps directly.
+  s = tsRewriteCondAgg(s, 'sum_if', 'SumIf');
+  s = tsRewriteCondAgg(s, 'unique_count_if', 'CountDistinctIf');
+  s = tsRewriteCondAgg(s, 'average_if', 'AvgIf');
+  s = tsRewriteCondAgg(s, 'max_if', 'MaxIf');
+  s = tsRewriteCondAgg(s, 'min_if', 'MinIf');
+  s = s.replace(/\bcount_if\s*\(/gi, 'CountIf(');
+  // Date truncation → DateTrunc("<unit>", …)
+  s = s.replace(/\bstart_of_week\s*\(/gi, 'DateTrunc("week", ');
+  s = s.replace(/\bstart_of_month\s*\(/gi, 'DateTrunc("month", ');
+  s = s.replace(/\bstart_of_quarter\s*\(/gi, 'DateTrunc("quarter", ');
+  s = s.replace(/\bstart_of_year\s*\(/gi, 'DateTrunc("year", ');
+  s = s.replace(/\bstart_of_day\s*\(/gi, 'DateTrunc("day", ');
+  // Date-part extraction
+  s = s.replace(/\bmonth_number\s*\(/gi, 'Month(');
+  s = s.replace(/\bquarter_number\s*\(/gi, 'Quarter(');
+  s = s.replace(/\b(?:day_number_of_week|day_of_week)\s*\(/gi, 'Weekday(');
+  s = s.replace(/\bday_of_month\s*\(/gi, 'Day(');
+  s = s.replace(/\byear\s*\(/gi, 'Year(');
+  s = s.replace(/\bmonth\s*\(/gi, 'Month(');
+  s = s.replace(/\bday\s*\(/gi, 'Day(');
+  s = s.replace(/\bhour\s*\(/gi, 'Hour(');
+  // Math
+  s = s.replace(/\bpow(?:er)?\s*\(/gi, 'Power(');
+  s = s.replace(/\bsqrt\s*\(/gi, 'Sqrt(');
+  s = s.replace(/\babs\s*\(/gi, 'Abs(');
+  s = s.replace(/\bround\s*\(/gi, 'Round(');
+  s = s.replace(/\bexp\s*\(/gi, 'Exp(');
+  s = s.replace(/\bln\s*\(/gi, 'Ln(');
+  s = s.replace(/\blog10\s*\(/gi, 'Log10(');
+  s = s.replace(/\bceil\s*\(/gi, 'Ceiling(');
+  s = s.replace(/\bfloor\s*\(/gi, 'Floor(');
+  s = s.replace(/\bmod\s*\(/gi, 'Mod(');
+  // String
+  s = s.replace(/\bconcat\s*\(/gi, 'Concat(');
+  s = s.replace(/\bsubstr(?:ing)?\s*\(/gi, 'Mid(');
+  s = s.replace(/\bstrlen\s*\(/gi, 'Len(');
+  s = s.replace(/\bupper\s*\(/gi, 'Upper(');
+  s = s.replace(/\blower\s*\(/gi, 'Lower(');
+  s = s.replace(/\bltrim\s*\(/gi, 'Ltrim(');
+  s = s.replace(/\brtrim\s*\(/gi, 'Rtrim(');
+  s = s.replace(/\btrim\s*\(/gi, 'Trim(');
+  s = s.replace(/\breplace\s*\(/gi, 'Replace(');
+  // Null handling
+  s = s.replace(/\bifnull\s*\(/gi, 'Coalesce(');
+  s = s.replace(/\bcoalesce\s*\(/gi, 'Coalesce(');
   s = s.replace(/\bisnull\s*\(/gi, 'IsNull(');
   s = s.replace(/\bnot\s*\(/gi, 'Not(');
   s = s.replace(/\btoday\s*\(\s*\)/gi, 'Today()');
@@ -461,6 +509,34 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
   s = s.replace(/\bdatediff\s*\(/gi, 'DateDiff(');
   s = tsWrapColumnRefs(s);
   return s;
+}
+
+// Paren-balanced rewrite of a ThoughtSpot two-arg conditional aggregate
+// `<tsFn>(condition, measure)` → `<sigmaFn>(measure, condition)` (arg swap).
+function tsRewriteCondAgg(s: string, tsFn: string, sigmaFn: string): string {
+  let out = '';
+  let i = 0;
+  const re = new RegExp(`\\b${tsFn}\\s*\\(`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(i, m.index);
+    let depth = 1, j = re.lastIndex, commaIdx = -1;
+    while (j < s.length && depth > 0) {
+      const ch = s[j];
+      if (ch === '(') depth++;
+      else if (ch === ')') { depth--; if (depth === 0) break; }
+      else if (ch === ',' && depth === 1 && commaIdx === -1) commaIdx = j;
+      j++;
+    }
+    if (depth !== 0 || commaIdx === -1) { out += m[0]; i = re.lastIndex; continue; }
+    const cond = s.slice(re.lastIndex, commaIdx).trim();
+    const measure = s.slice(commaIdx + 1, j).trim();
+    out += `${sigmaFn}(${measure}, ${cond})`;
+    i = j + 1;
+    re.lastIndex = i;
+  }
+  out += s.slice(i);
+  return out;
 }
 
 // Paren-balanced rewrite of `safe_divide(a, b)` → `If(IsNull(b) or b = 0, Null(), a / b)`.

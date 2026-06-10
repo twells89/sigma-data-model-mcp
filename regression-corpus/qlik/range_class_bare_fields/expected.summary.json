@@ -1,0 +1,12 @@
+{
+  "description": "Qlik master items reference fields BARE (Class(UNIT_PRICE, 50), RangeSum(Sum(NET_REVENUE), ...)) as real apps do. Before the fix these bracketed to [UNIT_PRICE] but were not mapped to [Unit Price] -> error-typed columns. bracketKnownBareFields maps bare known-field tokens to display names without mangling and/or operators.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
