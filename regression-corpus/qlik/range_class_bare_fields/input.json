@@ -1,0 +1,26 @@
+{
+  "appName": "Qlik Range/Class Bare Fields Repro",
+  "qAppId": "qlik-range-class-bare",
+  "qtr": [
+    {
+      "qName": "ORDER_FACT",
+      "qNoOfRows": 1000,
+      "qFields": [
+        { "qName": "ORDER_ID",         "qnTotalDistinctValues": 1000, "qnRows": 1000 },
+        { "qName": "UNIT_PRICE",        "qnTotalDistinctValues": 200,  "qnRows": 1000 },
+        { "qName": "QUANTITY_ORDERED",  "qnTotalDistinctValues": 20,   "qnRows": 1000 },
+        { "qName": "NET_REVENUE",       "qnTotalDistinctValues": 950,  "qnRows": 1000 },
+        { "qName": "GROSS_REVENUE",     "qnTotalDistinctValues": 950,  "qnRows": 1000 },
+        { "qName": "DISCOUNT_AMOUNT",   "qnTotalDistinctValues": 300,  "qnRows": 1000 }
+      ]
+    }
+  ],
+  "masterMeasures": [
+    { "title": "Range Rev Sum", "qDef": "RangeSum(Sum(NET_REVENUE), Sum(GROSS_REVENUE), Sum(DISCOUNT_AMOUNT))" },
+    { "title": "Range Rev Min", "qDef": "RangeMin(Sum(NET_REVENUE), Sum(GROSS_REVENUE))" }
+  ],
+  "masterDimensions": [
+    { "title": "Unit Price Bucket", "qFieldDef": "Class(UNIT_PRICE, 50)" },
+    { "title": "Qty Bucket",        "qFieldDef": "Class(QUANTITY_ORDERED, 5)" }
+  ]
+}
