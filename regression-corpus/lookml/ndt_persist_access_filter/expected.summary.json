@@ -1,0 +1,14 @@
+{
+  "description": "Exotic LookML coverage (branch tj/lookml-robustness-ratio-percentile-html-fixes). Native Derived Table: status_summary is a derived_table with explore_source: order_fact (no raw sql:) — the converter resolves order_fact's base table CSA.TJ.ORDER_FACT and translates the listed columns into a Custom SQL element 'SELECT ORDER_STATUS, SUM(NET_REVENUE), COUNT(*) ... GROUP BY ORDER_STATUS'. PDT persistence hints datagroup_trigger / persist_for / sql_trigger_value are upgraded from a generic skip to a specific informational note mapping them to Sigma scheduled materialization. Converted explore = status_summary. A correctly-handled NDT produces a SQL helper element and zero error columns (no dangling refs).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ",
+    "exploreName": "status_summary"
+  },
+  "asserts": {
+    "minElements": 1,
+    "minHelperElements": 1,
+    "noErrorColumns": true
+  }
+}

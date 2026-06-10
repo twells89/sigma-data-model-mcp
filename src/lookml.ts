@@ -38,7 +38,7 @@ export function parseLookML(text: string): LookMLParseResult {
   // Pre-extract raw sql: ... ;; blocks
   const sqlPlaceholders: Record<string, string> = {};
   let phIdx = 0;
-  text = text.replace(/\b(sql(?:_start|_end)?)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
+  text = text.replace(/\b(sql_trigger_value|sql_table_name|sql_where|sql_start|sql_end|sql_on|html|sql)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
     const key = `__SQLPH${phIdx++}__`;
     sqlPlaceholders[key] = sqlContent.trim();
     return `${keyName}: "${key}" ;;`;
@@ -55,7 +55,9 @@ export function parseLookML(text: string): LookMLParseResult {
 
   const NAMED_BLOCK_KEYS = new Set([
     'dimension', 'measure', 'dimension_group', 'filter', 'parameter',
-    'join', 'set', 'link', 'action', 'form_param', 'option'
+    'join', 'set', 'link', 'action', 'form_param', 'option',
+    // Native Derived Table (NDT): `explore_source: <explore> { column ... }`
+    'explore_source', 'column', 'derived_column'
   ]);
 
   const SQL_KEYS = new Set(['sql', 'sql_on', 'sql_where', 'sql_table_name',
@@ -309,12 +311,132 @@ function lookParseFilterExpr(expr: string, columnId: string): Record<string, any
   return null;
 }
 
+interface NdtContext {
+  views: Record<string, any>;
+  explores: Record<string, any>;
+}
+
+/**
+ * Best-effort resolution of a Native Derived Table (NDT) — a `derived_table`
+ * whose `explore_source` aggregates an existing explore rather than supplying
+ * raw `sql:`. We resolve the referenced explore's base view to its warehouse
+ * table and translate the listed `column`/`derived_column`/`filters` into a
+ * single-table SELECT. This is intentionally conservative: it only emits SQL
+ * when every selected column resolves to a physical field on the base view
+ * (no cross-view joins), otherwise it returns null so the caller falls back to
+ * a clear "rebuild as a Sigma data element" warning. Never produces dangling
+ * refs.
+ *
+ * Returns { sql, resolved } where resolved=false means "could not build SQL".
+ */
+function resolveNdtToSql(
+  ndtViewName: string,
+  explSource: any,
+  ctx: NdtContext,
+  warnings: string[]
+): { sql: string; resolved: boolean } {
+  const exploreName: string = explSource._name || '';
+  const explore = ctx.explores[exploreName];
+  if (!explore) {
+    warnings.push(`⚠ View "${ndtViewName}" is a Native Derived Table on explore "${exploreName}", which was not found in the provided files. Rebuild it as a Sigma data element (aggregate the source element) after import.`);
+    return { sql: '', resolved: false };
+  }
+
+  // Resolve the explore's base view → warehouse table path.
+  const baseViewName: string = explore.from || exploreName;
+  const baseView = ctx.views[baseViewName];
+  if (!baseView || baseView.derived_table) {
+    warnings.push(`⚠ View "${ndtViewName}" (NDT on explore "${exploreName}"): base view "${baseViewName}" is not a simple warehouse table — cannot auto-generate SQL. Rebuild as a Sigma data element after import.`);
+    return { sql: '', resolved: false };
+  }
+  const basePath = lookExtractPath(baseView);
+  if (!basePath.length) {
+    warnings.push(`⚠ View "${ndtViewName}" (NDT on explore "${exploreName}"): could not resolve base table for view "${baseViewName}". Rebuild as a Sigma data element after import.`);
+    return { sql: '', resolved: false };
+  }
+  const fromTable = basePath.join('.');
+
+  // Build a map of base-view field name → { sql, isMeasure, aggType }.
+  const dimMap = new Map<string, string>(); // field name → physical SQL expr
+  const dims = baseView.dimension ? (Array.isArray(baseView.dimension) ? baseView.dimension : [baseView.dimension]) : [];
+  for (const d of dims) {
+    if (!d._name || !d.sql) continue;
+    const expr = d.sql.replace(/\$\{TABLE\}\s*\.\s*/gi, '').replace(/;;\s*$/, '').trim();
+    if (/\$\{/.test(expr)) continue; // cross-field/cross-view ref — skip (not tractable)
+    dimMap.set(d._name.toLowerCase(), expr);
+  }
+  const measureMap = new Map<string, { agg: string; col: string }>();
+  const measures = baseView.measure ? (Array.isArray(baseView.measure) ? baseView.measure : [baseView.measure]) : [];
+  for (const ms of measures) {
+    if (!ms._name) continue;
+    const t = (ms.type || '').toLowerCase();
+    const aggFn: Record<string, string> = { sum: 'SUM', average: 'AVG', avg: 'AVG', min: 'MIN', max: 'MAX', count: 'COUNT', count_distinct: 'COUNT', median: 'MEDIAN' };
+    if (!aggFn[t]) continue;
+    let col = '*';
+    if (ms.sql) {
+      const e = ms.sql.replace(/\$\{TABLE\}\s*\.\s*/gi, '').replace(/;;\s*$/, '').trim();
+      if (/\$\{(\w+)\}/.test(e)) {
+        const refName = e.match(/\$\{(\w+)\}/)![1].toLowerCase();
+        col = dimMap.get(refName) || '*';
+        if (col === '*') continue;
+      } else col = e;
+    } else if (t !== 'count') continue;
+    const distinct = t === 'count_distinct' ? 'DISTINCT ' : '';
+    measureMap.set(ms._name.toLowerCase(), { agg: aggFn[t], col: distinct + col });
+  }
+
+  // Translate the listed columns.
+  const cols = explSource.column ? (Array.isArray(explSource.column) ? explSource.column : [explSource.column]) : [];
+  const selectParts: string[] = [];
+  const groupByExprs: string[] = [];
+  let hasMeasure = false;
+  let unresolved = false;
+
+  for (const c of cols) {
+    const outName = c._name || '';
+    const fieldRef = (c.field || c._name || '').trim();
+    // field ref like "order_fact.order_status" or bare "order_status"
+    const fieldName = (fieldRef.includes('.') ? fieldRef.split('.').pop()! : fieldRef).toLowerCase();
+    // Uppercase the alias so it matches the warehouse-folded identifier that
+    // the NDT view's own dimensions reference (e.g. ${TABLE}.order_status →
+    // ORDER_STATUS). Sigma fuzzy-matches case for self-refs inside the SQL
+    // element, so this resolves cleanly from both bare-lowercase and
+    // bracket-uppercase column formulas.
+    const alias = outName ? ` AS "${outName.toUpperCase()}"` : '';
+    if (measureMap.has(fieldName)) {
+      const m = measureMap.get(fieldName)!;
+      selectParts.push(`${m.agg}(${m.col})${alias}`);
+      hasMeasure = true;
+    } else if (dimMap.has(fieldName)) {
+      const expr = dimMap.get(fieldName)!;
+      selectParts.push(`${expr}${alias}`);
+      groupByExprs.push(expr);
+    } else {
+      unresolved = true;
+      break;
+    }
+  }
+
+  if (unresolved || selectParts.length === 0) {
+    warnings.push(`⚠ View "${ndtViewName}" (NDT on explore "${exploreName}"): one or more selected columns reference fields that could not be resolved on the base view (joined/derived fields are not supported here). Rebuild this NDT as a Sigma data element that aggregates the "${sigmaDisplayName(exploreName)}" element after import.`);
+    return { sql: '', resolved: false };
+  }
+
+  let sql = `SELECT\n  ${selectParts.join(',\n  ')}\nFROM ${fromTable}`;
+  if (hasMeasure && groupByExprs.length) {
+    sql += `\nGROUP BY ${groupByExprs.join(', ')}`;
+  }
+  warnings.push(`ℹ View "${ndtViewName}" → Native Derived Table on explore "${exploreName}" was translated to a Custom SQL element (aggregation pushed to ${fromTable}). Review the generated SQL and consider rebuilding it as a native Sigma data element for full editability.`);
+  return { sql, resolved: true };
+}
+
 function lookConvertView(
   viewName: string,
   view: any,
   connectionId: string,
   warnings: string[],
-  sqlTableNameMap?: Record<string, string>
+  sqlTableNameMap?: Record<string, string>,
+  ndtContext?: NdtContext
 ): ElementResult {
   if (!view) {
     warnings.push(`⚠ View "${viewName}" not found — element will have no columns`);
@@ -332,15 +454,42 @@ function lookConvertView(
   if (view.derived_table !== undefined) {
     let rawSql = (view.derived_table.sql || '').replace(/;;\s*$/, '').trim();
 
+    // Native Derived Table (NDT): no raw sql:, aggregates an explore_source.
+    // The parser wraps named blocks in an array — unwrap to the first.
+    const explSource = Array.isArray(view.derived_table.explore_source)
+      ? view.derived_table.explore_source[0]
+      : view.derived_table.explore_source;
+    if (!rawSql && explSource !== undefined && ndtContext) {
+      const ndt = resolveNdtToSql(viewName, explSource, ndtContext, warnings);
+      if (ndt.resolved) rawSql = ndt.sql;
+      // If not resolved, rawSql stays empty → handled below as a clear warning
+      // with an empty (but valid) SQL element. No dangling refs.
+    } else if (!rawSql && explSource !== undefined) {
+      warnings.push(`⚠ View "${viewName}" is a Native Derived Table (explore_source) but explore context was unavailable — rebuild it as a Sigma data element after import.`);
+    }
+
     // Gap 1: resolve ${ref.SQL_TABLE_NAME} references inside derived table SQL
     if (sqlTableNameMap && rawSql.includes('${')) {
       rawSql = resolveSqlTableNameRefs(rawSql, sqlTableNameMap, warnings, viewName);
     }
 
-    // Gap 3: warn on PDT-specific properties that are not converted
-    const PDT_SKIP_PROPS = ['distribution', 'sortkeys', 'datagroup_trigger', 'persist_with', 'cluster_keys', 'partition_keys'];
+    // PDT persistence hints → Sigma scheduled materialization (informational).
+    // datagroup_trigger / persist_for / sql_trigger_value control when Looker
+    // rebuilds a Persistent Derived Table; the Sigma equivalent is scheduled
+    // materialization on the data model (Materialization tab in the DM UI / API).
+    const PERSIST_HINTS = ['datagroup_trigger', 'persist_for', 'sql_trigger_value'];
+    const dt = view.derived_table as any;
+    for (const prop of PERSIST_HINTS) {
+      if (dt[prop] !== undefined) {
+        const val = typeof dt[prop] === 'string' ? dt[prop] : '';
+        warnings.push(`ℹ View "${viewName}": PDT persistence hint "${prop}"${val ? ` (${val})` : ''} maps to Sigma scheduled materialization. Configure a materialization schedule on this data model (Materialization tab in the Sigma UI, or via the API) to get the equivalent refresh cadence.`);
+      }
+    }
+
+    // Other warehouse-specific PDT properties that have no Sigma equivalent.
+    const PDT_SKIP_PROPS = ['distribution', 'sortkeys', 'persist_with', 'cluster_keys', 'partition_keys'];
     for (const prop of PDT_SKIP_PROPS) {
-      if (view.derived_table[prop] !== undefined) {
+      if (dt[prop] !== undefined) {
         warnings.push(`ℹ View "${viewName}": PDT property "${prop}" is a warehouse-specific materialization hint and is not converted — configure this in your warehouse or Sigma dataset settings.`);
       }
     }
@@ -448,6 +597,27 @@ function lookConvertView(
   for (const d of dims) {
     if (!d._name) continue;
     const colName = d._name.toUpperCase();
+
+    // ── legacy `case: { when: {sql,label}... else }` → nested If() ──
+    if (d.case && typeof d.case === 'object') {
+      const whens = Array.isArray(d.case.when) ? d.case.when : (d.case.when ? [d.case.when] : []);
+      const toCond = (sql: string) => lookConvertExpression(
+        (sql || '').replace(/\$\{TABLE\}\./gi, '')
+          .replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1')
+          .replace(/[\r\n]+\s*/g, ' ').trim());
+      let formula = d.case.else != null ? `"${String(d.case.else)}"` : 'Null';
+      for (let i = whens.length - 1; i >= 0; i--) {
+        const w = whens[i];
+        if (typeof w !== 'object' || !w.sql) continue;
+        formula = `If(${toCond(w.sql)}, "${String(w.label ?? w._name ?? '')}", ${formula})`;
+      }
+      const caseColId = sigmaShortId();
+      colIdMap[colName] = caseColId;
+      element.columns.push({ id: caseColId, formula, name: d.label || sigmaDisplayName(d._name) });
+      element.order.push(caseColId);
+      warnings.push(`✅ "${d._name}" (case) → ${formula.slice(0, 70)}`);
+      continue;
+    }
 
     // Detect LookML parameter substitution — can't be resolved statically
     if (/\$\{[^.}]+\}/.test(d.sql || '') && !/\$\{TABLE\}/i.test(d.sql || '')) {
@@ -561,6 +731,16 @@ function lookConvertView(
                         || lookStripSql(dg.sql_start).split('.').pop()!.replace(/"/g, '').toUpperCase();
       const endCol    = ((normEnd.match(/^([A-Za-z_][A-Za-z0-9_]*)/) || ['', ''])[1]).toUpperCase()
                         || lookStripSql(dg.sql_end).split('.').pop()!.replace(/"/g, '').toUpperCase();
+      // ensure the start/end physical columns exist on the element (the DateDiff
+      // references them) — otherwise the duration columns dangle.
+      for (const pc of [startCol, endCol]) {
+        if (pc && !colIdMap[pc]) {
+          const cid = makeColId(pc);
+          colIdMap[pc] = cid;
+          element.columns.push({ id: cid, formula: `[${tableName}/${colLabel(pc)}]` });
+          element.order.push(cid);
+        }
+      }
       const startRef  = `[${tableName}/${colLabel(startCol)}]`;
       const endRef    = `[${tableName}/${colLabel(endCol)}]`;
       const DG_DURATION: Record<string, string> = {
@@ -660,6 +840,58 @@ function lookConvertView(
   const measures = view.measure ? (Array.isArray(view.measure) ? view.measure : [view.measure]) : [];
   const CALC_COL_MEASURE_TYPES = new Set(['running_total', 'percent_of_total']);
 
+  // Pre-pass: resolve each non-computed measure's Sigma aggregate formula so that
+  // ratio/number measures referencing other measures (e.g. ${total_revenue} /
+  // ${order_count}) can substitute them. Avoids leaking ${...} tokens / fabricating
+  // phantom columns from arithmetic expressions.
+  const measurePhysCol = (ms: any): string => {
+    const resolved = (ms.sql || '').replace(
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+      (m: string, r: string) => dimPhysColMap.get(r.toLowerCase()) ?? m);
+    const sc = lookStripSql(resolved) || (ms._name || '').toUpperCase();
+    return sc.split('.').pop()!.replace(/"/g, '').toUpperCase();
+  };
+  const filterCondition = (ms: any): string | null => {
+    const fl = Array.isArray(ms.filters) ? ms.filters : (ms.filters ? [ms.filters] : []);
+    const conds: string[] = [];
+    for (const f of fl) {
+      if (typeof f !== 'object' || !f) continue;
+      const ff = f.field || f._name, fv = f.value;
+      if (!ff || fv == null) continue;
+      const dn = colLabel(ff.replace(/^.*\./, '').toUpperCase());
+      if (fv === 'yes' || fv === 'true') conds.push(`[${dn}] = True`);
+      else if (fv === 'no' || fv === 'false') conds.push(`[${dn}] = False`);
+      else conds.push(`[${dn}] = "${fv}"`);
+    }
+    if (!conds.length) return null;
+    return conds.length === 1 ? conds[0] : conds.map(c => `(${c})`).join(' And ');
+  };
+  const simpleMeasureFormula = (ms: any): string | null => {
+    const t = (ms.type || 'count').toLowerCase();
+    const dn = colLabel(measurePhysCol(ms));
+    const cond = filterCondition(ms);
+    if (cond) {
+      const m: Record<string, string> = {
+        sum: `SumIf([${dn}], ${cond})`, count: `CountIf(${cond})`,
+        count_distinct: `CountDistinctIf([${dn}], ${cond})`, average: `AvgIf([${dn}], ${cond})`,
+        max: `MaxIf([${dn}], ${cond})`, min: `MinIf([${dn}], ${cond})`,
+      };
+      return m[t] || `SumIf([${dn}], ${cond})`;
+    }
+    if (t === 'count') return 'Count()';
+    if (t === 'count_distinct') return `CountDistinct([${dn}])`;
+    if (t === 'percentile') return `Percentile([${dn}], ${(Number(ms.percentile) || 50) / 100})`;
+    if (['sum', 'average', 'median', 'min', 'max', 'average_distinct', 'sum_distinct', 'list'].includes(t))
+      return lookSigmaMetric(t, measurePhysCol(ms));
+    return null; // number/computed/ratio — resolved in the main pass
+  };
+  const measureSigmaFormula = new Map<string, string>();
+  measures.forEach((ms: any) => {
+    if (!ms._name) return;
+    const f = simpleMeasureFormula(ms);
+    if (f) measureSigmaFormula.set(ms._name.toLowerCase(), f);
+  });
+
   measures.forEach((ms: any) => {
     if (!ms._name) return;
     const msName = ms._name.toUpperCase();
@@ -697,6 +929,31 @@ function lookConvertView(
       return;
     }
 
+    // Computed / ratio measures: sql references OTHER measures (${measure}) or is a
+    // complex arithmetic expression. Substitute each ${measure} with its Sigma
+    // aggregate formula and map SQL funcs → Sigma; emit as a metric (NOT a column).
+    const measureRefs = [...((ms.sql || '') as string).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)]
+      .map(mm => mm[1].toLowerCase());
+    const refsOtherMeasure = measureRefs.some(r => measureSigmaFormula.has(r));
+    const isComputed = !ms.filters && (refsOtherMeasure ||
+      (msType === 'number' && ms.sql && lookIsComplexSql(ms.sql)));
+    if (isComputed) {
+      let expr = (ms.sql || '') as string;
+      expr = expr.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m: string, r: string) => {
+        const mf = measureSigmaFormula.get(r.toLowerCase());
+        if (mf) return `(${mf})`;
+        const phys = dimPhysColMap.get(r.toLowerCase());
+        return phys ? `[${colLabel(phys.toUpperCase())}]` : m;
+      });
+      // map common SQL funcs to Sigma (decimals/operators pass through untouched)
+      expr = expr.replace(/\bNULLIF\s*\(/gi, 'NullIf(')
+                 .replace(/\b(COALESCE|NVL|IFNULL)\s*\(/gi, 'Coalesce(')
+                 .replace(/\b(IFF|IIF)\s*\(/gi, 'If(');
+      element.metrics!.push({ id: sigmaShortId(), formula: expr.trim(), name: msLabel });
+      warnings.push(`✅ "${ms._name}" (computed) → ${expr.trim().slice(0, 70)}`);
+      return;
+    }
+
     // Filtered measures → conditional aggregates
     if (ms.filters && (Array.isArray(ms.filters) ? ms.filters.length : false)) {
       const filters = Array.isArray(ms.filters) ? ms.filters : [];
@@ -721,7 +978,9 @@ function lookConvertView(
       }
       if (conditions.length > 0) {
         const condition = conditions.length === 1 ? conditions[0] : conditions.map(c => `(${c})`).join(' And ');
-        if (!colIdMap[physicalCol]) {
+        // A filtered `count` (CountIf) references only the condition columns, not a
+        // value column — don't fabricate a physical column from the measure name.
+        if (msType !== 'count' && !colIdMap[physicalCol]) {
           const colId = makeColId(physicalCol);
           colIdMap[physicalCol] = colId;
           element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
@@ -759,7 +1018,11 @@ function lookConvertView(
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
         element.order.push(colId);
       }
-      element.metrics!.push({ id: sigmaShortId(), formula: lookSigmaMetric(msType, colLabel(physicalCol)), name: msLabel });
+      const dn = colLabel(physicalCol);
+      const formula = msType === 'percentile'
+        ? `Percentile([${dn}], ${(Number(ms.percentile) || 50) / 100})`
+        : lookSigmaMetric(msType, physicalCol);
+      element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel });
     }
   });
 
@@ -858,7 +1121,12 @@ export function convertLookMLToSigma(
   const needsPhysical = (j: any): boolean => {
     if (strategy === 'joins') return true;
     if (strategy === 'relationships') return false;
-    return j.rel === 'one_to_many' || j.rel === 'many_to_many' || j.joinType === 'full_outer';
+    // many_to_many is intentionally NOT forced to a physical join here. Sigma
+    // has no native M:N relationship, but dropping the join entirely would lose
+    // the dimension columns and risk dangling cross-element refs. Instead we
+    // keep it on the relationship path and map it to the closest Sigma type
+    // (N:1) with a warning recommending a bridge table (see wiring below).
+    return j.rel === 'one_to_many' || j.joinType === 'full_outer';
   };
 
   const relJoins = joinDefs.filter(j => !needsPhysical(j));
@@ -867,14 +1135,15 @@ export function convertLookMLToSigma(
   const elementMap: Record<string, ElementResult> = {};
   const physViewMap: Record<string, ElementResult> = {};
 
-  const baseResult = lookConvertView(baseViewName, views[baseViewName], connectionId, warnings, sqlTableNameMap);
+  const ndtContext: NdtContext = { views, explores };
+  const baseResult = lookConvertView(baseViewName, views[baseViewName], connectionId, warnings, sqlTableNameMap, ndtContext);
   elementMap[baseAlias] = baseResult;
   physViewMap[baseViewName] = baseResult;
   if (baseAlias !== baseViewName) elementMap[baseViewName] = baseResult;
 
   for (const j of joinDefs) {
     if (!physViewMap[j.viewName]) {
-      const res = lookConvertView(j.viewName, views[j.viewName], connectionId, warnings, sqlTableNameMap);
+      const res = lookConvertView(j.viewName, views[j.viewName], connectionId, warnings, sqlTableNameMap, ndtContext);
       physViewMap[j.viewName] = res;
     }
     elementMap[j.alias] = physViewMap[j.viewName];
@@ -935,6 +1204,17 @@ export function convertLookMLToSigma(
       }
       usedTargetCols.add(pairKey);
 
+      // Map the LookML relationship cardinality to the closest Sigma type.
+      // Sigma supports N:1 / 1:1 / 1:N — there is no native many_to_many. For
+      // M:N we emit the closest functional approximation (N:1) and warn that a
+      // bridge/junction table is needed for correct fan-out behaviour.
+      let relType: 'N:1' | '1:1' | '1:N' = 'N:1';
+      if (j.rel === 'one_to_one') relType = '1:1';
+      else if (j.rel === 'many_to_many') {
+        relType = 'N:1';
+        warnings.push(`⚠ Relationship "${j.alias}": LookML relationship is many_to_many, which Sigma does not support natively. Mapped to the closest type (N:1) — verify cardinality and introduce a bridge/junction table if the join can fan out on both sides (otherwise aggregates may double-count).`);
+      }
+
       const srcEl = srcRes.element;
       if (!srcEl.relationships) srcEl.relationships = [];
       srcEl.relationships.push({
@@ -942,7 +1222,7 @@ export function convertLookMLToSigma(
         targetElementId: targetRes.elementId,
         keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
         name: j.alias,
-        relationshipType: 'N:1'
+        relationshipType: relType
       });
     });
   });
@@ -961,6 +1241,22 @@ export function convertLookMLToSigma(
     if (aHasRel === bHasRel) return 0;
     return aHasRel ? 1 : -1;
   });
+
+  // ── LookML access_filter → Sigma row-level security (detect + warn) ───────
+  // access_filter implements row-level security: each row is restricted by
+  // matching a column against the value of a Looker user_attribute. Sigma has
+  // no spec-level equivalent (RLS / column-level security is configured via
+  // user attributes in the Sigma admin/data-model UI, not the DM JSON), so we
+  // never silently drop it: detect every access_filter and emit an actionable
+  // warning telling the user exactly which field maps to which user attribute.
+  const accessFilters: any[] = explore.access_filter
+    ? (Array.isArray(explore.access_filter) ? explore.access_filter : [explore.access_filter])
+    : [];
+  for (const af of accessFilters) {
+    const field = af.field || '(unspecified field)';
+    const ua = af.user_attribute || '(unspecified user_attribute)';
+    warnings.push(`ℹ Explore "${exploreName}": access_filter restricts "${field}" by user_attribute "${ua}" (row-level security). Sigma has no spec-level equivalent — recreate this as Row-Level Security in the Sigma data model UI, binding column "${field}" to a Sigma user attribute named "${ua}". The explore was converted normally; only the RLS rule must be re-applied.`);
+  }
 
   // ── LookML always_filter → Sigma element filters ─────────────────────────
   const alwaysFilterItems: any[] = explore.always_filter?.filters
@@ -1170,13 +1466,19 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
       for (const col of tgtEl.columns ?? []) {
         if (!col.formula || col.formula.startsWith('/*')) continue;
-        if (col.name) continue;
-        // Extract the display name from a [TABLE/ColName] or [ColName] formula
-        const fm = col.formula.match(/^\[([^\]]+)\]$/);
-        if (!fm) continue;
-        const inner = fm[1];
-        const slashIdx = inner.lastIndexOf('/');
-        const dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        // Named/computed columns (e.g. dimension_group DateTrunc timeframes, CASE
+        // dims) are referenced cross-element by their display name; physical refs
+        // use the column inside the [TABLE/Col] formula.
+        let dispName: string;
+        if (col.name) {
+          dispName = col.name;
+        } else {
+          const fm = col.formula.match(/^\[([^\]]+)\]$/);
+          if (!fm) continue;
+          const inner = fm[1];
+          const slashIdx = inner.lastIndexOf('/');
+          dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
+        }
         const cId = sigmaShortId();
         viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);
