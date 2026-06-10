@@ -1242,20 +1242,69 @@ export function convertLookMLToSigma(
     return aHasRel ? 1 : -1;
   });
 
-  // ── LookML access_filter → Sigma row-level security (detect + warn) ───────
+  // ── LookML access_filter → Sigma row-level security (spec-expressible) ────
   // access_filter implements row-level security: each row is restricted by
-  // matching a column against the value of a Looker user_attribute. Sigma has
-  // no spec-level equivalent (RLS / column-level security is configured via
-  // user attributes in the Sigma admin/data-model UI, not the DM JSON), so we
-  // never silently drop it: detect every access_filter and emit an actionable
-  // warning telling the user exactly which field maps to which user attribute.
+  // matching a column against the value of a Looker user_attribute. This IS
+  // expressible in the Sigma data-model spec (verified live end-to-end): on the
+  // element that owns the field we add a boolean calc column
+  //   RLS: <Field> = CurrentUserAttributeText("<attr>") = [<Field display name>]
+  // and an element-level `filters` entry on that calc column that keeps only
+  // rows where it is True (kind:list, mode:include, values:[true]) — fail-closed
+  // RLS. We never silently drop it, and we emit an actionable informational
+  // warning so the user provisions/reuses the matching Sigma user attribute.
   const accessFilters: any[] = explore.access_filter
     ? (Array.isArray(explore.access_filter) ? explore.access_filter : [explore.access_filter])
     : [];
   for (const af of accessFilters) {
     const field = af.field || '(unspecified field)';
     const ua = af.user_attribute || '(unspecified user_attribute)';
-    warnings.push(`ℹ Explore "${exploreName}": access_filter restricts "${field}" by user_attribute "${ua}" (row-level security). Sigma has no spec-level equivalent — recreate this as Row-Level Security in the Sigma data model UI, binding column "${field}" to a Sigma user attribute named "${ua}". The explore was converted normally; only the RLS rule must be re-applied.`);
+
+    // Resolve the element + column the access_filter restricts.
+    const dotIdx = field.lastIndexOf('.');
+    const viewPart = dotIdx >= 0 ? field.slice(0, dotIdx) : baseViewName;
+    const fieldPart = (dotIdx >= 0 ? field.slice(dotIdx + 1) : field).toUpperCase();
+    const targetRes = elementMap[viewPart] || elementMap[baseAlias];
+
+    const colId = targetRes ? lookFindColId(targetRes, fieldPart) : null;
+    if (!targetRes || !colId) {
+      warnings.push(`⚠ Explore "${exploreName}": access_filter restricts "${field}" by user_attribute "${ua}" (row-level security), but column "${field}" was not found in the converted model — re-apply this RLS rule manually in Sigma (boolean calc column CurrentUserAttributeText("${ua}") = [<field>] + an element filter keeping only True).`);
+      continue;
+    }
+
+    // Display name to reference inside the calc column. A physical dimension has
+    // no explicit `name` — its display name is the trailing segment of its
+    // [TABLE/Display] formula; a calc column carries its `name` directly.
+    const targetEl: any = targetRes.element;
+    const ownerCol = (targetEl.columns || []).find((c: any) => c.id === colId);
+    let dispName = ownerCol?.name;
+    if (!dispName && ownerCol?.formula) {
+      const fm = String(ownerCol.formula).match(/^\[(?:[^\]\/]+\/)?([^\]]+)\]$/);
+      if (fm) dispName = fm[1];
+    }
+    if (!dispName) dispName = sigmaDisplayName(fieldPart);
+
+    // Add the boolean RLS calc column on the owning element.
+    const rlsColId = sigmaShortId();
+    const rlsColName = `RLS: ${dispName}`;
+    targetEl.columns.push({
+      id: rlsColId,
+      name: rlsColName,
+      formula: `CurrentUserAttributeText("${ua}") = [${dispName}]`
+    });
+    if (!targetEl.order) targetEl.order = [];
+    targetEl.order.push(rlsColId);
+
+    // Fail-closed element filter: keep only rows where the RLS column is True.
+    if (!targetEl.filters) targetEl.filters = [];
+    targetEl.filters.push({
+      id: sigmaShortId(),
+      columnId: rlsColId,
+      kind: 'list',
+      mode: 'include',
+      values: [true]
+    });
+
+    warnings.push(`✅ Explore "${exploreName}": access_filter "${field}" → Sigma RLS applied via user attribute "${ua}". Added boolean calc column "${rlsColName}" (CurrentUserAttributeText("${ua}") = [${dispName}]) + an element filter keeping only matching rows. ℹ Provision/reuse a Sigma user attribute named "${ua}" (GET/POST /v2/user-attributes) and assign each user their allowed value, or remove this filter from the element if you are not porting RLS.`);
   }
 
   // ── LookML always_filter → Sigma element filters ─────────────────────────
