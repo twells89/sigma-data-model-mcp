@@ -12,7 +12,7 @@
     "start:local": "node build/index.js",
     "dev": "tsx src/server.ts",
     "dev:local": "tsx src/index.ts",
-    "test": "node --import tsx/esm --test src/lookml.test.ts",
+    "test": "node --import tsx/esm --test src/lookml.test.ts src/cognos.test.ts",
     "test:integration": "node --import tsx/esm --test src/lookml.integration.test.ts",
     "regression": "node scripts/regression.mjs",
     "regression:browser": "node scripts/regression-browser.mjs",
