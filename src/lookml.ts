@@ -449,6 +449,27 @@ function lookConvertView(
     if (!d._name) continue;
     const colName = d._name.toUpperCase();
 
+    // ── legacy `case: { when: {sql,label}... else }` → nested If() ──
+    if (d.case && typeof d.case === 'object') {
+      const whens = Array.isArray(d.case.when) ? d.case.when : (d.case.when ? [d.case.when] : []);
+      const toCond = (sql: string) => lookConvertExpression(
+        (sql || '').replace(/\$\{TABLE\}\./gi, '')
+          .replace(/\$\{[^.}]+\.([^}]+)\}/g, '$1')
+          .replace(/[\r\n]+\s*/g, ' ').trim());
+      let formula = d.case.else != null ? `"${String(d.case.else)}"` : 'Null';
+      for (let i = whens.length - 1; i >= 0; i--) {
+        const w = whens[i];
+        if (typeof w !== 'object' || !w.sql) continue;
+        formula = `If(${toCond(w.sql)}, "${String(w.label ?? w._name ?? '')}", ${formula})`;
+      }
+      const caseColId = sigmaShortId();
+      colIdMap[colName] = caseColId;
+      element.columns.push({ id: caseColId, formula, name: d.label || sigmaDisplayName(d._name) });
+      element.order.push(caseColId);
+      warnings.push(`✅ "${d._name}" (case) → ${formula.slice(0, 70)}`);
+      continue;
+    }
+
     // Detect LookML parameter substitution — can't be resolved statically
     if (/\$\{[^.}]+\}/.test(d.sql || '') && !/\$\{TABLE\}/i.test(d.sql || '')) {
       warnings.push(`⚠ "${d._name}": uses LookML parameter substitution — skipped. Add this dimension manually after configuring parameters in Sigma.`);
@@ -561,6 +582,16 @@ function lookConvertView(
                         || lookStripSql(dg.sql_start).split('.').pop()!.replace(/"/g, '').toUpperCase();
       const endCol    = ((normEnd.match(/^([A-Za-z_][A-Za-z0-9_]*)/) || ['', ''])[1]).toUpperCase()
                         || lookStripSql(dg.sql_end).split('.').pop()!.replace(/"/g, '').toUpperCase();
+      // ensure the start/end physical columns exist on the element (the DateDiff
+      // references them) — otherwise the duration columns dangle.
+      for (const pc of [startCol, endCol]) {
+        if (pc && !colIdMap[pc]) {
+          const cid = makeColId(pc);
+          colIdMap[pc] = cid;
+          element.columns.push({ id: cid, formula: `[${tableName}/${colLabel(pc)}]` });
+          element.order.push(cid);
+        }
+      }
       const startRef  = `[${tableName}/${colLabel(startCol)}]`;
       const endRef    = `[${tableName}/${colLabel(endCol)}]`;
       const DG_DURATION: Record<string, string> = {
