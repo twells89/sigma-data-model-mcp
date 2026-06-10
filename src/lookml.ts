@@ -38,7 +38,7 @@ export function parseLookML(text: string): LookMLParseResult {
   // Pre-extract raw sql: ... ;; blocks
   const sqlPlaceholders: Record<string, string> = {};
   let phIdx = 0;
-  text = text.replace(/\b(sql(?:_start|_end)?)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
+  text = text.replace(/\b(sql_trigger_value|sql_table_name|sql_where|sql_start|sql_end|sql_on|html|sql)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
     const key = `__SQLPH${phIdx++}__`;
     sqlPlaceholders[key] = sqlContent.trim();
     return `${keyName}: "${key}" ;;`;
@@ -660,6 +660,58 @@ function lookConvertView(
   const measures = view.measure ? (Array.isArray(view.measure) ? view.measure : [view.measure]) : [];
   const CALC_COL_MEASURE_TYPES = new Set(['running_total', 'percent_of_total']);
 
+  // Pre-pass: resolve each non-computed measure's Sigma aggregate formula so that
+  // ratio/number measures referencing other measures (e.g. ${total_revenue} /
+  // ${order_count}) can substitute them. Avoids leaking ${...} tokens / fabricating
+  // phantom columns from arithmetic expressions.
+  const measurePhysCol = (ms: any): string => {
+    const resolved = (ms.sql || '').replace(
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+      (m: string, r: string) => dimPhysColMap.get(r.toLowerCase()) ?? m);
+    const sc = lookStripSql(resolved) || (ms._name || '').toUpperCase();
+    return sc.split('.').pop()!.replace(/"/g, '').toUpperCase();
+  };
+  const filterCondition = (ms: any): string | null => {
+    const fl = Array.isArray(ms.filters) ? ms.filters : (ms.filters ? [ms.filters] : []);
+    const conds: string[] = [];
+    for (const f of fl) {
+      if (typeof f !== 'object' || !f) continue;
+      const ff = f.field || f._name, fv = f.value;
+      if (!ff || fv == null) continue;
+      const dn = colLabel(ff.replace(/^.*\./, '').toUpperCase());
+      if (fv === 'yes' || fv === 'true') conds.push(`[${dn}] = True`);
+      else if (fv === 'no' || fv === 'false') conds.push(`[${dn}] = False`);
+      else conds.push(`[${dn}] = "${fv}"`);
+    }
+    if (!conds.length) return null;
+    return conds.length === 1 ? conds[0] : conds.map(c => `(${c})`).join(' And ');
+  };
+  const simpleMeasureFormula = (ms: any): string | null => {
+    const t = (ms.type || 'count').toLowerCase();
+    const dn = colLabel(measurePhysCol(ms));
+    const cond = filterCondition(ms);
+    if (cond) {
+      const m: Record<string, string> = {
+        sum: `SumIf([${dn}], ${cond})`, count: `CountIf(${cond})`,
+        count_distinct: `CountDistinctIf([${dn}], ${cond})`, average: `AvgIf([${dn}], ${cond})`,
+        max: `MaxIf([${dn}], ${cond})`, min: `MinIf([${dn}], ${cond})`,
+      };
+      return m[t] || `SumIf([${dn}], ${cond})`;
+    }
+    if (t === 'count') return 'Count()';
+    if (t === 'count_distinct') return `CountDistinct([${dn}])`;
+    if (t === 'percentile') return `Percentile([${dn}], ${(Number(ms.percentile) || 50) / 100})`;
+    if (['sum', 'average', 'median', 'min', 'max', 'average_distinct', 'sum_distinct', 'list'].includes(t))
+      return lookSigmaMetric(t, measurePhysCol(ms));
+    return null; // number/computed/ratio — resolved in the main pass
+  };
+  const measureSigmaFormula = new Map<string, string>();
+  measures.forEach((ms: any) => {
+    if (!ms._name) return;
+    const f = simpleMeasureFormula(ms);
+    if (f) measureSigmaFormula.set(ms._name.toLowerCase(), f);
+  });
+
   measures.forEach((ms: any) => {
     if (!ms._name) return;
     const msName = ms._name.toUpperCase();
@@ -697,6 +749,31 @@ function lookConvertView(
       return;
     }
 
+    // Computed / ratio measures: sql references OTHER measures (${measure}) or is a
+    // complex arithmetic expression. Substitute each ${measure} with its Sigma
+    // aggregate formula and map SQL funcs → Sigma; emit as a metric (NOT a column).
+    const measureRefs = [...((ms.sql || '') as string).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)]
+      .map(mm => mm[1].toLowerCase());
+    const refsOtherMeasure = measureRefs.some(r => measureSigmaFormula.has(r));
+    const isComputed = !ms.filters && (refsOtherMeasure ||
+      (msType === 'number' && ms.sql && lookIsComplexSql(ms.sql)));
+    if (isComputed) {
+      let expr = (ms.sql || '') as string;
+      expr = expr.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m: string, r: string) => {
+        const mf = measureSigmaFormula.get(r.toLowerCase());
+        if (mf) return `(${mf})`;
+        const phys = dimPhysColMap.get(r.toLowerCase());
+        return phys ? `[${colLabel(phys.toUpperCase())}]` : m;
+      });
+      // map common SQL funcs to Sigma (decimals/operators pass through untouched)
+      expr = expr.replace(/\bNULLIF\s*\(/gi, 'NullIf(')
+                 .replace(/\b(COALESCE|NVL|IFNULL)\s*\(/gi, 'Coalesce(')
+                 .replace(/\b(IFF|IIF)\s*\(/gi, 'If(');
+      element.metrics!.push({ id: sigmaShortId(), formula: expr.trim(), name: msLabel });
+      warnings.push(`✅ "${ms._name}" (computed) → ${expr.trim().slice(0, 70)}`);
+      return;
+    }
+
     // Filtered measures → conditional aggregates
     if (ms.filters && (Array.isArray(ms.filters) ? ms.filters.length : false)) {
       const filters = Array.isArray(ms.filters) ? ms.filters : [];
@@ -721,7 +798,9 @@ function lookConvertView(
       }
       if (conditions.length > 0) {
         const condition = conditions.length === 1 ? conditions[0] : conditions.map(c => `(${c})`).join(' And ');
-        if (!colIdMap[physicalCol]) {
+        // A filtered `count` (CountIf) references only the condition columns, not a
+        // value column — don't fabricate a physical column from the measure name.
+        if (msType !== 'count' && !colIdMap[physicalCol]) {
           const colId = makeColId(physicalCol);
           colIdMap[physicalCol] = colId;
           element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
@@ -759,7 +838,11 @@ function lookConvertView(
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
         element.order.push(colId);
       }
-      element.metrics!.push({ id: sigmaShortId(), formula: lookSigmaMetric(msType, colLabel(physicalCol)), name: msLabel });
+      const dn = colLabel(physicalCol);
+      const formula = msType === 'percentile'
+        ? `Percentile([${dn}], ${(Number(ms.percentile) || 50) / 100})`
+        : lookSigmaMetric(msType, physicalCol);
+      element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel });
     }
   });
 
