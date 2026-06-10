@@ -9,6 +9,107 @@ import {
 } from './sigma-ids.js';
 import { lookIsComplexSql, lookSqlToSigmaRules, lookConvertExpression, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
 
+// ── LookML number-format → Sigma format ──────────────────────────────────────
+// Sigma DM columns/metrics carry a `format` object of the shape
+//   { kind: 'number', formatString: '<d3-format>', currencySymbol?, suffix? }
+// (the same shape emitted by the powerbi/qlik/alteryx converters). LookML fields
+// carry either a named `value_format_name` (usd, percent_1, decimal_2, gbp, …) or
+// a custom Excel-style `value_format` mask ("$#,##0.00", "0.0%", "$#,##0.0\"K\"").
+// Map both to that shape. Returns null when nothing maps cleanly so callers omit
+// the format and (optionally) emit a warning.
+
+/** value_format_name → Sigma format. The decimals/currency are encoded in the name. */
+function lookmlNamedFormat(name: string): Record<string, any> | null {
+  const n = name.trim().toLowerCase();
+  // currency: usd / usd_0, gbp / gbp_0, eur / eur_0, plus a couple of common synonyms
+  const CUR: Record<string, string> = { usd: '$', gbp: '£', eur: '€', cad: '$', aud: '$' };
+  let m = n.match(/^(usd|gbp|eur|cad|aud)(?:_(\d+))?$/);
+  if (m) {
+    const sym = CUR[m[1]];
+    const dec = m[2] != null ? Number(m[2]) : 2;
+    return { kind: 'number', formatString: `${sym},.${dec}f`, currencySymbol: sym };
+  }
+  m = n.match(/^percent(?:_(\d+))?$/);
+  if (m) {
+    const dec = m[1] != null ? Number(m[1]) : 0;
+    return { kind: 'number', formatString: `,.${dec}%` };
+  }
+  m = n.match(/^decimal(?:_(\d+))?$/);
+  if (m) {
+    const dec = m[1] != null ? Number(m[1]) : 0;
+    return { kind: 'number', formatString: `,.${dec}f` };
+  }
+  // id / number-ish integer formats Looker ships
+  if (n === 'id') return { kind: 'number', formatString: ',.0f' };
+  return null;
+}
+
+/**
+ * Custom value_format mask (Excel/.NET-ish) → Sigma format. Handles the common
+ * patterns: currency symbol, percent, thousands separators, fixed decimals, and
+ * a trailing "K"/"M"/"B" scale suffix. Returns null for masks we can't read.
+ */
+function lookmlCustomFormat(mask: string): Record<string, any> | null {
+  if (typeof mask !== 'string') return null;
+  const raw = mask.trim();
+  if (!raw) return null;
+  // dates / text masks — let the heuristic fallback (if any) handle / skip
+  if (/general|date|time|@|yyyy|mmm|\bdd\b/i.test(raw)) return null;
+  // decimals = run of 0/# after the first decimal point
+  const decM = raw.match(/\.([0#]+)/);
+  const decimals = decM ? decM[1].length : 0;
+  const isPercent = /%/.test(raw);
+  const curM = raw.match(/[$£€¥]/);
+  // trailing scale suffix in a quoted literal, e.g.  $#,##0.0\"K\"  or  0.0,,"M".
+  // The mask may arrive with the inner quotes still escaped (\"K\") after the
+  // parser strips the OUTER quotes, so match an optional backslash before each.
+  const sufM = raw.match(/\\?["']\s*([KMB])\s*\\?["']/i);
+  const suffix = sufM ? sufM[1].toUpperCase() : undefined;
+  const SYM: Record<string, string> = { '$': '$', '£': '£', '€': '€', '¥': '¥' };
+
+  if (isPercent) {
+    const fmt: Record<string, any> = { kind: 'number', formatString: `,.${decimals}%` };
+    if (suffix) fmt.suffix = suffix;
+    return fmt;
+  }
+  if (curM) {
+    const sym = SYM[curM[0]] || '$';
+    const fmt: Record<string, any> = { kind: 'number', formatString: `${sym},.${decimals}f`, currencySymbol: sym };
+    if (suffix) fmt.suffix = suffix;
+    return fmt;
+  }
+  if (/[0#]/.test(raw)) {
+    const fmt: Record<string, any> = { kind: 'number', formatString: `,.${decimals}f` };
+    if (suffix) fmt.suffix = suffix;
+    return fmt;
+  }
+  return null;
+}
+
+/**
+ * Resolve a LookML field's number format into a Sigma `format` object.
+ * `value_format_name` (named) takes priority over a custom `value_format` mask.
+ * Pushes an actionable warning when a format is present but can't be mapped.
+ */
+function lookmlFieldFormat(field: any, warnings: string[]): Record<string, any> | undefined {
+  if (!field || typeof field !== 'object') return undefined;
+  const named = field.value_format_name;
+  if (typeof named === 'string' && named.trim()) {
+    const f = lookmlNamedFormat(named);
+    if (f) return f;
+    warnings.push(`⚠ "${field._name}": value_format_name "${named}" has no Sigma mapping — set the column format manually.`);
+    return undefined;
+  }
+  const custom = field.value_format;
+  if (typeof custom === 'string' && custom.trim()) {
+    const f = lookmlCustomFormat(custom);
+    if (f) return f;
+    warnings.push(`⚠ "${field._name}": value_format "${custom}" could not be translated — set the column format manually.`);
+    return undefined;
+  }
+  return undefined;
+}
+
 // ── LookML Parser ────────────────────────────────────────────────────────────
 
 interface LookMLParseResult {
@@ -32,8 +133,26 @@ function restoreSqlPlaceholders(obj: any, map: Record<string, string>): void {
 }
 
 export function parseLookML(text: string): LookMLParseResult {
-  // Strip line comments
-  text = text.replace(/#[^\n]*/g, '');
+  // Strip line comments — but a `#` inside a double-quoted string is NOT a
+  // comment (e.g. value_format: "$#,##0.0\"K\""). Walk char-by-char tracking
+  // quote state so we only drop `#`→EOL runs that are outside a string literal.
+  text = (() => {
+    let out = '';
+    let inStr = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        out += ch;
+        if (ch === '\\' && i + 1 < text.length) { out += text[++i]; continue; }
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; out += ch; continue; }
+      if (ch === '#') { while (i < text.length && text[i] !== '\n') i++; if (i < text.length) out += '\n'; continue; }
+      out += ch;
+    }
+    return out;
+  })();
 
   // Pre-extract raw sql: ... ;; blocks
   const sqlPlaceholders: Record<string, string> = {};
@@ -597,6 +716,8 @@ function lookConvertView(
   for (const d of dims) {
     if (!d._name) continue;
     const colName = d._name.toUpperCase();
+    // LookML number format on the dimension (value_format_name / value_format).
+    const dFormat = lookmlFieldFormat(d, warnings);
 
     // ── legacy `case: { when: {sql,label}... else }` → nested If() ──
     if (d.case && typeof d.case === 'object') {
@@ -674,11 +795,11 @@ function lookConvertView(
         }
       }
       if (sigmaFormula) {
-        element.columns.push({ id: colId, formula: sigmaFormula, name: d.label || sigmaDisplayName(d._name) });
+        element.columns.push({ id: colId, formula: sigmaFormula, name: d.label || sigmaDisplayName(d._name), ...(dFormat ? { format: dFormat } : {}) });
         element.order.push(colId);
         warnings.push(`ℹ "${d._name}" → calculated column: ${sigmaFormula}`);
       } else {
-        element.columns.push({ id: colId, formula: `[${tableName}/${sigmaDisplayName(colName)}]`, name: d.label || sigmaDisplayName(d._name) });
+        element.columns.push({ id: colId, formula: `[${tableName}/${sigmaDisplayName(colName)}]`, name: d.label || sigmaDisplayName(d._name), ...(dFormat ? { format: dFormat } : {}) });
         element.order.push(colId);
         warnings.push(`⚠ "${d._name}": could not auto-convert. Edit formula manually.`);
       }
@@ -697,7 +818,7 @@ function lookConvertView(
     const colId = makeColId(physicalCol);
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
-    element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]` });
+    element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]`, ...(dFormat ? { format: dFormat } : {}) });
     element.order.push(colId);
   }
 
@@ -907,6 +1028,10 @@ function lookConvertView(
     const physicalCol = sqlCol.split('.').pop()!.replace(/"/g, '').toUpperCase() || msName.replace(/"/g, '');
     const msType = (ms.type || 'count').toLowerCase();
     const msLabel = ms.label || sigmaDisplayName(msName);
+    // LookML number format (value_format_name / value_format) → Sigma format obj.
+    // percent_of_total has no LookML format but is inherently a percentage.
+    const msFormat = lookmlFieldFormat(ms, warnings)
+      ?? (msType === 'percent_of_total' ? { kind: 'number', formatString: ',.1%' } : undefined);
 
     // running_total / percent_of_total → calculated columns
     if (CALC_COL_MEASURE_TYPES.has(msType)) {
@@ -919,10 +1044,10 @@ function lookConvertView(
       const dn = colLabel(physicalCol);
       const calcId = sigmaShortId();
       if (msType === 'running_total') {
-        element.columns.push({ id: calcId, formula: `CumulativeSum([${dn}])`, name: msLabel });
+        element.columns.push({ id: calcId, formula: `CumulativeSum([${dn}])`, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
         warnings.push(`✅ "${ms._name}" (running_total) → CumulativeSum([${dn}])`);
       } else {
-        element.columns.push({ id: calcId, formula: `Sum([${dn}]) / GrandTotal(Sum([${dn}]))`, name: msLabel });
+        element.columns.push({ id: calcId, formula: `Sum([${dn}]) / GrandTotal(Sum([${dn}]))`, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
         warnings.push(`✅ "${ms._name}" (percent_of_total) → Sum/GrandTotal`);
       }
       element.order.push(calcId);
@@ -949,7 +1074,7 @@ function lookConvertView(
       expr = expr.replace(/\bNULLIF\s*\(/gi, 'NullIf(')
                  .replace(/\b(COALESCE|NVL|IFNULL)\s*\(/gi, 'Coalesce(')
                  .replace(/\b(IFF|IIF)\s*\(/gi, 'If(');
-      element.metrics!.push({ id: sigmaShortId(), formula: expr.trim(), name: msLabel });
+      element.metrics!.push({ id: sigmaShortId(), formula: expr.trim(), name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
       warnings.push(`✅ "${ms._name}" (computed) → ${expr.trim().slice(0, 70)}`);
       return;
     }
@@ -993,7 +1118,7 @@ function lookConvertView(
           max: `MaxIf([${dn}], ${condition})`, min: `MinIf([${dn}], ${condition})`,
         };
         const formula = condAggMap[msType] || `SumIf([${dn}], ${condition})`;
-        element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel });
+        element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
         warnings.push(`✅ Filtered "${ms._name}" → ${formula.slice(0, 60)}`);
         return;
       }
@@ -1001,7 +1126,7 @@ function lookConvertView(
     }
 
     if (msType === 'count') {
-      element.metrics!.push({ id: sigmaShortId(), formula: 'Count()', name: msLabel });
+      element.metrics!.push({ id: sigmaShortId(), formula: 'Count()', name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
     } else if (msType === 'count_distinct') {
       const cdCol = physicalCol && physicalCol !== msName ? physicalCol : msName;
       if (!colIdMap[cdCol]) {
@@ -1010,7 +1135,7 @@ function lookConvertView(
         element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(cdCol)}]` });
         element.order.push(colId);
       }
-      element.metrics!.push({ id: sigmaShortId(), formula: `CountDistinct([${colLabel(cdCol)}])`, name: msLabel });
+      element.metrics!.push({ id: sigmaShortId(), formula: `CountDistinct([${colLabel(cdCol)}])`, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
     } else {
       if (!colIdMap[physicalCol]) {
         const colId = makeColId(physicalCol);
@@ -1022,7 +1147,7 @@ function lookConvertView(
       const formula = msType === 'percentile'
         ? `Percentile([${dn}], ${(Number(ms.percentile) || 50) / 100})`
         : lookSigmaMetric(msType, physicalCol);
-      element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel });
+      element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
     }
   });
 

@@ -187,6 +187,7 @@ export interface SigmaColumn {
   name?: string;
   description?: string;
   hidden?: boolean;
+  format?: Record<string, any>;
 }
 
 export interface SigmaMetric {
@@ -194,6 +195,7 @@ export interface SigmaMetric {
   formula: string;
   name: string;
   description?: string;
+  format?: Record<string, any>;
 }
 
 export interface SigmaRelationshipKey {
