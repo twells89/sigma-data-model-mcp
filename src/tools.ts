@@ -18,6 +18,9 @@ import { convertQlikToSigma } from './qlik.js';
 import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
+import { convertBobjToSigma } from './bobj.js';
+import { convertCognosToSigma } from './cognos.js';
+import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
@@ -249,6 +252,65 @@ generate warnings with community article links.`,
             text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
           }],
         };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_cognos_to_sigma ──────────────────────────────────────────
+  server.tool(
+    'convert_cognos_to_sigma',
+    `Convert an IBM Cognos Analytics **Data Module** (JSON) to a Sigma data model.
+
+Input is the Data Module JSON from \`GET /bi/v1/metadata/modules/{id}\` (CA 11.x+).
+Query subjects → table elements; query items → columns (facts with a regularAggregate
+→ metrics); calculations → Sigma formulas via the Cognos expression DSL (total..for →
+*Over, if/then/else → If, _add_days/_days_between/extract → date fns, substitute →
+RegexpReplace, substr → Mid, cast/varchar/char → Text, || → &); relationships → DM
+relationships (join columns from link[].leftRef/rightRef, source = the many side).
+
+Flags (does not fake): runtime macros, running-total/rank/lag/lead, GetResourceString
+localization, and composite/non-equi joins.`,
+    {
+      module_json: z.string().describe('Cognos Data Module JSON (the metadata/modules/{id} response)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override warehouse database; empty string to omit'),
+      schema: z.string().describe('Override warehouse schema; empty string to omit'),
+    },
+    async ({ module_json, connection_id, database, schema }) => {
+      try {
+        const result = convertCognosToSigma(module_json, {
+          connectionId: connection_id || undefined, database: database || undefined, schema: schema || undefined,
+        });
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2) }] };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_cognos_report_to_sigma ───────────────────────────────────────
+  server.tool(
+    'convert_cognos_report_to_sigma',
+    `Convert an IBM Cognos **report specification** (XML) to a Sigma workbook.
+
+Input is the report XML from \`GET /bi/v1/objects/{id}?fields=specification\`. MVP =
+list reports: each <list> → a Sigma table element sourced from the migrated data model;
+dataItems → columns (expressions translated, model refs resolved to [Subject/Col]);
+prompt('p') → controls; Summary()/Total() footers → aggregate columns; detail/summary
+filters surfaced as warnings. Pass data_model_id (from posting the converted Data Module)
+to wire the table sources.
+
+Flags (roadmap, not converted): runtime macros (#…#), crosstabs → pivots, RAVE2 charts.`,
+    {
+      report_xml: z.string().describe('Cognos report-spec XML (the specification string)'),
+      data_model_id: z.string().describe('Sigma dataModelId of the migrated Cognos Data Module; empty string leaves a placeholder'),
+    },
+    async ({ report_xml, data_model_id }) => {
+      try {
+        const result = convertCognosReportToSigma(report_xml, { dataModelId: data_model_id || undefined });
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaWorkbook: result.workbook, stats: result.stats, warnings: result.warnings }, null, 2) }] };
       } catch (e: any) {
         return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
       }
@@ -1063,6 +1125,51 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
           database: database || undefined,
           schema: schema || undefined,
           physicalMap,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_bobj_to_sigma ─────────────────────────────────────────────────
+
+  server.tool(
+    'convert_bobj_to_sigma',
+    `Convert a SAP BusinessObjects Universe to Sigma Computing data model JSON.
+
+Accepts BI RESTful Web Service (RWS) universe JSON — as returned by
+GET /biprws/sl/v1/universes/{id} on an on-prem BO 4.x server. The ingest is
+tolerant of the common RWS shape variants (nested outline/items, class/objects,
+or a flat objects[] array).
+
+Mapping: physical tables → warehouse-table elements; dimensions/details →
+columns (business names preserved); measures → metrics (Sum/Count/Avg/...);
+object expressions → calculated columns; joins → relationships. Predefined
+filters and universe @-functions (@Prompt/@Select/@Variable/@Aggregate_Aware)
+are surfaced as warnings.
+
+The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
+create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
+    {
+      universe_json: z.string().describe('BusinessObjects universe JSON (RWS /sl/v1/universes/{id} format)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ universe_json, connection_id, database, schema }) => {
+      try {
+        const parsed = JSON.parse(universe_json);
+        const result = convertBobjToSigma(parsed, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
         });
         return {
           content: [{

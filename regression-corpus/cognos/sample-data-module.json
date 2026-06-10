@@ -1,0 +1,62 @@
+{
+  "identifier": "RETAIL_SALES",
+  "label": "Retail Sales",
+  "querySubject": [
+    {
+      "identifier": "SALES_FACT",
+      "label": "Sales Fact",
+      "definition": { "dbQuery": { "tableRef": [ { "sourceTable": { "catalog": "RETAIL", "schema": "PUBLIC", "name": "SALES_FACT" } } ] } },
+      "item": [
+        { "queryItem": { "identifier": "ORDER_ID", "label": "Order Id", "expression": "[SALES_FACT].[ORDER_ID]", "datatype": "INTEGER", "usage": "identifier" } },
+        { "queryItem": { "identifier": "PRODUCT_KEY", "label": "Product Key", "expression": "[SALES_FACT].[PRODUCT_KEY]", "datatype": "INTEGER", "usage": "attribute" } },
+        { "queryItem": { "identifier": "ORDER_DATE", "label": "Order Date", "expression": "[SALES_FACT].[ORDER_DATE]", "datatype": "DATE", "usage": "attribute" } },
+        { "queryItem": { "identifier": "REVENUE", "label": "Revenue", "expression": "[SALES_FACT].[REVENUE]", "datatype": "DECIMAL", "usage": "fact", "regularAggregate": "total", "highlevelDatatype": "amount" } },
+        { "queryItem": { "identifier": "COST", "label": "Cost", "expression": "[SALES_FACT].[COST]", "datatype": "DECIMAL", "usage": "fact", "regularAggregate": "total" } },
+        { "queryItem": { "identifier": "QUANTITY", "label": "Quantity", "expression": "[SALES_FACT].[QUANTITY]", "datatype": "INTEGER", "usage": "fact", "regularAggregate": "total" } },
+        { "calculation": { "identifier": "MARGIN", "label": "Margin", "expression": "[SALES_FACT].[REVENUE] - [SALES_FACT].[COST]", "datatype": "DECIMAL" } },
+        { "calculation": { "identifier": "MARGIN_PCT", "label": "Margin %", "expression": "total([SALES_FACT].[REVENUE] - [SALES_FACT].[COST]) / total([SALES_FACT].[REVENUE])", "datatype": "DECIMAL" } },
+        { "calculation": { "identifier": "PRICE_BAND", "label": "Price Band", "expression": "if ([SALES_FACT].[REVENUE] >= 1000) then ('High') else (if ([SALES_FACT].[REVENUE] >= 100) then ('Medium') else ('Low'))", "datatype": "NVARCHAR" } },
+        { "calculation": { "identifier": "REVENUE_PCT_OF_REGION", "label": "Revenue % of Region", "expression": "total([SALES_FACT].[REVENUE] for [PRODUCT_DIM].[CATEGORY]) / total([SALES_FACT].[REVENUE])", "datatype": "DECIMAL" } },
+        { "calculation": { "identifier": "ORDER_PLUS_30", "label": "Promise Date", "expression": "_add_days([SALES_FACT].[ORDER_DATE], 30)", "datatype": "DATE" } },
+        { "calculation": { "identifier": "RUNNING_REVENUE", "label": "Running Revenue", "expression": "running-total([SALES_FACT].[REVENUE] for [SALES_FACT].[ORDER_DATE])", "datatype": "DECIMAL" } }
+      ]
+    },
+    {
+      "identifier": "PRODUCT_DIM",
+      "label": "Product",
+      "definition": { "dbQuery": { "tableRef": [ { "sourceTable": { "catalog": "RETAIL", "schema": "PUBLIC", "name": "PRODUCT_DIM" } } ] } },
+      "item": [
+        { "queryItem": { "identifier": "PRODUCT_KEY", "label": "Product Key", "expression": "[PRODUCT_DIM].[PRODUCT_KEY]", "datatype": "INTEGER", "usage": "identifier" } },
+        { "queryItem": { "identifier": "PRODUCT_NAME", "label": "Product Name", "expression": "[PRODUCT_DIM].[PRODUCT_NAME]", "datatype": "NVARCHAR", "usage": "attribute" } },
+        { "queryItem": { "identifier": "CATEGORY", "label": "Category", "expression": "[PRODUCT_DIM].[CATEGORY]", "datatype": "NVARCHAR", "usage": "attribute" } }
+      ]
+    },
+    {
+      "identifier": "TIME_DIM",
+      "label": "Time",
+      "definition": { "dbQuery": { "tableRef": [ { "sourceTable": { "catalog": "RETAIL", "schema": "PUBLIC", "name": "TIME_DIM" } } ] } },
+      "item": [
+        { "queryItem": { "identifier": "DATE_KEY", "label": "Date Key", "expression": "[TIME_DIM].[DATE_KEY]", "datatype": "DATE", "usage": "identifier" } },
+        { "queryItem": { "identifier": "FISCAL_QUARTER", "label": "Fiscal Quarter", "expression": "[TIME_DIM].[FISCAL_QUARTER]", "datatype": "NVARCHAR", "usage": "attribute" } }
+      ]
+    }
+  ],
+  "relationship": [
+    {
+      "identifier": "rel_sales_product",
+      "link": [
+        { "ref": "SALES_FACT", "mincard": "one", "maxcard": "many" },
+        { "ref": "PRODUCT_DIM", "mincard": "one", "maxcard": "one" }
+      ],
+      "expression": "[SALES_FACT].[PRODUCT_KEY] = [PRODUCT_DIM].[PRODUCT_KEY]"
+    },
+    {
+      "identifier": "rel_sales_time",
+      "link": [
+        { "ref": "SALES_FACT", "mincard": "one", "maxcard": "many" },
+        { "ref": "TIME_DIM", "mincard": "one", "maxcard": "one" }
+      ],
+      "expression": "[SALES_FACT].[ORDER_DATE] = [TIME_DIM].[DATE_KEY]"
+    }
+  ]
+}

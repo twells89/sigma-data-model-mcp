@@ -83,6 +83,7 @@ const FMT_TO_KEY = {
   tableau:     'tableau',
   thoughtspot: 'thoughtspot',
   quicksight:  'quicksight',
+  bobj:        'bobj',
   // Not yet covered by fixtures: contract (atlan), snow, sql, ssas
 };
 
@@ -474,6 +475,18 @@ async function driveThoughtSpot(page, fx, opts) {
   });
 }
 
+async function driveBobj(page, fx, opts) {
+  // bobj fixture is a single RWS universe JSON, pasted into the bobjJsonInput textarea.
+  return drivePaste(page, fx, opts, {
+    inputId: 'bobjJsonInput',
+    connId: 'bobjConnectionId',
+    dbId: 'bobjDatabase',
+    schemaId: 'bobjSchema',
+    runFn: 'runBobjConversion',
+    outputId: 'bobjJsonOutput',
+  });
+}
+
 async function driveQuickSight(page, fx, opts) {
   // Multi-file: paste each JSON separated by `---` markers (matches the
   // textarea split-and-parse path in runQuickSightConversion).
@@ -661,6 +674,7 @@ const DRIVERS = {
   qlik:        driveQlik,
   thoughtspot: driveThoughtSpot,
   quicksight:  driveQuickSight,
+  bobj:        driveBobj,
 };
 
 // ── Per-fixture runner ────────────────────────────────────────────────────
@@ -672,7 +686,8 @@ async function runFixture(page, fx) {
 
   const driver = DRIVERS[fx.fmt];
   if (!driver) {
-    return { id: fx.id, ok: false, reason: `no browser driver for format ${fx.fmt} (skipped — not yet supported)` };
+    // MCP-only converters (e.g. bobj) have no browser tab — skip, don't fail.
+    return { id: fx.id, ok: true, skipped: true, reason: `no browser driver for format ${fx.fmt} (skipped — not yet supported)` };
   }
   const key = FMT_TO_KEY[fx.fmt];
   await switchTab(page, key);
@@ -804,11 +819,12 @@ async function runFixture(page, fx) {
 
     console.log('\n══════════════ RESULTS (smm browser tool) ══════════════');
     const failures = results.filter(r => !r.ok);
+    const skipped = results.filter(r => r.skipped);
     for (const r of results) {
-      const tag = r.ok ? '✅ PASS' : '❌ FAIL';
+      const tag = r.skipped ? '⏭️  SKIP' : (r.ok ? '✅ PASS' : '❌ FAIL');
       console.log(`${tag}  ${r.id}${r.reason ? '  — ' + r.reason : ''}`);
     }
-    console.log(`\n${results.length - failures.length}/${results.length} passed`);
+    console.log(`\n${results.length - failures.length - skipped.length}/${results.length - skipped.length} passed, ${skipped.length} skipped`);
 
     await browser.close();
     process.exit(failures.length === 0 ? 0 : 1);

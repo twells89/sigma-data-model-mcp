@@ -107,7 +107,9 @@ async function loadConverters() {
   const thoughtspot = await import(join(BUILD_DIR, 'thoughtspot.js'));
   const oac = await import(join(BUILD_DIR, 'oac.js'));
   const quicksight = await import(join(BUILD_DIR, 'quicksight.js'));
+  const bobj = await import(join(BUILD_DIR, 'bobj.js'));
   return {
+    bobj: bobj.convertBobjToSigma || bobj.default?.convertBobjToSigma,
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
     dbt: dbt.convertDbtToSigma || dbt.default?.convertDbtToSigma,
@@ -200,7 +202,7 @@ async function runFixture(fx, converters) {
   const fileBased = ['lookml', 'cube', 'omni', 'quicksight'];
   // powerbi/qlik take a parsed JSON object; oac takes a parsed JSON array.
   // JSON.parse handles both shapes, so a single list is sufficient.
-  const jsonBased = ['powerbi', 'qlik', 'oac'];
+  const jsonBased = ['powerbi', 'qlik', 'oac', 'bobj'];
   let arg;
   if (fx.inputFiles && fx.inputFiles.length) {
     const parts = await Promise.all(fx.inputFiles.map(async fp => ({

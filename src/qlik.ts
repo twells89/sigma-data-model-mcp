@@ -190,7 +190,9 @@ export function convertQlikToSigma(
       continue;
     }
 
-    sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) =>
+    // Bracket bare Qlik field tokens (real master items use unbracketed refs,
+    // e.g. RangeSum(Sum(NET_REVENUE), …)) so the raw→display rewrite resolves them.
+    sigmaFormula = bracketKnownBareFields(sigmaFormula, qlikColToDisplayName).replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) =>
       qlikColToDisplayName[colName] ? `[${qlikColToDisplayName[colName]}]` : _m
     );
     let bestElementId = elements[0]?.id;
@@ -285,10 +287,13 @@ export function convertQlikToSigma(
     const title: string = d.title || d.qTitle || 'Dimension';
     const exprRaw: string = d.fieldDef || d.qFieldDef || d.expr || d.expression || '';
     const isCalc = exprRaw.trim().startsWith('=') ||
-      /\b(If|Sum|Count|Avg|Concat|Year|Month|Day|Left|Right|Upper|Lower|Trim)\s*\(/i.test(exprRaw);
+      /\b(If|Sum|Count|Avg|Concat|Year|Month|Day|Left|Right|Upper|Lower|Trim|Class|Dual|Range\w+|Floor|Ceil|Round|Pick|Match|Mid|Replace|WeekDay|Date|Num)\s*\(/i.test(exprRaw);
     if (!isCalc) continue;
     let sigmaFormula = qlikExprToSigma(exprRaw, warnings, title);
     if (!sigmaFormula) continue;
+    // Bracket bare Qlik field tokens (real master dims use unbracketed refs,
+    // e.g. Class(UNIT_PRICE, 50)) so ref-resolution + the raw→display rewrite work.
+    sigmaFormula = bracketKnownBareFields(sigmaFormula, qlikColToDisplayName);
 
     // Resolve which element each ref belongs to BEFORE rewriting names — we
     // need both the raw qlik names and post-rewrite display names to count.
@@ -580,6 +585,70 @@ function splitTopLevel(s: string, delim: string): string[] {
   return out;
 }
 
+/**
+ * Lower the row-wise Range aggregations that have a direct Sigma equivalent.
+ * RangeSum/RangeAvg fold over the scalar arg list; RangeMin/RangeMax map to
+ * Least/Greatest. Null handling: Qlik treats nulls as absent — RangeSum maps
+ * them to 0 (Coalesce); RangeAvg uses a fixed denominator (flagged). The
+ * statistical variants are left for the residual reject in qlikExprToSigma.
+ */
+function lowerRangeFns(f: string, warnings: string[], name: string): string {
+  const re = /\bRange(Sum|Avg|Min|Max)\s*\(/i;
+  let guard = 0;
+  let m: RegExpMatchArray | null;
+  while ((m = f.match(re)) && guard++ < 50) {
+    const fn = m[1].toLowerCase();
+    const idx = m.index!;
+    const open = f.indexOf('(', idx);
+    const close = matchClose(f, open, '(', ')');
+    if (close < 0) break;
+    const args = splitTopLevel(f.slice(open + 1, close), ',')
+      .map(a => a.trim()).filter(a => a.length);
+    if (args.length === 0) break;
+    let repl: string;
+    if (fn === 'sum') {
+      repl = '(' + args.map(a => `Coalesce(${a}, 0)`).join(' + ') + ')';
+    } else if (fn === 'avg') {
+      repl = '((' + args.map(a => `Coalesce(${a}, 0)`).join(' + ') + `) / ${args.length})`;
+      warnings?.push(`"${name}": RangeAvg() translated with a fixed denominator (${args.length}); Qlik excludes nulls from the divisor.`);
+    } else if (fn === 'min') {
+      repl = `Least(${args.join(', ')})`;
+    } else {
+      repl = `Greatest(${args.join(', ')})`;
+    }
+    f = f.slice(0, idx) + repl + f.slice(close + 1);
+  }
+  return f;
+}
+
+/**
+ * Lower Class(value, interval [, label [, start]]) — Qlik numeric binning — to
+ * the numeric lower bound of each bucket. The textual "lo<=x<hi" dual label is
+ * not reproduced (flagged); the numeric bound sorts and groups correctly, which
+ * is how binned dimensions are consumed downstream.
+ */
+function lowerClass(f: string, warnings: string[], name: string): string {
+  const re = /\bClass\s*\(/i;
+  let guard = 0;
+  let m: RegExpMatchArray | null;
+  while ((m = f.match(re)) && guard++ < 50) {
+    const idx = m.index!;
+    const open = f.indexOf('(', idx);
+    const close = matchClose(f, open, '(', ')');
+    if (close < 0) break;
+    const args = splitTopLevel(f.slice(open + 1, close), ',').map(a => a.trim());
+    const val = args[0];
+    const bs = args[1] || '1';
+    const start = args[3]; // arg[2] is the optional text label (ignored for numeric output)
+    const repl = start
+      ? `(Floor((${val} - ${start}) / ${bs}) * ${bs} + ${start})`
+      : `(Floor(${val} / ${bs}) * ${bs})`;
+    warnings?.push(`"${name}": Class() lowered to each bin's numeric lower bound (Floor); the textual "lo<=x<hi" label is not reproduced.`);
+    f = f.slice(0, idx) + repl + f.slice(close + 1);
+  }
+  return f;
+}
+
 /** A single Set Analysis element value → a Sigma condition for `field`. */
 function setValueToCondition(field: string, rawVal: string, op: '=' | '<>'): string | null {
   let v = rawVal.trim();
@@ -656,6 +725,26 @@ function bracketBareFields(expr: string): string {
     return `[${ident}]`;
   });
   // restore protected tokens
+  s = s.replace(new RegExp(SENT + '(\\d+)' + SENT, 'g'), (_m, i) => tokens[+i]);
+  return s.replace(/ {2,}/g, ' ').trim();
+}
+
+/**
+ * Bracket bare tokens that are KNOWN Qlik field names (present in `displayMap`),
+ * leaving operators (and/or/not), function calls, literals, and already-bracketed
+ * refs untouched. Real master items reference fields bare (Class(UNIT_PRICE, 50)),
+ * but unlike bracketBareFields this won't mangle `and`/`or` into `[and]`/`[or]`.
+ */
+function bracketKnownBareFields(expr: string, displayMap: Record<string, string>): string {
+  const tokens: string[] = [];
+  const SENT = '\u0001';
+  const stash = (mm: string) => { tokens.push(mm); return ` ${SENT}${tokens.length - 1}${SENT} `; };
+  // protect quoted strings and already-bracketed refs
+  let s = expr.replace(/'[^']*'|"[^"]*"|\[[^\]]+\]/g, stash);
+  s = s.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b(\s*\()?/g, (full, ident, call) => {
+    if (call) return full;                                  // function name -> leave
+    return displayMap[ident] ? `[${ident}]` : full;         // only bracket known fields
+  });
   s = s.replace(new RegExp(SENT + '(\\d+)' + SENT, 'g'), (_m, i) => tokens[+i]);
   return s.replace(/ {2,}/g, ' ').trim();
 }
@@ -898,12 +987,14 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string): string
     warnings?.push(`"${name}": uses a Qlik selection-state function — no Sigma equivalent.`);
     return null;
   }
-  if (/\bClass\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses Class() (Qlik data binning). Use If() ranges for bucketing in Sigma.`);
-    return null;
-  }
-  if (/\bRange(?:Sum|Avg|Min|Max|Count|Stdev|Mode|Skew|Kurtosis|Correl|Fractile)\s*\(/i.test(f)) {
-    warnings?.push(`"${name}": uses a Qlik Range aggregation function — no direct Sigma equivalent.`);
+  // Row-wise Range aggregations over a scalar arg list translate directly;
+  // the statistical variants (Count/Stdev/Mode/Skew/Kurtosis/Correl/Fractile)
+  // have no row-wise Sigma equivalent and are flagged below after lowering.
+  f = lowerRangeFns(f, warnings, name);
+  // Class(): numeric binning -> the numeric lower bound of each bucket.
+  f = lowerClass(f, warnings, name);
+  if (/\bRange(?:Count|Stdev|Mode|Skew|Kurtosis|Correl|Fractile)\s*\(/i.test(f)) {
+    warnings?.push(`"${name}": uses a Qlik Range statistical function — no direct Sigma equivalent.`);
     return null;
   }
 
