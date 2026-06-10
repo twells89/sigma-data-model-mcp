@@ -1,0 +1,3 @@
+{ "description": "ThoughtSpot rls_rules on a table → Sigma RLS, REPORTED in result.security (architecture B). ts_username→CurrentUserEmail, ts_groups→CurrentUserInTeam, rules OR-combined. Converter does NOT inject.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 1, "minRlsRules": 1, "noErrorColumns": true } }

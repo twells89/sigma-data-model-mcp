@@ -27,7 +27,8 @@
 
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, sigmaColFormula,
-  type SigmaElement, type SigmaColumn, type ConversionResult,
+  makeRlsSecurity, makeClsSecurity,
+  type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
 
 // ── Public interface ────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export function convertQuickSightToSigma(
   const analyses: QSAnalysisDefinition[] = [];
   const datasets: QSDataSet[] = [];
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // detected RLS/CLS — reported, not injected (architecture B)
 
   // ── Parse + classify input files ──────────────────────────────────────────
   for (const file of files) {
@@ -130,7 +132,7 @@ export function convertQuickSightToSigma(
   };
 
   for (const ds of datasets) {
-    const entry = buildElementsForDataset(ds, { connectionId, dbOverride, schemaOverride, winCtx }, warnings);
+    const entry = buildElementsForDataset(ds, { connectionId, dbOverride, schemaOverride, winCtx }, warnings, security);
     elements.push(...entry.elements);
     if (ds.Arn) datasetRegistry.set(ds.Arn, entry);
     if (ds.DataSetId) datasetRegistry.set(ds.DataSetId, entry);
@@ -239,6 +241,7 @@ export function convertQuickSightToSigma(
   return {
     model: { name: modelName, schemaVersion: 1, pages: [page] },
     warnings,
+    ...(security.length ? { security } : {}),
     stats: {
       analyses: analyses.length,
       datasets: datasets.length,
@@ -318,6 +321,7 @@ function buildElementsForDataset(
   ds: QSDataSet,
   ctx: DatasetBuildContext,
   warnings: string[],
+  security: SecurityRule[] = [],
 ): DatasetEntry {
   const elementsByLogical = new Map<string, SigmaElement>();
   const logicalToPhysical = new Map<string, string>();
@@ -444,6 +448,8 @@ function buildElementsForDataset(
     if (el === primary) { primaryColMap = colMaps.get(lid); break; }
   }
 
+  applyDatasetSecurity(ds, primary, primaryColMap, dsName, warnings, security);
+
   return {
     elements: allEls,
     byLogicalId: elementsByLogical,
@@ -451,6 +457,43 @@ function buildElementsForDataset(
     primary,
     primaryColMap,
   };
+}
+
+// Map QuickSight dataset-level security (RLS tag config, RLS rule dataset, CLS)
+// onto the primary Sigma element. Tag-RLS + CLS are buildable from the export;
+// the RLS rule dataset only carries ARN/policy metadata (grant rows are external)
+// so it is flagged with guidance. Mirrors the lookml access_filter RLS pattern.
+function applyDatasetSecurity(
+  ds: QSDataSet,
+  primary: SigmaElement | undefined,
+  colMap: Map<string, ColMapEntry> | undefined,
+  dsName: string,
+  warnings: string[],
+  security: SecurityRule[],
+): void {
+  if (!primary) return;
+  const el: any = primary;
+
+  for (const tr of (ds.RowLevelPermissionTagConfiguration?.TagRules || [])) {
+    const ce = colMap?.get((tr.ColumnName || '').toLowerCase());
+    if (!ce) { warnings.push(`⚠ Dataset "${dsName}": tag-RLS rule on column "${tr.ColumnName}" — column not found on the primary element; re-apply manually (CurrentUserAttributeText("${tr.TagKey}") = [${tr.ColumnName}]).`); continue; }
+    let formula = `CurrentUserAttributeText("${tr.TagKey}") = [${ce.display}]`;
+    if (tr.MatchAllValue) formula = `(${formula}) or (CurrentUserAttributeText("${tr.TagKey}") = "${tr.MatchAllValue}")`;
+    security.push(makeRlsSecurity({ source: `QuickSight tag-based RLS (dataset "${dsName}")`, element: el, name: `RLS: ${ce.display}`, formula }));
+    warnings.push(`🔐 Dataset "${dsName}": tag-based RLS on [${ce.display}] → row-level security DETECTED (reported in result.security, not injected) via user attribute "${tr.TagKey}". The migration skill assigns the attribute per user (embed/JWT) and applies the RLS calc + filter.`);
+  }
+
+  const rlsDs = ds.RowLevelPermissionDataSet;
+  if (rlsDs && (rlsDs.Arn || rlsDs.PermissionPolicy)) {
+    warnings.push(`⚠ Dataset "${dsName}": a QuickSight RLS rule dataset is applied (${rlsDs.PermissionPolicy || 'GRANT_ACCESS'}), but its user/group→value grant rows live in a separate dataset not in this export. Re-create as a Sigma user attribute + a boolean RLS column (CurrentUserAttributeText("<col>") = [<col>]) + element filter on each permission column.${/DENY/i.test(rlsDs.PermissionPolicy || '') ? ' NOTE: DENY_ACCESS — invert to filter mode "exclude".' : ''}`);
+  }
+
+  for (const rule of (ds.ColumnLevelPermissionRules || [])) {
+    const ids = (rule.ColumnNames || []).map(n => colMap?.get(n.toLowerCase())?.id).filter(Boolean) as string[];
+    if (!ids.length) continue;
+    security.push(makeClsSecurity({ source: `QuickSight column-level security (dataset "${dsName}")`, element: el, columnIds: ids, columnNames: rule.ColumnNames, note: 'QuickSight names principals who CANNOT view; Sigma CLS is an allowlist (no-one-can-view, or re-scope to a team/attribute for who SHOULD see it). The skill applies it — not injected.' }));
+    warnings.push(`🔐 Dataset "${dsName}": column-level security on [${(rule.ColumnNames || []).join(', ')}] → CLS DETECTED (reported in result.security, not injected).`);
+  }
 }
 
 function inferPhysicalAlias(phy: QSPhysicalTable, physId: string): string {
@@ -1904,6 +1947,9 @@ interface QSDataSet {
   LogicalTableMap?: Record<string, QSLogicalTable>;
   OutputColumns?: Array<{ Name: string; Type: string; SubType?: string }>;
   FieldFolders?: Record<string, { columns?: string[]; description?: string }>;
+  RowLevelPermissionDataSet?: { Arn?: string; PermissionPolicy?: string; FormatVersion?: string; Namespace?: string; Status?: string };
+  RowLevelPermissionTagConfiguration?: { Status?: string; TagRules?: Array<{ TagKey: string; ColumnName: string; MatchAllValue?: string; TagMultiValueDelimiter?: string }> };
+  ColumnLevelPermissionRules?: Array<{ ColumnNames?: string[]; Principals?: string[] }>;
 }
 
 interface QSPhysicalTable {

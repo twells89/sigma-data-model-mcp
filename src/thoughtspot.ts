@@ -7,7 +7,8 @@ import yaml from 'js-yaml';
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   sigmaColFormula, inferSigmaFormat, buildDerivedElements,
-  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult,
+  makeRlsSecurity,
+  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
 
 export interface ThoughtSpotConvertOptions {
@@ -23,6 +24,7 @@ export function convertThoughtSpotToSigma(
   resetIds();
   const { connectionId, database: dbOverride, schema: schOverride } = options;
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // detected RLS — reported, not injected (architecture B)
 
   let tml: any;
   try {
@@ -101,6 +103,15 @@ export function convertThoughtSpotToSigma(
   for (const j of (ws.joins || [])) collectRefs(j.on || '');
   for (const mt of (ws.model_tables || [])) for (const j of (mt.joins || [])) collectRefs(j.on || '');
   for (const expr of Object.values(formulaMap)) collectRefs(expr);
+  // RLS rule expressions reference base columns that must be surfaced too.
+  const collectRlsRefs = (h: any) => {
+    const raw = h?.rls_rules ?? h?.rls_rule;
+    const rules = Array.isArray(raw) ? raw : (raw?.rules || (raw ? [raw] : []));
+    for (const r of rules) collectRefs(String(r?.expr || ''));
+  };
+  collectRlsRefs(ws);
+  for (const mt of (ws.model_tables || [])) collectRlsRefs(mt);
+  for (const t of (ws.tables || [])) collectRlsRefs(t);
   for (const [alias, physCol] of referenced) {
     const tableName = tablePathMap[alias] || alias;
     if (!tablesMeta[tableName] && !colsByTable[tableName]) continue; // ref to an unknown table — skip
@@ -402,6 +413,29 @@ export function convertThoughtSpotToSigma(
     }
   }
 
+  // ── ThoughtSpot RLS rules → Sigma row-level security ───────────────────────
+  // RLS rules live on a table (rls_rules / rls_rule): each {name, expr} is a
+  // boolean over ts_username / ts_groups / columns. Rules combine with OR
+  // (most-permissive). Emit one fail-closed boolean calc per table + element filter.
+  const tsRlsByTable: Record<string, any[]> = {};
+  const collectRls = (tableName: string, holder: any) => {
+    const raw = holder?.rls_rules ?? holder?.rls_rule;
+    const rules = Array.isArray(raw) ? raw : (raw?.rules || (raw ? [raw] : []));
+    if (rules.length) (tsRlsByTable[tableName] ??= []).push(...rules);
+  };
+  collectRls((ws.model_tables?.[0]?.name || ws.tables?.[0]?.name || Object.keys(elementByTable)[0] || ''), ws);
+  for (const mt of (ws.model_tables || [])) collectRls(mt.name, mt);
+  for (const t of (ws.tables || [])) collectRls(t.name, t);
+  for (const [tableName, rules] of Object.entries(tsRlsByTable)) {
+    const el: any = elementByTable[tableName];
+    if (!el || !rules.length) continue;
+    const conds = rules.map((r: any) => tsRlsExprToSigma(String(r.expr || ''), elementByTable)).filter(Boolean);
+    if (!conds.length) continue;
+    const formula = conds.length === 1 ? conds[0] : conds.map(c => `(${c})`).join(' or ');
+    security.push(makeRlsSecurity({ source: `ThoughtSpot rls_rules (table "${tableName}", ${rules.length} rule${rules.length > 1 ? 's OR-combined' : ''})`, element: el, name: 'RLS', formula }));
+    warnings.push(`🔐 ThoughtSpot RLS on "${tableName}" (${rules.length} rule${rules.length > 1 ? 's, OR-combined' : ''}) → row-level security DETECTED (reported in result.security, not injected). The migration skill provisions the referenced teams/attributes and applies the RLS calc + filter.`);
+  }
+
   const stats = {
     elements: elements.length,
     columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
@@ -412,6 +446,7 @@ export function convertThoughtSpotToSigma(
   return {
     model: { name: modelName, schemaVersion: 1, pages: [{ id: pageId, name: 'Page 1', elements }] },
     warnings,
+    ...(security.length ? { security } : {}),
     stats,
   };
 }
@@ -424,6 +459,21 @@ export function convertThoughtSpotToSigma(
 function tsIsAggregateFormula(expr: string): boolean {
   return /\b(sum|count|count_distinct|unique_count|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total|sum_if|count_if|average_if|max_if|min_if|unique_count_if)\s*\(/i
     .test(expr || '');
+}
+
+// Translate a ThoughtSpot RLS rule expression to a Sigma boolean.
+// ts_username → CurrentUserEmail(); `<col> =|in ts_groups` → CurrentUserInTeam(<col>);
+// the rest (column refs [T::COL]→[Display], operators, in {…}) via tsFormulaToSigma.
+function tsRlsExprToSigma(expr: string, elementByTable: Record<string, any>): string {
+  if (!expr?.trim()) return '';
+  let e = expr.trim();
+  // Single-quoted string literals → double-quoted FIRST, so tsFormulaToSigma's
+  // column-ref bracketing protects them (otherwise 'Online' → [Online]).
+  e = e.replace(/'([^']*)'/g, '"$1"');
+  e = e.replace(/\[([^\]]+)\]\s*(?:=|in)\s*ts_groups/gi, 'CurrentUserInTeam([$1])');
+  e = e.replace(/ts_groups\s*(?:=|in)\s*\[([^\]]+)\]/gi, 'CurrentUserInTeam([$1])');
+  e = e.replace(/\bts_username\b/gi, 'CurrentUserEmail()');
+  return tsFormulaToSigma(e, elementByTable).trim();
 }
 
 function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): string {

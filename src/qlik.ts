@@ -6,7 +6,8 @@
 import {
   resetIds, sigmaShortId, sigmaDisplayName,
   inferSigmaFormat, buildDerivedElements,
-  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult,
+  makeRlsSecurity, makeClsSecurity,
+  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
 
 export interface QlikConvertOptions {
@@ -22,6 +23,7 @@ export function convertQlikToSigma(
   resetIds();
   const { connectionId = '<CONNECTION_ID>', database: dbOverride = '', schema: schOverride = '' } = options;
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // Section Access RLS/CLS — reported, not injected (architecture B)
 
   const { tables, masterMeasures, masterDimensions, appName } = qlikParseInput(rawJson);
   const modelName: string = (rawJson as any).appName || (rawJson as any).appId || appName || 'Qlik App';
@@ -353,6 +355,44 @@ export function convertQlikToSigma(
     }
   }
 
+  // ── Qlik Section Access → Sigma RLS (row REDUCTION) + CLS (OMIT column) ────
+  // Section Access lives in the load SCRIPT (not the model metadata), so it must
+  // be supplied as a parsed `sectionAccess` object. REDUCTION = strict-exclusion
+  // row reduction (unlisted ⇒ hidden) → maps cleanly to Sigma's fail-closed
+  // include-True filter. GROUP-keyed → CurrentUserInTeam; USERID-keyed → user
+  // attribute. OMIT = per-user column hide → Sigma CLS (flattened, flagged).
+  const sa: any = (rawJson as any).sectionAccess;
+  if (typeof sa === 'string') {
+    warnings.push('⚠ Qlik SECTION ACCESS supplied as raw script — not auto-parsed. Pass a parsed { reductionFields[], omitFields[], keyedBy } object to port it.');
+  } else if (sa && typeof sa === 'object') {
+    const findField = (name: string) => {
+      const up = (name || '').toUpperCase().replace(/\s+/g, '_');
+      for (const info of Object.values(tableElementMap)) {
+        for (const [fn, ci] of Object.entries(info.colMap)) {
+          if (fn.toUpperCase() === up || ci.displayName.toUpperCase().replace(/\s+/g, '_') === up) return { el: info.element as any, disp: ci.displayName, colId: ci.colId };
+        }
+      }
+      return null;
+    };
+    const keyedBy = (sa.keyedBy || 'group').toLowerCase();
+    const reductions: string[] = sa.reductionFields || (sa.reductionField ? [sa.reductionField] : []);
+    for (const rf of reductions) {
+      const hit = findField(rf);
+      if (!hit) { warnings.push(`⚠ Section Access REDUCTION field "${rf}" not found in the model — re-apply RLS manually.`); continue; }
+      const formula = keyedBy === 'userid'
+        ? `CurrentUserAttributeText("${sigmaDisplayName(rf)}") = [${hit.disp}]`
+        : `CurrentUserInTeam([${hit.disp}])`;
+      security.push(makeRlsSecurity({ source: `Qlik Section Access REDUCTION on [${hit.disp}]`, element: hit.el, name: `RLS: ${hit.disp}`, formula }));
+      warnings.push(`🔐 Qlik Section Access REDUCTION on [${hit.disp}] → row-level security DETECTED (reported in result.security, not injected; strict-exclusion ≡ fail-closed). ${keyedBy === 'userid' ? `The skill provisions user attribute "${sigmaDisplayName(rf)}" per user (multi-value reductions need an or-chain)` : `The skill recreates the Qlik GROUP values as Sigma teams`} and applies the RLS calc + filter.`);
+    }
+    for (const om of (sa.omitFields || (sa.omitField ? [sa.omitField] : []))) {
+      const hit = findField(om);
+      if (!hit) continue;
+      security.push(makeClsSecurity({ source: `Qlik Section Access OMIT [${hit.disp}]`, element: hit.el, columnIds: [hit.colId], columnNames: [hit.disp], note: 'Qlik OMIT is per-user/group; Sigma CLS is no-one-can-view (or re-scope to a team/attribute allowlist). The skill applies it — not injected.' }));
+      warnings.push(`🔐 Qlik Section Access OMIT [${hit.disp}] → column-level security DETECTED (reported in result.security, not injected).`);
+    }
+  }
+
   const stats = {
     elements: elements.length,
     columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
@@ -363,6 +403,7 @@ export function convertQlikToSigma(
   return {
     model: { name: sigmaDisplayName(modelName), schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
     warnings,
+    ...(security.length ? { security } : {}),
     stats,
   };
 }

@@ -1,0 +1,3 @@
+{ "description": "Tableau data-source-filter calc using ISMEMBEROF on a fact column → Sigma RLS, REPORTED in result.security (architecture B: detect+report; the migration skill provisions the team + applies the calc/filter). USERNAME→CurrentUserEmail, ISMEMBEROF('g')→CurrentUserInTeam(\"g\"). Converter does NOT inject RLS into the model.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 2, "minRlsRules": 1, "noErrorColumns": true } }

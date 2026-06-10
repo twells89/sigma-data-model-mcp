@@ -1,0 +1,8 @@
+model:
+  name: TS RLS Test
+  model_tables:
+  - name: ORDER_FACT
+    fqn: dummy-of
+    rls_rules:
+    - name: channel_rule
+      expr: "[ORDER_FACT::ORDER_CHANNEL] = 'Online'"
