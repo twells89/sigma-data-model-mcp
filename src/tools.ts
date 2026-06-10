@@ -295,14 +295,20 @@ localization, and composite/non-equi joins.`,
     'convert_cognos_report_to_sigma',
     `Convert an IBM Cognos **report specification** (XML) to a Sigma workbook.
 
-Input is the report XML from \`GET /bi/v1/objects/{id}?fields=specification\`. MVP =
-list reports: each <list> → a Sigma table element sourced from the migrated data model;
-dataItems → columns (expressions translated, model refs resolved to [Subject/Col]);
-prompt('p') → controls; Summary()/Total() footers → aggregate columns; detail/summary
-filters surfaced as warnings. Pass data_model_id (from posting the converted Data Module)
-to wire the table sources.
+Input is the report XML from \`GET /bi/v1/objects/{id}?fields=specification\`. Each
+<list> → a Sigma table element sourced from the migrated data model (auto-aggregated
+lists → grouped tables); <singleton> → kpi-chart; <crosstab> → pivot-table; RAVE2
+<vizControl> charts → Sigma chart elements (incl. tiledmap → region/point map);
+dataItems → columns (expressions translated, model refs resolved to [Subject/Col],
+dataFormats → Sigma column formats incl. scaled $K/$M); prompts → segmented controls
+(values/defaults recovered from <selectValue>/customControl); runtime macros
+(# prompt('p','token',…) #, e.g. swap-measure pickers) → segmented control +
+controlId-wired Switch when the value set is recoverable; detail filters → element
+filters (?prompt? → control + boolean match column). Pass data_model_id (from posting
+the converted Data Module) to wire the table sources.
 
-Flags (roadmap, not converted): runtime macros (#…#), crosstabs → pivots, RAVE2 charts.`,
+Flags (not converted): drill-through → actions, conditional render blocks,
+master-detail, summary (post-aggregation) filters, unrecoverable macros.`,
     {
       report_xml: z.string().describe('Cognos report-spec XML (the specification string)'),
       data_model_id: z.string().describe('Sigma dataModelId of the migrated Cognos Data Module; empty string leaves a placeholder'),
