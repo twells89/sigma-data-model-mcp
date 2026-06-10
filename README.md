@@ -45,6 +45,8 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_lookml_to_sigma` | LookML project files (views + explores) → Sigma JSON |
 | `convert_powerbi_to_sigma` | Power BI model (.bim / TOM JSON) → Sigma JSON |
 | `convert_tableau_to_sigma` | Tableau workbook/data source (.twb/.tds XML) → Sigma JSON |
+| `convert_cognos_to_sigma` | IBM Cognos Analytics Data Module (JSON) → Sigma JSON |
+| `convert_cognos_report_to_sigma` | IBM Cognos report spec (XML) → Sigma workbook JSON |
 | `convert_omni_to_sigma` | Omni Analytics view + model YAML → Sigma JSON |
 | `convert_sql_to_sigma` | SQL SELECT statements → Sigma JSON |
 | `convert_thoughtspot_to_sigma` | ThoughtSpot TML (YAML) worksheet → Sigma JSON |
@@ -54,6 +56,8 @@ That's it — no cloning, no building. Just connect and start converting.
 | `convert_oac_to_sigma` | Oracle Analytics Cloud logical tables JSON → Sigma JSON |
 | `convert_cube_to_sigma` | Cube.dev schemas (YAML or JS) → Sigma JSON |
 | `convert_tableau_prep_to_sigma` | Tableau Prep flow JSON (.tfl/.tflx) → Sigma JSON |
+| `convert_quicksight_to_sigma` | AWS QuickSight asset exports (analysis/dataset JSON) → Sigma JSON |
+| `convert_bobj_to_sigma` | SAP BusinessObjects universe (BI RWS JSON) → Sigma JSON |
 | `convert_sql_to_sigma_formula` | SQL expression → Sigma calculated column formula |
 | `convert_tableau_formula_to_sigma` | Tableau calculated field → Sigma formula |
 | `parse_lookml` | Parse LookML and return structured AST |
@@ -133,6 +137,22 @@ Handles: IF/ELSEIF/ELSE/END → nested If(), CASE/WHEN, ZN → Coalesce, COUNTD 
 - `database` — Override database name
 - `schema` — Override schema name
 - `datasource_index` — Which data source to convert (0-indexed, default: 0)
+
+### convert_cognos_to_sigma
+Converts an IBM Cognos Analytics Data Module (the JSON from `GET /bi/v1/metadata/modules/{id}`, CA 11.x+). Query subjects → table elements, query items → columns (facts with a regularAggregate → metrics), calculations → Sigma formulas via the Cognos expression DSL, relationships → DM relationships (source = the many side). Data-module `securityFilter` entries are DETECTED and reported (warnings + `security` metadata) — never injected into the spec.
+
+**Parameters:**
+- `module_json` (required) — Cognos Data Module JSON
+- `connection_id` — Sigma connection UUID
+- `database` — Override database name
+- `schema` — Override schema name
+
+### convert_cognos_report_to_sigma
+Converts a Cognos report specification (the XML from `GET /bi/v1/objects/{id}?fields=specification`) to a Sigma workbook spec. Lists → tables (auto-aggregated lists → grouped tables), singletons → kpi-charts, crosstabs → pivot-tables, RAVE2 vizControl charts → Sigma charts/maps, prompts → segmented controls, runtime `# prompt(...) #` swap-measure macros → segmented control + controlId-wired `Switch(...)` (when the value set is recoverable from `<selectValue>`/customControl), detail filters → element filters, dataFormats → Sigma column formats. Unconvertible constructs are flagged in warnings, never faked.
+
+**Parameters:**
+- `report_xml` (required) — Cognos report-spec XML
+- `data_model_id` — Sigma dataModelId of the migrated Data Module (wires element sources)
 
 ### convert_omni_to_sigma
 Converts Omni Analytics `.view.yaml` and `.model.yaml` files. Handles views → elements, dimensions → columns, type:time dimensions → DateTrunc() expansions per timeframe, measures → metrics, explores/joins → relationships.

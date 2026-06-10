@@ -25,6 +25,7 @@ import {
   resetIds, sigmaShortId, sigmaDisplayName,
   inferSigmaFormat, buildDerivedElements,
   type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult,
+  type SecurityRule,
 } from './sigma-ids.js';
 
 // ── Normalized IR ────────────────────────────────────────────────────────────
@@ -56,10 +57,18 @@ export interface CognosRelationship {
   expression?: string;         // fallback: "[A].[K] = [B].[K]" (authored-fixture shape)
   cardinality?: string;
 }
+export interface CognosSecurityFilter {
+  type: string;                // 'data-module-security-filter'
+  subject?: string;            // query-subject the filter is scoped to (if known)
+  name?: string;
+  expression?: string;
+  groups?: string[];           // CAM group/role refs the filter applies to (if present)
+}
 export interface CognosModule {
   name: string;
   querySubjects: CognosQuerySubject[];
   relationships: CognosRelationship[];
+  securityFilters: CognosSecurityFilter[];
 }
 export interface CognosConvertOptions {
   connectionId?: string;
@@ -147,7 +156,33 @@ export function normalizeCognosDataModule(input: any): CognosModule {
     });
   }
 
-  return { name, querySubjects, relationships };
+  // Security filters (detect-only — see ConversionResult.security). Real CA data
+  // modules carry row-level security as `securityFilter` entries (top-level or
+  // per-query-subject) holding an expression + the CAM groups/roles it applies to.
+  // Shape tolerance: also catch plain `filter` entries explicitly marked as security.
+  const securityFilters: CognosSecurityFilter[] = [];
+  const pushSec = (sf: any, subject?: string) => {
+    if (!sf || typeof sf !== 'object') return;
+    const groups = arr(sf.securityObject || sf.member || sf.members || sf.appliesTo)
+      .map((g: any) => (typeof g === 'string' ? g : g?.searchPath || g?.ref || g?.identifier))
+      .filter(Boolean);
+    securityFilters.push({
+      type: 'data-module-security-filter',
+      subject,
+      name: sf.label || sf.identifier,
+      expression: sf.expression || sf.filterDefinition || sf.embeddedFilter?.expression,
+      ...(groups.length ? { groups } : {}),
+    });
+  };
+  for (const sf of arr(root.securityFilter || root.securityFilters)) pushSec(sf);
+  for (const qs of qsList) {
+    for (const sf of arr(qs.securityFilter || qs.securityFilters)) pushSec(sf, qs.identifier || qs.label);
+  }
+  for (const fl of arr(root.filter || root.filters)) {
+    if (fl && (lc(fl.classifier).includes('security') || arr(fl.propertyOverride).some((p: any) => lc(p).includes('security')))) pushSec(fl);
+  }
+
+  return { name, querySubjects, relationships, securityFilters };
 }
 
 // A query-subject ref may arrive as "NS.SALES_FACT" or "[NS].[SALES_FACT]" — take the tail.
@@ -293,9 +328,30 @@ export function convertCognosIR(model: CognosModule, options: CognosConvertOptio
     metrics: elements.reduce((n, e) => n + ((e as any).metrics?.length || 0), 0),
     relationships: elements.reduce((n, e) => n + (e.relationships?.length || 0), 0),
   };
+  // Detect-only security reporting (architecture B — see SecurityRule in sigma-ids.ts).
+  // The Cognos securityFilter expression is a Cognos expression, not a Sigma boolean,
+  // so it's surfaced via `sourceExpression` (+ CAM `groups`) for the skill to translate
+  // and apply — never injected into the model spec.
+  const security: SecurityRule[] = (model.securityFilters || []).map((sf) => {
+    const ctx = sf.subject ? ctxByKey.get(sf.subject.toUpperCase()) : undefined;
+    return {
+      kind: 'rls' as const,
+      source: `Cognos data-module security filter${sf.name ? ` "${sf.name}"` : ''}`,
+      ...(ctx ? { elementId: ctx.element.id, elementName: (ctx.element as any).name } : {}),
+      ...(sf.expression ? { sourceExpression: sf.expression } : {}),
+      ...(sf.groups?.length ? { groups: sf.groups } : {}),
+      note: 'Row-level security from the Cognos data module — NOT injected (fail-closed risk). ' +
+        'Translate the expression to a Sigma boolean calc + element filter on [true], scoped to the listed CAM groups (Sigma teams/user attributes), via the skill\'s apply_sigma_rls.py.',
+    };
+  });
+  if (security.length) {
+    warnings.push(`SECURITY: ${security.length} data-module security filter(s) detected — NOT ported into the model spec. ` +
+      `Run the skill's RLS flow (scripts/apply_sigma_rls.py) after posting the model; skipping leaves ALL rows visible to everyone.`);
+  }
   return {
     model: { name: modelName || model.name, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
     warnings, stats,
+    ...(security.length ? { security } : {}),
   };
 }
 
@@ -401,10 +457,15 @@ export function translateCognosExpr(
   f = f.replace(/\b(?:decimal|double|float|number)\s*\(\s*([^,)]+?)(?:\s*,[^)]*)?\)/gi, (_m, x) => x.trim());
   f = f.replace(/\|\|/g, '&');          // Cognos concat → Sigma concat
   f = f.replace(/\bcoalesce\s*\(/gi, 'Coalesce(');
+  // Math fns with direct Sigma analogs
+  f = f.replace(/\babs\s*\(/gi, 'Abs(').replace(/\bround\s*\(/gi, 'Round(')
+       .replace(/\bfloor\s*\(/gi, 'Floor(').replace(/\bceiling\s*\(/gi, 'Ceiling(')
+       .replace(/\bsqrt\s*\(/gi, 'Sqrt(').replace(/\bln\s*\(/gi, 'Ln(')
+       .replace(/\bmod\s*\(/gi, 'Mod(').replace(/\bpower\s*\(/gi, 'Power(');
   f = f.replace(/'([^']*)'/g, '"$1"');  // Cognos single-quoted strings → Sigma double-quoted
 
   // Unknown bareword(...) functions → warn (kept as-is for manual review)
-  const known = /\b(If|Switch|Sum|Avg|Count|CountDistinct|Min|Max|SumOver|AvgOver|CountOver|MinOver|MaxOver|DateAdd|DateDiff|DatePart|Mid|Upper|Lower|Trim|Coalesce|Text|RegexpReplace|Replace)\b/;
+  const known = /\b(If|Switch|Sum|Avg|Count|CountDistinct|Min|Max|SumOver|AvgOver|CountOver|MinOver|MaxOver|DateAdd|DateDiff|DatePart|Mid|Upper|Lower|Trim|Coalesce|Text|RegexpReplace|Replace|Abs|Round|Floor|Ceiling|Sqrt|Ln|Mod|Power)\b/;
   for (const m of f.matchAll(/\b([a-z][a-z0-9_-]*)\s*\(/gi)) {
     if (!known.test(m[1]) && !/^(and|or|not|in|like|between|then|else|end|case|when)$/i.test(m[1])) {
       warnings.push(`function "${m[1]}()" has no confirmed Sigma mapping — review/translate manually.`);

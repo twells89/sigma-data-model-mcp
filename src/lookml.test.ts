@@ -505,3 +505,57 @@ describe('bugfix: measure ${dim} refs + snowflake join wiring', () => {
     assert.ok(rel, 'customers relationship should be on the orders element');
   });
 });
+
+describe('bugfix: derived elements must skip the relationship\'s own join-key passthrough', () => {
+  // A cross-element passthrough of the join key ([BASE/REL/<key>]) compiles to
+  // type "error" in Sigma (feedback_sigma_derived_view_skip_join_key) — the base
+  // element already carries that value. The LOCAL buildDerivedElements in
+  // lookml.ts must skip it, same as the shared sigma-ids.ts builder.
+  const model = {
+    name: 'shop.model.lkml',
+    content: `
+      connection: "c"
+      explore: orders {
+        join: customers {
+          type: left_outer
+          sql_on: \${orders.customer_id} = \${customers.id} ;;
+          relationship: many_to_one
+        }
+      }`,
+  };
+  const ordersView = {
+    name: 'orders.view.lkml',
+    content: `
+      view: orders {
+        sql_table_name: DB.SCH.ORDERS ;;
+        dimension: id { primary_key: yes type: number sql: \${TABLE}.id ;; }
+        dimension: customer_id { type: number sql: \${TABLE}.customer_id ;; }
+        dimension: amount { type: number sql: \${TABLE}.amount ;; }
+      }`,
+  };
+  const customersView = {
+    name: 'customers.view.lkml',
+    content: `
+      view: customers {
+        sql_table_name: DB.SCH.CUSTOMERS ;;
+        dimension: id { primary_key: yes type: number sql: \${TABLE}.id ;; }
+        dimension: name { type: string sql: \${TABLE}.name ;; }
+        dimension: tier { type: string sql: \${TABLE}.tier ;; }
+      }`,
+  };
+  const run = () => convertLookMLToSigma([model, ordersView, customersView], { exploreName: 'orders', connectionId: 'c' });
+
+  test('derived element exposes joined dims but NOT the join key', () => {
+    const { model: m } = run();
+    const derived = m.pages[0].elements.filter((e: any) => e.source?.kind === 'table');
+    assert.ok(derived.length >= 1, 'expected at least one derived element');
+    const formulas = derived.flatMap((e: any) => (e.columns || []).map((c: any) => c.formula));
+    const crossEl = formulas.filter((f: string) => /^\[[^\]]+\/customers\//.test(f));
+    assert.ok(crossEl.some((f: string) => /\/Name\]$/.test(f)), `joined dim Name missing: ${crossEl.join(', ')}`);
+    assert.ok(crossEl.some((f: string) => /\/Tier\]$/.test(f)), `joined dim Tier missing: ${crossEl.join(', ')}`);
+    // The customers-rel join key (customers.id) must NOT be denormalized.
+    const keyPassthroughs = crossEl.filter((f: string) => /\/Id\]$/.test(f));
+    assert.equal(keyPassthroughs.length, 0,
+      `join-key passthrough(s) emitted (compile to type "error" in Sigma): ${keyPassthroughs.join(', ')}`);
+  });
+});
