@@ -1,0 +1,13 @@
+{
+  "description": "Exotic LookML coverage (branch tj/lookml-robustness-ratio-percentile-html-fixes). access_filter: the order_fact explore restricts ORDER_STATUS by the `allowed_status` user_attribute (row-level security) — detected and warned (recreate as Sigma RLS), the explore is converted normally and not dropped. many_to_many: the promo_dim join is relationship: many_to_many; Sigma has no native M:N, so it is mapped to the closest type (N:1) with a bridge-table warning and the relationship + joined dimension columns are retained (no dangling refs, >=1 relationship). A correctly-handled model produces a real relationship and zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}

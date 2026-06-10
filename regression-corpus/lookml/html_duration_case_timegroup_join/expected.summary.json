@@ -1,0 +1,13 @@
+{
+  "description": "Regression for LookML parser/dimension fixes (branch tj/lookml-robustness-ratio-percentile-html-fixes, commits 77b819b/e29142e/4fdf630). BUG4: an html: block containing a Liquid {% if %} conditional used to desync the brace/;; parser so fields declared AFTER it (ship_method, ship_speed_bucket, total_net_revenue) silently vanished; they must survive. BUG8: a legacy case:{ when/else } dimension (ship_speed_bucket) → nested If(). BUG7: a dimension_group type:duration with sql_start/sql_end on PROMO_DIM's START_DATE/END_DATE → DateDiff columns (the start/end physical cols must be materialized so the DateDiff resolves). BUG9: a snowflake join from order_fact to promo_dim, which has a dimension_group type:time (promo_start); the derived/denorm element built off order_fact must surface promo_start's DateTrunc timeframe columns cross-element. A correctly-fixed converter produces zero error columns; minRelationships:1 enforces the join survived.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
