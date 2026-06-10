@@ -1,0 +1,4 @@
+{ "appName": "Qlik Section Access RLS/CLS",
+  "tables": [{ "name": "ORDER_FACT", "fields": [{"name":"ORDER_ID"},{"name":"ORDER_CHANNEL"},{"name":"NET_REVENUE"},{"name":"NET_PROFIT"}] }],
+  "masterMeasures": [], "masterDimensions": [],
+  "sectionAccess": { "reductionField": "ORDER_CHANNEL", "keyedBy": "userid", "omitField": "NET_PROFIT" } }

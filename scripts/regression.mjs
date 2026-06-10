@@ -124,9 +124,16 @@ async function loadConverters() {
   };
 }
 
-function shapeSummary(model) {
+function shapeSummary(model, result = {}) {
   const elements = (model.pages || []).flatMap(p => p.elements || []);
+  const sec = result.security || [];
   return {
+    // Architecture B: RLS/CLS is REPORTED in result.security, not injected into
+    // the model. So assert on these counts (minSecurity/minRlsRules/minClsRules),
+    // not minFilters/minRlsColumns (which stay 0 for reported-but-not-injected RLS).
+    security: sec.length,
+    rlsRules: sec.filter(s => s.kind === 'rls').length,
+    clsRules: sec.filter(s => s.kind === 'cls').length,
     elements: elements.length,
     columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
     metrics: elements.reduce((n, e) => n + (e.metrics?.length || 0), 0),
@@ -157,6 +164,15 @@ function checkAsserts(asserts, summary) {
   }
   if (asserts?.minRlsColumns != null && summary.rlsColumns < asserts.minRlsColumns) {
     issues.push(`RLS columns ${summary.rlsColumns} < expected min ${asserts.minRlsColumns}`);
+  }
+  if (asserts?.minSecurity != null && summary.security < asserts.minSecurity) {
+    issues.push(`reported security rules ${summary.security} < expected min ${asserts.minSecurity}`);
+  }
+  if (asserts?.minRlsRules != null && summary.rlsRules < asserts.minRlsRules) {
+    issues.push(`reported RLS rules ${summary.rlsRules} < expected min ${asserts.minRlsRules}`);
+  }
+  if (asserts?.minClsRules != null && summary.clsRules < asserts.minClsRules) {
+    issues.push(`reported CLS rules ${summary.clsRules} < expected min ${asserts.minClsRules}`);
   }
   return issues;
 }
@@ -236,8 +252,8 @@ async function runFixture(fx, converters) {
   }
   if (!result?.model) return { id: fx.id, ok: false, reason: 'converter returned no model' };
 
-  const summary = shapeSummary(result.model);
-  log(`shape: elements=${summary.elements} cols=${summary.columns} rels=${summary.relationships} helpers=${summary.helperElements}`);
+  const summary = shapeSummary(result.model, result);
+  log(`shape: elements=${summary.elements} cols=${summary.columns} rels=${summary.relationships} helpers=${summary.helperElements} security=${summary.security}`);
 
   const assertIssues = checkAsserts(fx.summary.asserts, summary);
   if (assertIssues.length) {

@@ -8,10 +8,10 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements,
-  type SigmaElement, type ConversionResult,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements, makeRlsSecurity,
+  type SigmaElement, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
-import { tableauFormulaToSigma, tableauIsAggregate } from './formulas.js';
+import { tableauFormulaToSigma, tableauIsAggregate, tableauFormulaIsRls } from './formulas.js';
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
 
@@ -716,6 +716,7 @@ export function convertTableauToSigma(
   const dsIdx = Math.min(datasourceIndex, datasources.length - 1);
   const ds = datasources[dsIdx];
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // detected RLS — reported, not injected (architecture B)
   const elements: SigmaElement[] = [];
   const connId = connectionId || '<CONNECTION_ID>';
 
@@ -2090,6 +2091,32 @@ export function convertTableauToSigma(
         const sigmaFormula = tableauFormulaToSigma(formula, warnings);
         if (!sigmaFormula || sigmaFormula.startsWith('/*')) continue;
 
+        // Row-level security: a calc that tests the viewer's identity/group
+        // (USERNAME/ISMEMBEROF/USERATTRIBUTE/…). Emit a fail-closed RLS artifact —
+        // a boolean calc column + an element filter keeping only True rows — instead
+        // of a plain visible calc column. Mirrors the lookml access_filter pattern.
+        if (tableauFormulaIsRls(formula)) {
+          // Cross-element guard: a Sigma element filter must live on the same element
+          // as its column. If the RLS calc references a related-table (non-fact) column,
+          // the column would be moved to a derived view downstream, orphaning the filter —
+          // so we don't auto-emit; we flag it for manual placement on the owning element.
+          const rlsRefs = (sigmaFormula.match(/\[([^\]\/]+)\]/g) || []).map(r => r.replace(/^\[|\]$/g, ''));
+          const offFact = rlsRefs.find(n => {
+            if (/^(true|false|null)$/i.test(n)) return false;
+            const hit = displayNameMap[n.toUpperCase()] || displayNameMap[n.replace(/\s+/g, '_').toUpperCase()];
+            return hit && hit.el !== factEl;
+          });
+          if (offFact) {
+            warnings.push(`⚠ "${caption}" is row-level security but references a related-table column [${offFact}] (cross-element). Sigma RLS filters apply per-element — re-apply this rule on the element that owns [${offFact}] (or its derived view): add a boolean calc column ${sigmaFormula.slice(0, 70)} and an element filter keeping only True.`);
+            continue;
+          }
+          // REPORT (architecture B) — do not inject; the skill provisions + applies.
+          const rlsName = /^RLS\b/i.test(caption) ? caption : `RLS: ${caption}`;
+          security.push(makeRlsSecurity({ source: `Tableau calc "${caption}"`, element: factEl, name: rlsName, formula: sigmaFormula }));
+          warnings.push(`🔐 "${caption}" → row-level security DETECTED (reported in result.security, not injected): ${sigmaFormula.slice(0, 80)}. The migration skill provisions the referenced attribute(s)/team(s) and applies the RLS calc + filter.`);
+          continue;
+        }
+
         if (tableauIsAggregate(formula)) {
           // A fact metric can only aggregate columns that physically live on the fact
           // element. In a virtual connection a calc may aggregate a flattened dimension
@@ -2313,6 +2340,7 @@ export function convertTableauToSigma(
   return {
     model: sigmaModel,
     warnings,
+    ...(security.length ? { security } : {}),
     stats: {
       datasources: datasources.length,
       elements: elements.length,
