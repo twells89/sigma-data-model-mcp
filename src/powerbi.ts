@@ -768,6 +768,16 @@ export function pbiDaxToSigma(
   f = f.replace(/\bPOWER\s*\(/gi, 'Power(');
   f = f.replace(/\bMOD\s*\(/gi, 'Mod(');   // DAX MOD(n,d) == Sigma Mod(n,d) (1:1)
   f = f.replace(/\bEXP\s*\(/gi, 'Exp(');   // DAX EXP(x) == Sigma Exp(x) (1:1)
+  f = f.replace(/\bLN\s*\(/gi, 'Ln(');     // DAX LN(x) == Sigma Ln(x) (natural log)
+  // DAX LOG10(x) and LOG(x,[base]) → Sigma Log(value,[base]) (base-10 default matches).
+  f = f.replace(/\bLOG10\s*\(/gi, 'Log(');
+  f = f.replace(/\bLOG\s*\(/gi, 'Log(');
+  // DAX CEILING/FLOOR(number, significance) — Sigma Ceiling/Floor have no significance
+  // arg; align to the multiple manually. (Single-arg fallbacks handled after.)
+  f = f.replace(/\bCEILING\s*\(([^(),]+),\s*([^()]+)\)/gi, 'Ceiling($1 / $2) * $2');
+  f = f.replace(/\bFLOOR\s*\(([^(),]+),\s*([^()]+)\)/gi, 'Floor($1 / $2) * $2');
+  f = f.replace(/\bCEILING\s*\(/gi, 'Ceiling(');
+  f = f.replace(/\bFLOOR\s*\(/gi, 'Floor(');
   // Date
   f = f.replace(/\bYEAR\s*\(/gi, 'Year(');
   f = f.replace(/\bMONTH\s*\(/gi, 'Month(');
