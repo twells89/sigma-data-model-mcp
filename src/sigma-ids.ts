@@ -282,7 +282,12 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       if (!rel.name) continue;
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
       if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      // Don't denormalize the relationship's OWN key column across the join — the base
+      // element already carries that value, and the cross-element passthrough of a join
+      // key compiles to type "error" in Sigma (verified via readback). Skip it.
+      const tgtKeyIds = new Set((rel.keys || []).map((k: any) => k.targetColumnId));
       for (const col of (tgtEl.columns || [])) {
+        if (tgtKeyIds.has(col.id)) continue;
         if (!col.formula || col.formula.startsWith('/*')) continue;
         const fm = col.formula.match(/^\[([^\]]+)\]$/);
         if (!fm) continue;
