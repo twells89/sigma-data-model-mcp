@@ -1826,10 +1826,13 @@ const QS_FUNC_MAP: Record<string, string> = {
   // string
   concat: 'Concat', substring: 'Mid', strlen: 'Len',
   tolower: 'Lower', toupper: 'Upper', trim: 'Trim',
+  ltrim: 'LTrim', rtrim: 'RTrim', lpad: 'LPad', rpad: 'RPad',
+  left: 'Left', right: 'Right',
   replace: 'Replace', split: 'Split', locate: 'Find', contains: 'Contains',
   // math
   abs: 'Abs', ceil: 'Ceiling', floor: 'Floor', round: 'Round',
   log: 'Log', exp: 'Exp', sqrt: 'Sqrt', mod: 'Mod',
+  power: 'Power', pow: 'Power', sign: 'Sign', pi: 'Pi',
   // date
   now: 'Now', today: 'Today',
   truncdate: 'DateTrunc',

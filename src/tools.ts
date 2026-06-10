@@ -19,6 +19,8 @@ import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
 import { convertBobjToSigma } from './bobj.js';
+import { convertCognosToSigma } from './cognos.js';
+import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
@@ -250,6 +252,65 @@ generate warnings with community article links.`,
             text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
           }],
         };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_cognos_to_sigma ──────────────────────────────────────────
+  server.tool(
+    'convert_cognos_to_sigma',
+    `Convert an IBM Cognos Analytics **Data Module** (JSON) to a Sigma data model.
+
+Input is the Data Module JSON from \`GET /bi/v1/metadata/modules/{id}\` (CA 11.x+).
+Query subjects → table elements; query items → columns (facts with a regularAggregate
+→ metrics); calculations → Sigma formulas via the Cognos expression DSL (total..for →
+*Over, if/then/else → If, _add_days/_days_between/extract → date fns, substitute →
+RegexpReplace, substr → Mid, cast/varchar/char → Text, || → &); relationships → DM
+relationships (join columns from link[].leftRef/rightRef, source = the many side).
+
+Flags (does not fake): runtime macros, running-total/rank/lag/lead, GetResourceString
+localization, and composite/non-equi joins.`,
+    {
+      module_json: z.string().describe('Cognos Data Module JSON (the metadata/modules/{id} response)'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override warehouse database; empty string to omit'),
+      schema: z.string().describe('Override warehouse schema; empty string to omit'),
+    },
+    async ({ module_json, connection_id, database, schema }) => {
+      try {
+        const result = convertCognosToSigma(module_json, {
+          connectionId: connection_id || undefined, database: database || undefined, schema: schema || undefined,
+        });
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2) }] };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_cognos_report_to_sigma ───────────────────────────────────────
+  server.tool(
+    'convert_cognos_report_to_sigma',
+    `Convert an IBM Cognos **report specification** (XML) to a Sigma workbook.
+
+Input is the report XML from \`GET /bi/v1/objects/{id}?fields=specification\`. MVP =
+list reports: each <list> → a Sigma table element sourced from the migrated data model;
+dataItems → columns (expressions translated, model refs resolved to [Subject/Col]);
+prompt('p') → controls; Summary()/Total() footers → aggregate columns; detail/summary
+filters surfaced as warnings. Pass data_model_id (from posting the converted Data Module)
+to wire the table sources.
+
+Flags (roadmap, not converted): runtime macros (#…#), crosstabs → pivots, RAVE2 charts.`,
+    {
+      report_xml: z.string().describe('Cognos report-spec XML (the specification string)'),
+      data_model_id: z.string().describe('Sigma dataModelId of the migrated Cognos Data Module; empty string leaves a placeholder'),
+    },
+    async ({ report_xml, data_model_id }) => {
+      try {
+        const result = convertCognosReportToSigma(report_xml, { dataModelId: data_model_id || undefined });
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaWorkbook: result.workbook, stats: result.stats, warnings: result.warnings }, null, 2) }] };
       } catch (e: any) {
         return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
       }

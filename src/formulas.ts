@@ -248,7 +248,14 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'YEAR': 'Year', 'MONTH': 'Month', 'DAY': 'Day',
   'HOUR': 'Hour', 'MINUTE': 'Minute', 'SECOND': 'Second',
   'WEEK': 'Week', 'QUARTER': 'Quarter',
-  'DATE': 'Date', 'DATETIME': 'Datetime',
+  'DATE': 'Date', 'DATETIME': 'Datetime', 'MAKEDATE': 'MakeDate',
+  // regex (same arg order as Tableau)
+  'REGEXP_EXTRACT': 'RegexpExtract', 'REGEXP_REPLACE': 'RegexpReplace', 'REGEXP_MATCH': 'RegexpMatch',
+  // statistical aggregates (sample variants direct; STDEVP handled above)
+  'STDEV': 'StdDev', 'VAR': 'Variance', 'VARP': 'VariancePop',
+  'PERCENTILE': 'PercentileCont',
+  // string split — both 1-indexed, negatives count from the right
+  'SPLIT': 'SplitPart',
 };
 
 function tableauIfToSigma(f: string): string {
@@ -390,6 +397,22 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
   f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
 
+  // STDEVP (population std dev) — Sigma has no population-stddev function;
+  // population σ = Sqrt(population variance). Run before the STDEV map entry.
+  f = f.replace(/\bSTDEVP\s*\(([^()]+(?:\([^()]*\)[^()]*)*)\)/gi, 'Sqrt(VariancePop($1))');
+  // DATEPARSE('format', string) — Tableau orders args (format, string) and uses
+  // Java date tokens; Sigma DateParse(text, format) reverses them and uses strftime.
+  f = f.replace(/\bDATEPARSE\s*\(\s*('[^']*'|"[^"]*")\s*,\s*([^()]+(?:\([^()]*\)[^()]*)*)\)/gi,
+    (_m, fmt, str) => {
+      const sf = fmt.slice(1, -1)
+        .replace(/yyyy/g, '%Y').replace(/yy/g, '%y')
+        .replace(/MMMM/g, '%B').replace(/MMM/g, '%b').replace(/MM/g, '%m')
+        .replace(/dd/g, '%d').replace(/HH/g, '%H').replace(/hh/g, '%I')
+        .replace(/mm/g, '%M').replace(/ss/g, '%S');
+      if (warnings) warnings.push('⚠ DATEPARSE format translated to strftime tokens — verify the pattern resolves on your warehouse.');
+      return `DateParse(${str.trim()}, "${sf}")`;
+    });
+
   // Map remaining functions
   for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
     f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
@@ -411,7 +434,7 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
 /** Check if a Tableau formula contains aggregate functions */
 export function tableauIsAggregate(formula: string): boolean {
-  return /\b(SUM|AVG|COUNT|COUNTD|MAX|MIN|MEDIAN|STDEV|VAR|ATTR)\s*\(/i.test(formula);
+  return /\b(SUM|AVG|COUNT|COUNTD|MAX|MIN|MEDIAN|STDEV|STDEVP|VAR|VARP|PERCENTILE|ATTR)\s*\(/i.test(formula);
 }
 
 /** Strip ${TABLE}. and extract leading identifier from sql: */

@@ -38,6 +38,8 @@ app.get('/', (_req: Request, res: Response) => {
       'convert_lookml_to_sigma',
       'convert_powerbi_to_sigma',
       'convert_tableau_to_sigma',
+      'convert_cognos_to_sigma',
+      'convert_cognos_report_to_sigma',
       'convert_omni_to_sigma',
       'convert_sql_to_sigma_formula',
       'convert_tableau_formula_to_sigma',
