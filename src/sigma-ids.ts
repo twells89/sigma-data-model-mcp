@@ -275,10 +275,19 @@ export interface ElementResult {
   colIdMap: Record<string, string>;
 }
 
+/** Resolvable element name: explicit `name`, else the warehouse path tail
+ *  (warehouse-table elements have no `name` — Sigma derives it from the path,
+ *  e.g. ORDER_FACT — so the skill matches the live element by that). */
+function _securityElementName(el: { name?: string; source?: { path?: string[] } }): string | undefined {
+  if (el?.name) return el.name;
+  const path = el?.source?.path;
+  return path && path.length ? String(path[path.length - 1]) : undefined;
+}
+
 /** Build an RLS SecurityRule from a Sigma boolean formula, auto-extracting the
  *  user attributes / teams that must be provisioned, plus tailored guidance. */
 export function makeRlsSecurity(opts: {
-  source: string; element: { id?: string; name?: string }; name: string; formula: string;
+  source: string; element: { id?: string; name?: string; source?: { path?: string[] } }; name: string; formula: string;
 }): SecurityRule {
   const attrs = [...opts.formula.matchAll(/CurrentUserAttributeText\(\s*"([^"]+)"/g)].map(m => m[1]);
   const teams = [...opts.formula.matchAll(/CurrentUserInTeam\(\s*"([^"]+)"/g)].map(m => m[1]);
@@ -289,7 +298,7 @@ export function makeRlsSecurity(opts: {
     usesEmail && !attrs.length && !teams.length ? 'uses CurrentUserEmail() — no provisioning needed' : '',
   ].filter(Boolean).join('; ');
   return {
-    kind: 'rls', source: opts.source, elementId: opts.element.id, elementName: opts.element.name,
+    kind: 'rls', source: opts.source, elementId: opts.element.id, elementName: _securityElementName(opts.element),
     rls: {
       name: opts.name, formula: opts.formula,
       userAttributes: attrs.length ? [...new Set(attrs)] : undefined,
@@ -302,10 +311,10 @@ export function makeRlsSecurity(opts: {
 
 /** Build a CLS SecurityRule (column restriction, reported not injected). */
 export function makeClsSecurity(opts: {
-  source: string; element: { id?: string; name?: string }; columnIds: string[]; columnNames?: string[]; note?: string;
+  source: string; element: { id?: string; name?: string; source?: { path?: string[] } }; columnIds: string[]; columnNames?: string[]; note?: string;
 }): SecurityRule {
   return {
-    kind: 'cls', source: opts.source, elementId: opts.element.id, elementName: opts.element.name,
+    kind: 'cls', source: opts.source, elementId: opts.element.id, elementName: _securityElementName(opts.element),
     cls: { restrictedColumnIds: opts.columnIds, restrictedColumnNames: opts.columnNames, criteria: { kind: 'no-one-can-view' } },
     note: opts.note || 'Column-level security: restrict via columnSecurities (no-one-can-view, or re-scope to a team/attribute allowlist). The skill applies it — the converter does NOT inject it.',
   };
