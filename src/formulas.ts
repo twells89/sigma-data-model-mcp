@@ -413,6 +413,15 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
       return `DateParse(${str.trim()}, "${sf}")`;
     });
 
+  // User-context (row-level security) functions → Sigma equivalents.
+  // USERNAME()→CurrentUserEmail(); ISMEMBEROF('g')→CurrentUserInTeam("g");
+  // USERATTRIBUTE('a')→CurrentUserAttributeText("a"); ISUSERNAME('u')→email match.
+  // (Run before the single→double quote pass so the arg quoting is normalized here.)
+  f = f.replace(/\bUSERNAME\s*\(\s*\)/gi, 'CurrentUserEmail()');
+  f = f.replace(/\bISMEMBEROF\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserInTeam("$1")');
+  f = f.replace(/\bUSERATTRIBUTE\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserAttributeText("$1")');
+  f = f.replace(/\bISUSERNAME\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, '(CurrentUserEmail() = "$1")');
+
   // Map remaining functions
   for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
     f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
@@ -435,6 +444,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 /** Check if a Tableau formula contains aggregate functions */
 export function tableauIsAggregate(formula: string): boolean {
   return /\b(SUM|AVG|COUNT|COUNTD|MAX|MIN|MEDIAN|STDEV|STDEVP|VAR|VARP|PERCENTILE|ATTR)\s*\(/i.test(formula);
+}
+
+/** A Tableau calc is row-level security if it tests the viewer's identity/membership. */
+export function tableauFormulaIsRls(formula: string): boolean {
+  return /\b(USERNAME|FULLNAME|USERDOMAIN|ISMEMBEROF|ISUSERNAME|USERATTRIBUTE)\s*\(/i.test(formula || '');
 }
 
 /** Strip ${TABLE}. and extract leading identifier from sql: */
