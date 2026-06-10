@@ -369,9 +369,12 @@ async function driveLookML(page, fx, opts) {
   await new Promise(r => setTimeout(r, 300));
 
   // Set explore + connection + db/schema, then run
-  const result = await page.evaluate(async (connId, db, schema) => {
+  const result = await page.evaluate(async (connId, db, schema, wantExplore) => {
     const expSel = document.getElementById('lookExploreSelect');
-    const realOpt = expSel ? [...expSel.options].find(o => o.value) : null;
+    // Honor convertOptions.exploreName when supplied; otherwise pick the first
+    // real option (matches the MCP runner's single-explore default).
+    const opts = expSel ? [...expSel.options].filter(o => o.value) : [];
+    const realOpt = (wantExplore && opts.find(o => o.value === wantExplore)) || opts[0];
     if (!realOpt) {
       return { ok: false, error: 'no explores parsed from LookML' };
     }
@@ -391,7 +394,7 @@ async function driveLookML(page, fx, opts) {
       await runLookConversion();
     } catch (e) { return { ok: false, error: 'run: ' + e.message }; }
     return { ok: true };
-  }, opts.connectionId || '<CONNECTION_ID>', opts.database || '', opts.schema || '');
+  }, opts.connectionId || '<CONNECTION_ID>', opts.database || '', opts.schema || '', opts.exploreName || '');
   if (!result.ok) return result;
   // Look conversion is async — wait briefly for output
   for (let i = 0; i < 50; i++) {
