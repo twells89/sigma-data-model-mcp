@@ -15,7 +15,8 @@
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
   buildDerivedElements,
-  type SigmaElement, type SigmaColumn, type ConversionResult,
+  makeRlsSecurity, makeClsSecurity,
+  type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
@@ -1482,6 +1483,7 @@ export function convertPowerBIToSigma(
   const dbOverride = (database || '').toUpperCase();
   const schOverride = (schema || '').toUpperCase();
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // detected RLS/OLS — reported, not injected (architecture B)
   const elements: SigmaElement[] = [];
   const tableIdMap: Record<string, string> = {};
   const tableColMap: Record<string, Record<string, string>> = {};
@@ -2157,6 +2159,44 @@ export function convertPowerBIToSigma(
     elements.push(...winCtx.extraElements);
   }
 
+  // ── Row-level (RLS) + object-level (OLS) security from model.roles[] ───────
+  // PBI roles carry a DAX filterExpression per table (RLS) and columnPermissions
+  // metadataPermission:"none" (OLS). Emit a fail-closed RLS boolean calc + element
+  // filter, and CLS for hidden columns. Role MEMBERSHIP isn't in the file (bound in
+  // the Service) → flagged for provisioning. Mirrors the lookml/Tableau RLS pattern.
+  const rlsTablesSeen = new Set<string>();
+  for (const role of (model.roles || [])) {
+    for (const tp of (role.tablePermissions || [])) {
+      const el: any = tableIdMap[tp.name] ? elements.find(e => e.id === tableIdMap[tp.name]) : null;
+      const feRaw = tp.filterExpression;
+      if (feRaw && el) {
+        let formula = pbiDaxToSigma(feRaw, warnings, `RLS ${role.name}/${tp.name}`, measureDaxMap);
+        if (formula && !formula.startsWith('/*')) {
+          // Dynamic RLS: USERNAME()/USERPRINCIPALNAME() → CurrentUserEmail().
+          formula = formula.replace(/\b(?:USERNAME|USERPRINCIPALNAME)\s*\(\s*\)/gi, 'CurrentUserEmail()');
+          // Normalize PBI column refs [RAW_NAME] → [Display Name] (the direct
+          // pbiDaxToSigma call here skips the calc-path's display-name remap).
+          formula = formula.replace(/\[([^\]\/]+)\]/g, (m, n) =>
+            allPbiToSigmaNames[n] ? `[${allPbiToSigmaNames[n]}]` : m);
+          security.push(makeRlsSecurity({ source: `Power BI role "${role.name}" (table "${tp.name}")`, element: el, name: `RLS: ${role.name}`, formula }));
+          warnings.push(`🔐 PBI role "${role.name}" RLS on table "${tp.name}" → row-level security DETECTED (reported in result.security, not injected): ${formula.slice(0, 70)}. Role membership is bound in the Power BI Service (not the model file); the migration skill provisions the attribute/team + assigns members, then applies the RLS calc + filter.`);
+          if (rlsTablesSeen.has(tp.name)) warnings.push(`⚠ Multiple PBI roles apply RLS to "${tp.name}". Power BI unions role filters (OR); stacked Sigma element filters intersect (AND). Review — you likely want the role conditions OR-combined into one RLS column.`);
+          rlsTablesSeen.add(tp.name);
+        } else {
+          warnings.push(`⚠ PBI role "${role.name}" RLS filter on "${tp.name}" ("${String(feRaw).slice(0, 60)}") could not be translated — re-apply manually as a boolean calc column + element filter.`);
+        }
+      }
+      const hidden = (tp.columnPermissions || []).filter((cp: any) => (cp.metadataPermission || cp.memberPermission) === 'none');
+      if (hidden.length && el) {
+        const ids = hidden.map((cp: any) => tableColMap[tp.name]?.[cp.name]).filter(Boolean) as string[];
+        if (ids.length) {
+          security.push(makeClsSecurity({ source: `Power BI OLS role "${role.name}" (table "${tp.name}")`, element: el, columnIds: ids, columnNames: hidden.map((c: any) => c.name), note: 'PBI OLS hides from the role\'s members; Sigma CLS is per-restriction (no-one-can-view, or re-scope to a team/attribute allowlist). The skill applies it — not injected.' }));
+          warnings.push(`🔐 PBI role "${role.name}" object-level security hides [${hidden.map((c: any) => c.name).join(', ')}] on "${tp.name}" → CLS DETECTED (reported in result.security, not injected).`);
+        }
+      }
+    }
+  }
+
   // ── Build output ──────────────────────────────────────────────────────────
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
 
@@ -2175,6 +2215,7 @@ export function convertPowerBIToSigma(
   return {
     model: sigmaModel,
     warnings,
+    ...(security.length ? { security } : {}),
     stats: {
       tables: model.tables.filter((t: any) => !calcGroupTables.has(t.name)).length,
       elements: ec,

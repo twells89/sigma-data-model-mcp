@@ -1,0 +1,10 @@
+{ "DataSet": {
+  "Name": "QS Security Test",
+  "PhysicalTableMap": { "t1": { "RelationalTable": {
+    "DataSourceArn":"arn:x","Catalog":"CSA","Schema":"TJ","Name":"ORDER_FACT",
+    "InputColumns":[{"Name":"ORDER_ID","Type":"STRING"},{"Name":"ORDER_CHANNEL","Type":"STRING"},{"Name":"NET_REVENUE","Type":"DECIMAL"},{"Name":"NET_PROFIT","Type":"DECIMAL"}] } } },
+  "LogicalTableMap": { "l1": { "Alias":"ORDER_FACT", "Source": { "PhysicalTableId":"t1" } } },
+  "RowLevelPermissionTagConfiguration": { "Status":"ENABLED", "TagRules":[{"TagKey":"region","ColumnName":"ORDER_CHANNEL","MatchAllValue":"ALL"}] },
+  "ColumnLevelPermissionRules": [{ "ColumnNames":["NET_PROFIT"], "Principals":["arn:aws:quicksight:us-east-1:0:group/default/execs"] }],
+  "RowLevelPermissionDataSet": { "Arn":"arn:aws:quicksight:us-east-1:0:dataset/rls-rules", "PermissionPolicy":"GRANT_ACCESS" }
+} }

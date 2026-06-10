@@ -4,8 +4,8 @@
  */
 
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
-  type SigmaElement, type ConversionResult, type ElementResult
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, makeRlsSecurity,
+  type SigmaElement, type ConversionResult, type ElementResult, type SecurityRule
 } from './sigma-ids.js';
 import { lookIsComplexSql, lookSqlToSigmaRules, lookConvertExpression, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
 
@@ -1175,6 +1175,7 @@ export function convertLookMLToSigma(
   const views: Record<string, any> = {};
   const explores: Record<string, any> = {};
   const warnings: string[] = [];
+  const security: SecurityRule[] = [];   // detected RLS/CLS — reported, not injected (architecture B)
 
   for (const file of files) {
     const isModel = file.name.endsWith('.model.lkml') || file.name.includes('.model.');
@@ -1408,28 +1409,17 @@ export function convertLookMLToSigma(
     }
     if (!dispName) dispName = sigmaDisplayName(fieldPart);
 
-    // Add the boolean RLS calc column on the owning element.
-    const rlsColId = sigmaShortId();
-    const rlsColName = `RLS: ${dispName}`;
-    targetEl.columns.push({
-      id: rlsColId,
-      name: rlsColName,
-      formula: `CurrentUserAttributeText("${ua}") = [${dispName}]`
-    });
-    if (!targetEl.order) targetEl.order = [];
-    targetEl.order.push(rlsColId);
-
-    // Fail-closed element filter: keep only rows where the RLS column is True.
-    if (!targetEl.filters) targetEl.filters = [];
-    targetEl.filters.push({
-      id: sigmaShortId(),
-      columnId: rlsColId,
-      kind: 'list',
-      mode: 'include',
-      values: [true]
-    });
-
-    warnings.push(`✅ Explore "${exploreName}": access_filter "${field}" → Sigma RLS applied via user attribute "${ua}". Added boolean calc column "${rlsColName}" (CurrentUserAttributeText("${ua}") = [${dispName}]) + an element filter keeping only matching rows. ℹ Provision/reuse a Sigma user attribute named "${ua}" (GET/POST /v2/user-attributes) and assign each user their allowed value, or remove this filter from the element if you are not porting RLS.`);
+    // REPORT the RLS (architecture B) — do NOT inject into the model. A stateless
+    // converter can't create/assign the Sigma user attribute or POST; injecting a
+    // CurrentUserAttributeText filter standalone fail-closes to 0 rows. The skill
+    // (apply_sigma_rls.py) provisions the attribute then applies the calc+filter.
+    security.push(makeRlsSecurity({
+      source: `Looker access_filter (explore "${exploreName}")`,
+      element: targetEl,
+      name: `RLS: ${dispName}`,
+      formula: `CurrentUserAttributeText("${ua}") = [${dispName}]`,
+    }));
+    warnings.push(`🔐 Explore "${exploreName}": access_filter "${field}" by user_attribute "${ua}" → row-level security DETECTED (reported in result.security, not injected). The migration skill provisions/reuses the Sigma user attribute "${ua}" and applies the RLS calc + filter.`);
   }
 
   // ── LookML always_filter → Sigma element filters ─────────────────────────
@@ -1588,6 +1578,7 @@ export function convertLookMLToSigma(
   return {
     model: sigmaModel,
     warnings,
+    ...(security.length ? { security } : {}),
     stats: {
       views: Object.keys(views).length,
       explores: Object.keys(explores).length,

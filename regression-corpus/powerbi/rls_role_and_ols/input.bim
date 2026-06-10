@@ -1,0 +1,146 @@
+{
+  "compatibilityLevel": 1567,
+  "model": {
+    "culture": "en-US",
+    "tables": [
+      {
+        "name": "ORDER_FACT",
+        "lineageTag": "table-order_fact",
+        "columns": [
+          {
+            "name": "ORDER_ID",
+            "dataType": "string",
+            "sourceColumn": "ORDER_ID",
+            "lineageTag": "order_fact-order_id-000"
+          },
+          {
+            "name": "CUSTOMER_KEY",
+            "dataType": "int64",
+            "sourceColumn": "CUSTOMER_KEY",
+            "lineageTag": "order_fact-customer_key-001",
+            "formatString": "0"
+          },
+          {
+            "name": "GROSS_REVENUE",
+            "dataType": "double",
+            "sourceColumn": "GROSS_REVENUE",
+            "lineageTag": "order_fact-gross_revenue-002",
+            "formatString": "\\$#,##0.00"
+          },
+          {
+            "name": "Customer Segment Tag",
+            "type": "calculated",
+            "expression": "RELATED('CUSTOMER_DIM'[CUSTOMER_SEGMENT])",
+            "dataType": "string",
+            "lineageTag": "order_fact-customer_segment_tag-calc"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "ORDER_FACT",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "  Source = Snowflake.Databases(\"xy12345.snowflakecomputing.com\", \"COMPUTE_WH\"),",
+                "  CSA = Source{[Name=\"CSA\"]}[Data],",
+                "  TJ = CSA{[Name=\"TJ\"]}[Data],",
+                "  ORDER_FACT = TJ{[Name=\"ORDER_FACT\"]}[Data]",
+                "in",
+                "  ORDER_FACT"
+              ]
+            }
+          }
+        ],
+        "measures": [
+          {
+            "name": "Total Gross Revenue",
+            "expression": "SUM(ORDER_FACT[GROSS_REVENUE])",
+            "lineageTag": "measure-total-gross-revenue",
+            "formatString": "\\$#,##0.00"
+          }
+        ]
+      },
+      {
+        "name": "CUSTOMER_DIM",
+        "lineageTag": "table-customer_dim",
+        "columns": [
+          {
+            "name": "CUSTOMER_KEY",
+            "dataType": "int64",
+            "sourceColumn": "CUSTOMER_KEY",
+            "lineageTag": "customer_dim-customer_key-000",
+            "formatString": "0"
+          },
+          {
+            "name": "CUSTOMER_ID",
+            "dataType": "string",
+            "sourceColumn": "CUSTOMER_ID",
+            "lineageTag": "customer_dim-customer_id-001"
+          },
+          {
+            "name": "CUSTOMER_SEGMENT",
+            "dataType": "string",
+            "sourceColumn": "CUSTOMER_SEGMENT",
+            "lineageTag": "customer_dim-customer_segment-002"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "CUSTOMER_DIM",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "  Source = Snowflake.Databases(\"xy12345.snowflakecomputing.com\", \"COMPUTE_WH\"),",
+                "  CSA = Source{[Name=\"CSA\"]}[Data],",
+                "  TJ = CSA{[Name=\"TJ\"]}[Data],",
+                "  CUSTOMER_DIM = TJ{[Name=\"CUSTOMER_DIM\"]}[Data]",
+                "in",
+                "  CUSTOMER_DIM"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "name": "ORDER_FACT_CUSTOMER_KEY_CUSTOMER_DIM",
+        "fromTable": "ORDER_FACT",
+        "fromColumn": "CUSTOMER_KEY",
+        "toTable": "CUSTOMER_DIM",
+        "toColumn": "CUSTOMER_KEY",
+        "crossFilteringBehavior": "oneDirection"
+      }
+    ],
+    "annotations": [
+      {
+        "name": "PBI_QueryOrder",
+        "value": "[\"ORDER_FACT\", \"CUSTOMER_DIM\"]"
+      }
+    ],
+    "roles": [
+      {
+        "name": "Big Orders",
+        "modelPermission": "read",
+        "tablePermissions": [
+          {
+            "name": "ORDER_FACT",
+            "filterExpression": "ORDER_FACT[GROSS_REVENUE] > 100",
+            "columnPermissions": [
+              {
+                "name": "ORDER_ID",
+                "metadataPermission": "none"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "id": "SemanticModel",
+  "name": "cross_element_basic"
+}

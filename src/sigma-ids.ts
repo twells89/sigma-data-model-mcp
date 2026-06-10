@@ -234,16 +234,81 @@ export interface SigmaDataModel {
   pages: SigmaPage[];
 }
 
+/**
+ * Detected source-tool row/column security, REPORTED (not injected into `model`).
+ * A stateless converter can't create/assign Sigma user attributes or POST, so it
+ * never bakes RLS into the returned spec (that would fail-closed standalone).
+ * Instead it hands the migration skill everything needed to provision + apply:
+ * the target element, the ready-to-use Sigma boolean formula / CLS columns, and
+ * the user attributes / teams to create. See apply_sigma_rls.py.
+ */
+export interface SecurityRule {
+  kind: 'rls' | 'cls';
+  source: string;                 // human description, e.g. "Looker access_filter", "PBI role 'X'"
+  elementId?: string;             // element id in the returned model to apply to
+  elementName?: string;
+  rls?: {
+    name: string;                 // suggested calc-column name, e.g. "RLS: Region"
+    formula: string;              // Sigma boolean (CurrentUserAttributeText/InTeam/Email = [col])
+    userAttributes?: string[];    // attribute names to provision/assign
+    teams?: string[];             // team names referenced by CurrentUserInTeam
+    usesCurrentUserEmail?: boolean;
+  };
+  cls?: {
+    restrictedColumnIds: string[];
+    restrictedColumnNames?: string[];
+    criteria: { kind: 'no-one-can-view' };
+  };
+  note: string;                   // provisioning guidance / caveats
+}
+
 export interface ConversionResult {
   model: SigmaDataModel;
   warnings: string[];
   stats: Record<string, number>;
+  security?: SecurityRule[];      // detected RLS/CLS — reported, NOT injected into `model`
 }
 
 export interface ElementResult {
   element: SigmaElement;
   elementId: string;
   colIdMap: Record<string, string>;
+}
+
+/** Build an RLS SecurityRule from a Sigma boolean formula, auto-extracting the
+ *  user attributes / teams that must be provisioned, plus tailored guidance. */
+export function makeRlsSecurity(opts: {
+  source: string; element: { id?: string; name?: string }; name: string; formula: string;
+}): SecurityRule {
+  const attrs = [...opts.formula.matchAll(/CurrentUserAttributeText\(\s*"([^"]+)"/g)].map(m => m[1]);
+  const teams = [...opts.formula.matchAll(/CurrentUserInTeam\(\s*"([^"]+)"/g)].map(m => m[1]);
+  const usesEmail = /\bCurrentUserEmail\(/.test(opts.formula);
+  const provision = [
+    attrs.length ? `provision/assign Sigma user attribute(s): ${[...new Set(attrs)].join(', ')}` : '',
+    teams.length ? `create Sigma team(s) + membership: ${[...new Set(teams)].join(', ')}` : '',
+    usesEmail && !attrs.length && !teams.length ? 'uses CurrentUserEmail() — no provisioning needed' : '',
+  ].filter(Boolean).join('; ');
+  return {
+    kind: 'rls', source: opts.source, elementId: opts.element.id, elementName: opts.element.name,
+    rls: {
+      name: opts.name, formula: opts.formula,
+      userAttributes: attrs.length ? [...new Set(attrs)] : undefined,
+      teams: teams.length ? [...new Set(teams)] : undefined,
+      usesCurrentUserEmail: usesEmail || undefined,
+    },
+    note: `Fail-closed RLS (boolean calc + element filter, only True rows). ${provision || 'review'}. The skill provisions then applies — the converter does NOT inject it.`,
+  };
+}
+
+/** Build a CLS SecurityRule (column restriction, reported not injected). */
+export function makeClsSecurity(opts: {
+  source: string; element: { id?: string; name?: string }; columnIds: string[]; columnNames?: string[]; note?: string;
+}): SecurityRule {
+  return {
+    kind: 'cls', source: opts.source, elementId: opts.element.id, elementName: opts.element.name,
+    cls: { restrictedColumnIds: opts.columnIds, restrictedColumnNames: opts.columnNames, criteria: { kind: 'no-one-can-view' } },
+    note: opts.note || 'Column-level security: restrict via columnSecurities (no-one-can-view, or re-scope to a team/attribute allowlist). The skill applies it — the converter does NOT inject it.',
+  };
 }
 
 /**
