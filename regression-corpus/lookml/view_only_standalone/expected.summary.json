@@ -1,0 +1,10 @@
+{
+  "description": "View-only input (no .model.lkml / explore). Previously the converter threw 'No explores found'. It must now convert the view as a standalone Custom SQL element with zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
