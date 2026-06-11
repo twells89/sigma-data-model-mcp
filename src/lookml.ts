@@ -734,6 +734,10 @@ function lookConvertView(
     element = {
       id: elementId,
       kind: 'table',
+      // Explicit display name: without it Sigma falls back to "Custom SQL" for
+      // every sql element, making [Element/Column] refs ambiguous and breaking
+      // the orchestrators' name-based element lookup on readback.
+      name: view.label || sigmaDisplayName(viewName),
       source: {
         connectionId: connectionId || '<CONNECTION_ID>',
         statement: rawSql || '',
@@ -751,6 +755,7 @@ function lookConvertView(
     element = {
       id: elementId,
       kind: 'table',
+      name: view.label || sigmaDisplayName(viewName),
       source: {
         connectionId: connectionId || '<CONNECTION_ID>',
         kind: 'warehouse-table',
@@ -880,8 +885,15 @@ function lookConvertView(
         const calcId = sigmaShortId();
         colIdMap[colName] = calcId;
         const baseName = d.label || sigmaDisplayName(d._name);
-        const displayName = baseName + ' (T/F)';
-        element.columns.push({ id: calcId, formula: `[${colLabel(physicalCol)}] = ${val}`, name: displayName });
+        // NOTE: no "/" in the suffix — Sigma bracket refs are slash-delimited, so a
+        // display name containing "/" is unreferenceable downstream ([El/X (T/F)]
+        // over-segments and compiles to type "error"; found live in the E2E run).
+        const displayName = baseName + ' (T-F)';
+        // Qualified ref ([<table>/<col>], like the passthrough itself) — a BARE
+        // sibling ref to an unnamed passthrough compiles to type "error" on
+        // custom-SQL elements (live-verified: [IS_RETURNED] = 1 errored,
+        // [Custom SQL/IS_RETURNED] = 1 resolved).
+        element.columns.push({ id: calcId, formula: `[${tableName}/${colLabel(physicalCol)}] = ${val}`, name: displayName });
         element.order.push(calcId);
         continue;
       }
@@ -1906,7 +1918,9 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       derived.push({
         id: sigmaShortId(),
         kind: 'table',
-        name: srcEl.name ?? sigmaDisplayName(srcTableName),
+        // " View" suffix matches sigma-ids.ts buildDerivedElements — without it
+        // the derived element collides with the (now-named) source element.
+        name: `${srcEl.name ?? sigmaDisplayName(srcTableName)} View`,
         source: { kind: 'table', elementId: srcEl.id },
         columns: viewCols,
         order: viewOrder,
