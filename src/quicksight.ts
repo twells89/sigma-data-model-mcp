@@ -1500,6 +1500,10 @@ function synthesizeStubDataset(
  * yields [Col Name] bare refs. The relatedNameMap rewrites any non-local
  * names to the cross-element triple form.
  */
+// Top-level aggregate detector for analysis calc fields (QS requires uniform
+// aggregation in a field, so any aggregate call makes the field aggregate-level).
+const QS_AGG_FIELD_RE = /\b(sum|avg|min|max|count|distinct_count|median|percentile|percentileCont|percentileDisc|stdev|stdevp|var|varp)(If)?\s*\(/i;
+
 function addAnalysisCalcCol(
   entry: DatasetEntry,
   name: string,
@@ -1524,6 +1528,38 @@ function addAnalysisCalcCol(
   const ex = quicksightFormulaToSigmaEx(expression || '', warnings);
   let formula = ex.formula;
   const description = ex.description;
+
+  // Aggregate-level analysis calc fields (sum / sumIf / distinct_countIf / …)
+  // must become Sigma METRICS, not calc columns: in a DM element calc column
+  // the inner aggregate silently collapses to the row value (same failure
+  // class the ThoughtSpot converter buckets around — beads-sigma-lvdw).
+  // Cross-element refs are rewritten to the derived view's "Field (REL)"
+  // display form (metrics resolve against the element's own columns; the
+  // [SRC/REL/Field] triple form is a column-formula construct).
+  if (formula !== 'Null' && QS_AGG_FIELD_RE.test(expression || '')) {
+    const dv = derivedViewBySrcId.get(entry.primary.id);
+    const target: any = dv || entry.primary;
+    let mFormula = formula;
+    if (dv) {
+      const srcEl = entry.primary;
+      const srcPath: string[] = srcEl.source.path || [];
+      const srcBaseName: string = srcEl.name || srcPath[srcPath.length - 1] || '';
+      const relatedNameMap = buildRelatedNameMap(srcEl, srcBaseName, allElements);
+      mFormula = mFormula.replace(/\[([^\]\/]+)\]/g, (match, refName) => {
+        const triple = relatedNameMap[refName];
+        if (!triple) return match;
+        const parts = triple.split('/');
+        return parts.length === 3 ? `[${parts[2]} (${parts[1]})]` : match;
+      });
+    } else if (entry.primary.source?.kind === 'sql' && entry.primaryColMap) {
+      mFormula = rewriteSqlRefs(mFormula, entry.primaryColMap);
+    }
+    const metric: any = { id: sigmaShortId(), name: display, formula: mFormula };
+    if (description) metric.description = description;
+    (target.metrics ||= []).push(metric);
+    warnings.push(`ℹ "${name}": aggregate-level calculated field → Sigma metric on "${target.name || 'primary element'}" (as a calc column the inner aggregate silently collapses to the row value).`);
+    return;
+  }
 
   const derivedView = derivedViewBySrcId.get(entry.primary.id);
   if (derivedView) {

@@ -45,8 +45,8 @@ function splitCallArgs(s: string, startIdx: number): { args: string[]; endPos: n
     const ch = s[i];
     if (inStr) { if (ch === inStr) inStr = null; continue; }
     if (ch === '"' || ch === "'") { inStr = ch; continue; }
-    if (ch === '(' || ch === '[') depth++;
-    else if (ch === ')' || ch === ']') {
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') {
       depth--;
       if (depth === 0) { args.push(s.slice(argStart, i).trim()); i++; break; }
     } else if (ch === ',' && depth === 1) {
@@ -486,6 +486,232 @@ function rewriteCalcGrandTotal(f: string): string {
   return f;
 }
 
+// ── Family 3 (beads-sigma-fah8): complex boolean FILTER predicates in CALCULATE ──
+
+// Split a DAX IN-list body `a, "b,c", d` on top-level commas (quote-aware).
+function splitInList(body: string): string[] {
+  const out: string[] = [];
+  let start = 0, inStr: string | null = null, depth = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inStr) { if (ch === inStr) inStr = null; continue; }
+    if (ch === '"' || ch === "'") { inStr = ch; continue; }
+    if (ch === '(' || ch === '{') depth++;
+    else if (ch === ')' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) { out.push(body.slice(start, i).trim()); start = i + 1; }
+  }
+  const last = body.slice(start).trim();
+  if (last) out.push(last);
+  return out.filter(Boolean);
+}
+
+// Translate a row-level DAX boolean predicate into a Sigma boolean expression:
+//   - && / || → and / or; NOT(x) → Not(x); TRUE()/FALSE() → True/False; <> → !=
+//   - <ref> IN {v1, v2, …} → ([ref] = v1 or [ref] = v2 …)  (Sigma has NO IsIn —
+//     an IsIn call silently errors the column; or-chains are the only safe form)
+//   - qualified 'Table'[Col] / Table[Col] refs normalized to bare [Col]
+// Returns { ok:false, reason } when the predicate is NOT a reproducible row-level
+// boolean: it compares against an aggregate/measure ref (needs a windowed compare)
+// or contains filter-context functions (nested FILTER/ALL/EARLIER/…).
+function translateDaxPredicate(predRaw: string): { ok: true; sigma: string } | { ok: false; reason: string } {
+  let p = (predRaw || '').trim();
+  if (!p) return { ok: false, reason: 'empty predicate' };
+  if (/\b(CALCULATE|FILTER|ALL|ALLEXCEPT|ALLSELECTED|REMOVEFILTERS|KEEPFILTERS|VALUES|RELATEDTABLE|EARLIER|TREATAS|USERELATIONSHIP|SELECTEDVALUE)\s*\(/i.test(p)) {
+    return { ok: false, reason: `predicate contains filter-context functions (${p.slice(0, 60)})` };
+  }
+  // [NOT] <ref> IN {…} → or-chain / and-chain (must run BEFORE && / || translation).
+  // The leading NOT must be captured separately or the table-qualifier pattern
+  // swallows it ("NOT T"[TYPE]) and the negation silently distributes wrong.
+  const inRe = /(\bNOT\s+)?((?:'[^']+'|\b[A-Za-z_][\w ]*)?\[[^\]]+\])\s+(NOT\s+)?IN\s*\{/i;
+  for (let guard = 0; guard < 20; guard++) {
+    const m = p.match(inRe);
+    if (!m) break;
+    const ref = m[2];
+    const negate = !!(m[1] || m[3]);
+    const open = m.index! + m[0].length;
+    let depth = 1, i = open, inStr: string | null = null;
+    for (; i < p.length; i++) {
+      const ch = p[i];
+      if (inStr) { if (ch === inStr) inStr = null; continue; }
+      if (ch === '"') { inStr = ch; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (!depth) break; }
+    }
+    if (depth) return { ok: false, reason: 'unbalanced IN { … } list' };
+    const items = splitInList(p.slice(open, i));
+    if (!items.length) return { ok: false, reason: 'empty IN { } list' };
+    const chain = negate
+      ? items.map(v => `${ref} != ${v}`).join(' and ')
+      : items.map(v => `${ref} = ${v}`).join(' or ');
+    p = p.slice(0, m.index!) + `(${chain})` + p.slice(i + 1);
+  }
+  p = p.replace(/\bNOT\s*\(/gi, 'Not(');
+  p = p.replace(/\bISBLANK\s*\(/gi, 'IsNull(');
+  p = p.replace(/\bTRUE\s*\(\s*\)/gi, 'True').replace(/\bFALSE\s*\(\s*\)/gi, 'False');
+  p = p.replace(/<>/g, '!=');
+  p = p.replace(/&&/g, ' and ').replace(/\|\|/g, ' or ');
+  // Qualified refs → bare [Col] (downstream name-mapping keys on bare names).
+  p = p.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]').replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+  // Refuse comparisons whose RHS carries a bracketed ref — that's a measure/
+  // aggregate (or col-to-col) compare, not a row literal; a row-level *If would
+  // be silently wrong (needs a windowed comparison).
+  for (const term of p.split(/\b(?:and|or)\b/i)) {
+    const c = term.match(/(=|!=|>=|<=|>|<)([\s\S]*)$/);
+    if (c && /\[[^\]]+\]/.test(c[2])) {
+      return { ok: false, reason: `compares against an aggregate/measure (${c[2].trim().slice(0, 50)})` };
+    }
+  }
+  return { ok: true, sigma: p.replace(/\s+/g, ' ').trim() };
+}
+
+// Time-intelligence functions: a CALCULATE carrying one of these as a filter must
+// NOT be claimed by the conditional-aggregate rewrite — the dedicated time-intel
+// guard/emitTimeIntelElements path handles them.
+const CALC_TIME_INTEL_RE = /\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DATEADD|DATESYTD|DATESBETWEEN|DATESINPERIOD|PARALLELPERIOD|PREVIOUSMONTH|PREVIOUSQUARTER|PREVIOUSYEAR|PREVIOUSDAY|NEXTMONTH|NEXTQUARTER|NEXTYEAR)\s*\(/i;
+
+// Rewrite every translatable CALCULATE(...) occurrence into a Sigma conditional
+// aggregate, splicing in place so surrounding expressions (DIVIDE, COALESCE,
+// arithmetic) keep working. Handles (beads-sigma-fah8):
+//   CALCULATE(agg, p1, p2, …)                 → AggIf(col, p1 and p2 …)
+//   CALCULATE(agg, FILTER(T, c1 && c2 || c3)) → AggIf(col, translated boolean)
+//   CALCULATE(agg, FILTER(ALL(T), pred))      → GrandTotal(AggIf(col, pred))
+//     (ALL strips filter context → total semantics over ALL rows matching pred)
+//   CALCULATE(agg, ALL(T[col]) | REMOVEFILTERS(T[col])) → GrandTotal(agg) with a
+//     loud ⚠ (exact when col is the visual's only grouping; else re-express as a
+//     window over the remaining dims in a grouped workbook element)
+//   CALCULATE(x)  [1 arg, e.g. after USERELATIONSHIP strip] → x
+// Subtotal re-scopes with no faithful scalar equivalent (ALLEXCEPT, ALLSELECTED,
+// multi-col ALL) and non-row-level predicates → { dropped:true } with the original
+// DAX preserved in the warning (flag-not-drop). Time-intel filters are declined
+// silently so the time-intelligence guard classifies them.
+function rewriteCalculateConditionals(
+  fIn: string,
+  warnings: string[] | null,
+  measureName: string,
+  measureDax: Record<string, string>,
+  rawDax: string,
+): { f: string; dropped: boolean } {
+  let f = fIn;
+  const daxNote = String(rawDax).replace(/\s+/g, ' ').trim().slice(0, 220);
+  const bareRef = (x: string) =>
+    x.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]').replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+  const wholeTableStripRe = /^(ALL|REMOVEFILTERS)\s*\(\s*'?[A-Za-z_][\w ]*'?\s*\)$/i;
+  const re = /\bCALCULATE\s*\(/gi;
+  let cursor = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    re.lastIndex = cursor;
+    const m = re.exec(f);
+    if (!m) break;
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (!args.length) { cursor = m.index + m[0].length; continue; }
+    // CALCULATE(x) — no filters left (e.g. USERELATIONSHIP was stripped) → x.
+    if (args.length === 1) {
+      f = f.slice(0, m.index) + args[0].trim() + f.slice(endPos);
+      continue; // re-scan from the same cursor
+    }
+    // Time-intel filter → leave for the time-intelligence guard.
+    if (CALC_TIME_INTEL_RE.test(args.join(','))) { cursor = m.index + m[0].length; continue; }
+
+    // Resolve the aggregate arg (bead qx16: may be a bare measure ref).
+    let aggExpr = args[0].trim();
+    const aggRefM = aggExpr.match(/^\[([^\]]+)\]$/);
+    if (aggRefM && measureDax[aggRefM[1]]) {
+      const refDax = measureDax[aggRefM[1]].trim();
+      // qx16 guard: only inline a SINGLE simple aggregate (one call, no nested
+      // parens / top-level operators) — a multi-aggregate body would mis-split.
+      if (/^(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\([^()]*\)$/i.test(refDax)) {
+        aggExpr = refDax;
+      }
+    }
+    const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
+    if (!aggM) { cursor = m.index + m[0].length; continue; } // not a simple aggregate — leave for the guards
+
+    // Classify each filter arg.
+    let grandTotal = false;
+    const preds: string[] = [];
+    let flagged: string | null = null;
+    for (let a of args.slice(1).map(x => x.trim())) {
+      // bead qx16: unwrap KEEPFILTERS — it modifies filter-MERGE semantics, not
+      // the row predicate Sigma needs.
+      const km = a.match(/^KEEPFILTERS\s*\(/i);
+      if (km) {
+        const kr = splitCallArgs(a, km[0].length);
+        if (kr.args.length >= 1) a = kr.args.join(', ').trim();
+      }
+      if (wholeTableStripRe.test(a)) { grandTotal = true; continue; }
+      // Single-column ALL/REMOVEFILTERS → GrandTotal approximation, loudly flagged.
+      const colStrip = a.match(/^(ALL|REMOVEFILTERS)\s*\(\s*('?[A-Za-z_][\w ]*'?\[[^\]]+\])\s*\)$/i);
+      if (colStrip) {
+        grandTotal = true;
+        if (warnings) warnings.push(`⚠ "${measureName}": ${colStrip[1].toUpperCase()}(${colStrip[2]}) strips filter context on ONE column — translated as GrandTotal(…), which is EXACT when ${colStrip[2].replace(/^.*\[/, '[')} is the only grouping in the visual. In a multi-dimension visual, re-express as a window total over the remaining dimensions in a grouped workbook element. Original DAX: ${daxNote}`);
+        continue;
+      }
+      // ALLEXCEPT / ALLSELECTED / multi-col ALL → subtotal re-scope, no faithful
+      // scalar metric. Flag-not-drop with the DAX preserved.
+      if (/^(ALLEXCEPT|ALLSELECTED|ALL|REMOVEFILTERS)\s*\(/i.test(a)) {
+        flagged = `⚠ "${measureName}": CALCULATE filter ${a.slice(0, 70)} re-scopes filter context (subtotal semantics) — no faithful Sigma scalar-metric equivalent. Recreate as a grouped workbook element (group by the kept dimensions, aggregate, then window-total). Original DAX: ${daxNote}`;
+        break;
+      }
+      // FILTER(<table> | ALL(<table>), predicate)
+      const fm = a.match(/^FILTER\s*\(/i);
+      if (fm) {
+        const fr = splitCallArgs(a, fm[0].length);
+        if (fr.args.length < 2) { flagged = `⚠ "${measureName}": malformed FILTER in CALCULATE. Original DAX: ${daxNote}`; break; }
+        const scope = fr.args[0].trim();
+        if (wholeTableStripRe.test(scope)) grandTotal = true;
+        else if (!/^'?[A-Za-z_][\w ]*'?$/.test(scope)) {
+          flagged = `⚠ "${measureName}": FILTER iterates a derived row set (${scope.slice(0, 50)}) — not a plain table; no row-level conditional-aggregate equivalent. Recreate with a grouped workbook element. Original DAX: ${daxNote}`;
+          break;
+        }
+        const t = translateDaxPredicate(fr.args.slice(1).join(', '));
+        if (!t.ok) { flagged = `⚠ "${measureName}": CALCULATE filter ${t.reason}. Needs a windowed comparison or grouping — add manually. Original DAX: ${daxNote} See: ${PBI_COMMUNITY_LINKS.leveled}`; break; }
+        preds.push(t.sigma);
+        continue;
+      }
+      // Bare row-level predicate.
+      const t = translateDaxPredicate(a);
+      if (!t.ok) { flagged = `⚠ "${measureName}": CALCULATE filter ${t.reason}. Needs a windowed comparison or grouping — add manually. Original DAX: ${daxNote} See: ${PBI_COMMUNITY_LINKS.leveled}`; break; }
+      preds.push(t.sigma);
+    }
+    if (flagged) {
+      if (warnings) warnings.push(flagged);
+      return { f, dropped: true };
+    }
+    const aggFnEarly = aggM[1].toUpperCase();
+    if (!preds.length) {
+      if (!grandTotal) { cursor = m.index + m[0].length; continue; } // nothing usable — leave for the guards
+      // ALL/REMOVEFILTERS-only (incl. the single-column strip): GrandTotal(agg).
+      let aggSigma: string;
+      if (aggFnEarly === 'COUNTROWS') aggSigma = 'Count()';
+      else {
+        const map: Record<string, string> = { SUM: 'Sum', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count', DISTINCTCOUNT: 'CountDistinct' };
+        aggSigma = `${map[aggFnEarly]}(${bareRef(aggM[2].trim())})`;
+      }
+      const gOut = `GrandTotal(${aggSigma})`;
+      f = f.slice(0, m.index) + gOut + f.slice(endPos);
+      cursor = m.index + gOut.length;
+      continue;
+    }
+    const combined = preds.length === 1
+      ? preds[0]
+      : preds.map(p => /\b(or)\b/i.test(p) ? `(${p})` : p).join(' and ');
+    const aggFn = aggFnEarly;
+    let out: string;
+    if (aggFn === 'COUNTROWS' || aggFn === 'COUNT') {
+      out = `CountIf(${combined})`; // Sigma CountIf takes ONE logical arg (beads-sigma-862)
+    } else if (aggFn === 'DISTINCTCOUNT') {
+      out = `CountDistinctIf(${bareRef(aggM[2].trim())}, ${combined})`;
+    } else {
+      const aggMap: Record<string, string> = { SUM: 'SumIf', AVERAGE: 'AvgIf', MIN: 'MinIf', MAX: 'MaxIf' };
+      out = `${aggMap[aggFn] || 'SumIf'}(${bareRef(aggM[2].trim())}, ${combined})`;
+    }
+    if (grandTotal) out = `GrandTotal(${out})`; // FILTER(ALL(T), pred): context-strip = total over matching rows
+    f = f.slice(0, m.index) + out + f.slice(endPos);
+    cursor = m.index + out.length;
+  }
+  return { f, dropped: false };
+}
+
 // Drop any metric whose formula references a MEASURE that was itself dropped
 // (a CALCULATE/iterator/ranking measure that didn't translate) — e.g. a ratio
 // built on it. Without this the dependent metric posts but silently resolves to
@@ -534,6 +760,16 @@ export function pbiDaxToSigma(
   // generic renames, so these forms translate instead of being dropped to a
   // warning (or shipped as a raw error column). (beads-sigma-9l2 / 3t9 / n9u)
   f = rewriteEarlierRank(f);    // COUNTROWS(FILTER(ALL,..EARLIER..))+1 -> RankDense
+  // Bare EARLIER outside the recognized idioms: flag-not-drop with the DAX
+  // preserved (beads-sigma-fah8). The convert layer first tries
+  // pbiParseEarlierRank/pbiParseEarlierWindow, which lower the rank / running-
+  // total / group-share / peer-count idioms onto SQL window helper elements;
+  // reaching here means no idiom matched. Letting EARLIER flow on would mangle
+  // into CountIf(...EARLIER...) — an error-typed column.
+  if (/\bEARLIER\s*\(/i.test(f)) {
+    if (warnings) warnings.push(`⚠ "${measureName}": unrecognized EARLIER row-context pattern — not auto-translated (recognized idioms: rank, running total, group share/total, peer count). Recreate as a window calc in a grouped workbook element. Original DAX: ${String(dax).replace(/\s+/g, ' ').trim().slice(0, 220)}`);
+    return null;
+  }
   f = rewriteStatIterators(f);  // MEDIANX/PERCENTILEX.INC/STDEVX.P/VARX.P/GEOMEANX
   f = rewriteCombineValues(f);  // COMBINEVALUES(sep,a,b) -> [a] & sep & [b]
   f = rewriteSearch(f);         // SEARCH/FIND(find,within[,start]) -> Find(within,find[,start]) (arg-order swap)
@@ -549,7 +785,23 @@ export function pbiDaxToSigma(
   f = f.replace(/\bDISTINCTCOUNTNOBLANK\s*\(/gi, 'CountDistinct(');
 
   // ── Tier 4: Structural patterns → warnings only ──
-  // CALCULATE with ALL/ALLEXCEPT/REMOVEFILTERS
+  // USERELATIONSHIP reaching the formula layer directly (calc column / direct
+  // call): the alternate-join activation happens at the convert layer (which
+  // strips the filter arg before calling here). Flag-not-drop. (beads-sigma-fah8)
+  if (/\bUSERELATIONSHIP\s*\(/i.test(f)) {
+    if (warnings) warnings.push(`⚠ "${measureName}": USERELATIONSHIP outside a model measure — no alternate join path can be activated here. Original DAX: ${String(dax).replace(/\s+/g, ' ').trim().slice(0, 220)}`);
+    return null;
+  }
+  // CALCULATE → Sigma conditional aggregates (incl. complex AND/OR predicates,
+  // multi-predicate args, FILTER(ALL(T), pred) context-strips). Spliced in place
+  // so DIVIDE/COALESCE wrappers keep working; unclaimed occurrences fall through
+  // to the structural guards below. (beads-sigma-fah8)
+  if (/\bCALCULATE\s*\(/i.test(f)) {
+    const r = rewriteCalculateConditionals(f, warnings, measureName, measureDax, dax);
+    if (r.dropped) return null;
+    f = r.f;
+  }
+  // CALCULATE with ALL/ALLEXCEPT/REMOVEFILTERS the rewrite didn't claim
   if (/\bCALCULATE\s*\(/i.test(f) && /\b(ALL|ALLEXCEPT|REMOVEFILTERS|ALLSELECTED)\s*\(/i.test(f)) {
     if (warnings) warnings.push(`⚠ "${measureName}": uses CALCULATE with filter context manipulation. In Sigma, use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
     return null;
@@ -584,89 +836,8 @@ export function pbiDaxToSigma(
     if (warnings) warnings.push(`⚠ "${measureName}": uses DAX time intelligence (${fn}). Use Period over Period feature. See: ${PBI_COMMUNITY_LINKS.pop}`);
     return null;
   }
-  // CALCULATE without ALL (single-predicate filter)
-  // DAX: CALCULATE(<agg>(<col-or-table>), <predicate>)
-  //   <agg>  = SUM/AVERAGE/MIN/MAX/COUNT/COUNTROWS/DISTINCTCOUNT
-  //   <predicate> = a row-level boolean: TABLE[col] = "v" | [col] > 100000 |
-  //                 [col] = TRUE() | FILTER(table, <predicate>)
-  // SumIf/AvgIf/MinIf/MaxIf/CountDistinctIf take (col, predicate). But Sigma's
-  // CountIf takes ONE logical arg: CountIf(<predicate>) — the 2-arg form errors
-  // at query time. COUNTROWS / COUNT(table) -> CountIf(<predicate>). (beads-sigma-862)
+  // CALCULATE the conditional-aggregate rewrite didn't claim → warn + drop.
   if (/\bCALCULATE\s*\(/i.test(f)) {
-    const cm = f.match(/\bCALCULATE\s*\(/i);
-    if (cm) {
-      const { args } = splitCallArgs(f, cm.index! + cm[0].length);
-      // exactly: [ aggExpr, predicate ]
-      if (args.length === 2) {
-        // bead qx16: CALCULATE's first arg may be a bare MEASURE ref (e.g.
-        // [Headcount]) rather than an inline aggregate. Resolve it to the
-        // measure's own DAX so a simple-aggregate measure flows through the
-        // conditional-aggregate path below instead of dropping to a warning.
-        let aggExpr = args[0].trim();
-        const aggRef = aggExpr.match(/^\[([^\]]+)\]$/);
-        if (aggRef && measureDax[aggRef[1]]) {
-          const refDax = measureDax[aggRef[1]].trim();
-          // qx16 guard: only inline a SINGLE simple aggregate (one call, no nested
-          // parens / top-level operators). Otherwise the greedy aggM below would
-          // mis-split a multi-aggregate body like "SUM(a) - SUM(b)" into a broken
-          // formula. A non-simple measure ref falls through and drops (as before).
-          if (/^(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\([^()]*\)$/i.test(refDax)) {
-            aggExpr = refDax;
-          }
-        }
-        let pred = args[1];
-        // bead qx16: unwrap a KEEPFILTERS(<predicate>) wrapper — it modifies
-        // filter-merge semantics, not the row predicate Sigma needs.
-        const keepM = pred.match(/^\s*KEEPFILTERS\s*\(/i);
-        if (keepM) {
-          const kr = splitCallArgs(pred, keepM.index! + keepM[0].length);
-          if (kr.args.length >= 1) pred = kr.args.join(', ').trim();
-        }
-        const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
-        if (aggM) {
-          const aggFn = aggM[1].toUpperCase();
-          // inner ref: 'Table'[Col] | Table[Col] | [Col] | <table-name> (for COUNTROWS)
-          const innerRaw = aggM[2].trim();
-          // Unwrap a FILTER(table, predicate) wrapper to its predicate.
-          const filterM = pred.match(/^\s*FILTER\s*\(/i);
-          if (filterM) {
-            const fr = splitCallArgs(pred, filterM.index! + filterM[0].length);
-            if (fr.args.length >= 2) pred = fr.args.slice(1).join(', ').trim();
-          }
-          // Normalize qualified col refs in BOTH the inner agg col and the
-          // predicate to bare [Col] (downstream name-mapping keys on bare names).
-          const bareRef = (x: string) =>
-            x.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]').replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
-          pred = bareRef(pred);
-          // This branch RETURNS early (before the generic TRUE()/FALSE() rename),
-          // so normalize boolean literals in the predicate here — otherwise a
-          // `[Col] = TRUE()` filter ships verbatim and error-types in Sigma.
-          pred = pred.replace(/\bTRUE\s*\(\s*\)/gi, 'True').replace(/\bFALSE\s*\(\s*\)/gi, 'False');
-          // Refuse predicates that compare a column to ANOTHER bracketed ref on
-          // the RHS — e.g. FILTER(T, T[Salary] > [Company Avg Salary]). That RHS
-          // is a measure/aggregate, not a row literal, so a row-level CountIf
-          // would be wrong (needs a windowed compare). Bail to the warning.
-          // (MANIFEST row 68 "Above Avg Earner Count" = category b.)
-          const cmpRhs = pred.replace(/^[\s\S]*?(=|<>|!=|>=|<=|>|<)/, '').trim();
-          if (/\[[^\]]+\]/.test(cmpRhs)) {
-            if (warnings) warnings.push(`⚠ "${measureName}": CALCULATE filter compares against an aggregate/measure (${cmpRhs}). Needs a windowed comparison or grouping — add manually. See: ${PBI_COMMUNITY_LINKS.leveled}`);
-            return null;
-          }
-          const isCountish = aggFn === 'COUNTROWS' || aggFn === 'COUNT';
-          if (isCountish) {
-            return `CountIf(${pred})`;
-          }
-          if (aggFn === 'DISTINCTCOUNT') {
-            const col = bareRef(innerRaw);
-            return `CountDistinctIf(${col}, ${pred})`;
-          }
-          const aggMap: Record<string, string> = { 'SUM': 'SumIf', 'AVERAGE': 'AvgIf', 'MIN': 'MinIf', 'MAX': 'MaxIf' };
-          const sigmaFn = aggMap[aggFn] || 'SumIf';
-          const col = bareRef(innerRaw);
-          return `${sigmaFn}(${col}, ${pred})`;
-        }
-      }
-    }
     if (warnings) warnings.push(`⚠ "${measureName}": complex CALCULATE expression. Use groupings. See: ${PBI_COMMUNITY_LINKS.leveled}`);
     return null;
   }
@@ -1098,13 +1269,18 @@ function pbiBuildMeasureAggMap(model: any): PBIMeasureAggMap {
 
 interface PBIWindowResult {
   _isWindow: true;
-  op: 'RANK' | 'DENSE_RANK';
+  // RANK/DENSE_RANK = ranking; AGG_RUNNING = <fn>(col) OVER (… ORDER BY …)
+  // (running total / window count incl. ties via RANGE default frame);
+  // AGG_PARTITION = <fn>(col) OVER (PARTITION BY …) (group total / peer count).
+  op: 'RANK' | 'DENSE_RANK' | 'AGG_RUNNING' | 'AGG_PARTITION';
   grainRaw: string[];          // base GROUP BY dim raw names (the ranked dim). [] = row-level (no GROUP BY).
   partitionRaw: string[];      // PARTITION BY raw names
   orderFn: string;             // SQL agg fn for the ORDER BY measure (SUM/AVG/COUNT/COUNT_DISTINCT) — '' at row grain
   orderColSql: string;         // SQL identifier of the order measure's column, or a raw row column at row grain
   orderDir: 'ASC' | 'DESC';
   rowLevel: boolean;           // true = COUNTROWS-EARLIER row-rank (no GROUP BY)
+  valueFn?: string;            // AGG_* ops: SQL agg fn over the value column (SUM/AVG/MIN/MAX/COUNT)
+  valueColSql?: string;        // AGG_* ops: the aggregated column ('*' for COUNT(*))
 }
 
 // Parse a RANKX measure DAX into a structured rank. Resolves the order-measure
@@ -1191,6 +1367,113 @@ function pbiParseEarlierRank(dax: string): PBIWindowResult | null {
     orderFn: '', orderColSql, orderDir: dir,
     rowLevel: true,
   };
+}
+
+// ── Family 2 (beads-sigma-fah8): bare-EARLIER calc-column idioms → windows ──
+// Parse the FILTER predicate of an EARLIER idiom into partition (equality) terms
+// + at most one ordering (inequality) term. Returns null when any term falls
+// outside the recognized shapes (degrade → flag-not-drop).
+function _parseEarlierTerms(pred: string): { partition: string[]; orderCol: string | null; orderDir: 'ASC' | 'DESC' } | null {
+  const partition: string[] = [];
+  let orderCol: string | null = null;
+  let orderDir: 'ASC' | 'DESC' = 'ASC';
+  for (const termRaw of pred.split(/&&/)) {
+    const t = termRaw.trim();
+    if (!t) continue;
+    const eq = t.match(/^(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*=\s*EARLIER\s*\(\s*[^)]+?\s*\)$/i);
+    if (eq) { partition.push(_pbiColToSql(eq[1])); continue; }
+    const cmp = t.match(/^(['"]?[\w ]*'?\[[^\]]+\]|\[[^\]]+\])\s*(<=|>=)\s*EARLIER\s*\(\s*[^)]+?\s*\)$/i);
+    if (cmp && !orderCol) {
+      // <= EARLIER(d): accumulate rows at-or-below the current value → ORDER ASC;
+      // >= → ORDER DESC. The SQL default frame with ORDER BY is RANGE UNBOUNDED
+      // PRECEDING..CURRENT ROW, which includes TIES — exactly the <=/>= semantics.
+      // (Strict </> excludes the current tie group — not this idiom; degrade.)
+      orderCol = _pbiColToSql(cmp[1]);
+      orderDir = cmp[2] === '<=' ? 'ASC' : 'DESC';
+      continue;
+    }
+    return null;
+  }
+  return { partition, orderCol, orderDir };
+}
+
+// FILTER scope must be a plain table or whole-table ALL (calc columns carry no
+// filter context, so FILTER(T,…) and FILTER(ALL(T),…) coincide at row grain).
+function _earlierScopeOk(scope: string): boolean {
+  const s = scope.trim();
+  return /^'?[A-Za-z_][\w ]*'?$/.test(s) || /^ALL\s*\(\s*'?[A-Za-z_][\w ]*'?\s*\)$/i.test(s);
+}
+
+// Parse the next-most-common bare-EARLIER calc-column idioms (beyond the
+// rank idiom handled by pbiParseEarlierRank). All row-level. Returns null to
+// DEGRADE (the formula layer then flags with the DAX preserved).
+//   (a) running total:
+//       CALCULATE(<AGG>(T[v]), FILTER(ALL(T)|T, [p]=EARLIER([p])* && [d] <= EARLIER([d])))
+//       SUMX(FILTER(ALL(T)|T, …same…), T[v])
+//         → <AGG>(v) OVER (PARTITION BY p ORDER BY d ASC|DESC)
+//   (b) group share / group total: same shapes with ONLY equality terms
+//         → <AGG>(v) OVER (PARTITION BY p)
+//   (c) peer count: COUNTROWS(FILTER(ALL(T)|T, only-equality terms))
+//         → COUNT(*) OVER (PARTITION BY p)
+//       COUNTROWS(FILTER(…, [x] >=|<= EARLIER([x]))) (NO trailing +1)
+//         → COUNT(*) OVER (PARTITION BY p ORDER BY x DESC|ASC) — the RANGE
+//           default frame counts the at-or-ahead peer set including ties EXACTLY.
+export function pbiParseEarlierWindow(dax: string): PBIWindowResult | null {
+  const d = (dax || '').trim();
+  if (!/\bEARLIER\s*\(/i.test(d)) return null;
+  const AGG_MAP: Record<string, string> = { SUM: 'SUM', AVERAGE: 'AVG', MIN: 'MIN', MAX: 'MAX' };
+
+  const build = (fn: string, valueColSql: string, filterExpr: string): PBIWindowResult | null => {
+    const fm = filterExpr.trim().match(/^FILTER\s*\(/i);
+    if (!fm) return null;
+    const fr = splitCallArgs(filterExpr.trim(), fm[0].length);
+    if (fr.args.length < 2 || fr.endPos !== filterExpr.trim().length) return null;
+    if (!_earlierScopeOk(fr.args[0])) return null;
+    const terms = _parseEarlierTerms(fr.args.slice(1).join(', '));
+    if (!terms) return null;
+    if (!terms.orderCol && !terms.partition.length) return null; // whole-table total → GrandTotal path, not a window
+    return {
+      _isWindow: true,
+      op: terms.orderCol ? 'AGG_RUNNING' : 'AGG_PARTITION',
+      grainRaw: [],
+      partitionRaw: terms.partition,
+      orderFn: '',
+      orderColSql: terms.orderCol || '',
+      orderDir: terms.orderDir,
+      rowLevel: true,
+      valueFn: fn,
+      valueColSql,
+    };
+  };
+
+  // (a)/(b) CALCULATE(<AGG>(T[v]), FILTER(…)) — must be the WHOLE expression
+  let m = d.match(/^CALCULATE\s*\(/i);
+  if (m) {
+    const { args, endPos } = splitCallArgs(d, m[0].length);
+    if (endPos !== d.length || args.length !== 2) return null;
+    const am = args[0].trim().match(/^(SUM|AVERAGE|MIN|MAX)\s*\(\s*('?[^'\[]*'?\[[^\]]+\])\s*\)$/i);
+    if (!am) return null;
+    return build(AGG_MAP[am[1].toUpperCase()], _pbiColToSql(am[2]), args[1]);
+  }
+  // (a)/(b) SUMX/AVERAGEX/MINX/MAXX(FILTER(…), T[v])
+  m = d.match(/^(SUMX|AVERAGEX|MINX|MAXX)\s*\(/i);
+  if (m) {
+    const { args, endPos } = splitCallArgs(d, m[0].length);
+    if (endPos !== d.length || args.length !== 2) return null;
+    const body = args[1].trim();
+    const bm = body.match(/^('?[^'\[]*'?\[[^\]]+\])$/);
+    if (!bm) return null; // body must be a bare column ref
+    const fnMap: Record<string, string> = { SUMX: 'SUM', AVERAGEX: 'AVG', MINX: 'MIN', MAXX: 'MAX' };
+    return build(fnMap[m[1].toUpperCase()], _pbiColToSql(bm[1]), args[0]);
+  }
+  // (c) COUNTROWS(FILTER(…)) with NO trailing +1 (that's the rank idiom)
+  m = d.match(/^COUNTROWS\s*\(/i);
+  if (m) {
+    const { args, endPos } = splitCallArgs(d, m[0].length);
+    if (endPos !== d.length || args.length !== 1) return null;
+    return build('COUNT', '*', args[0]);
+  }
+  return null;
 }
 
 // ── PBI window helper-element registry (shared kind:'sql' elements) ─────────
@@ -1287,21 +1570,34 @@ function lowerPBIWindowCalc(
     warnings.push(`⚠ "${calcName}" (${win.op}): order column ${win.orderColSql} not found on "${srcEl.name}"; degraded to Null.`);
     return false;
   }
+  if (win.valueColSql && win.valueColSql !== '*' && !checkCol(win.valueColSql)) {
+    warnings.push(`⚠ "${calcName}" (${win.op}): value column ${win.valueColSql} not found on "${srcEl.name}"; degraded to Null.`);
+    return false;
+  }
 
   // Helper grain/partition key: a row-level rank and an aggregated rank never
   // share a helper (different base shape).
   const grainKey = win.grainRaw.slice().sort().join(',');
   const partKey = win.partitionRaw.slice().sort().join(',');
   const key = `${baseFromSql}||${win.rowLevel ? 'ROW' : 'AGG'}||${grainKey}||${partKey}`;
+  // Project grain dims (aggregated rank) or partition+order+value cols (row
+  // grain) so the workbook can group/join on them. SQL element →
+  // [Custom SQL/ALIAS] refs.
+  const passthrough = win.rowLevel
+    ? [...new Set([
+        ...win.partitionRaw,
+        ...(win.orderColSql ? [win.orderColSql] : []),
+        ...(win.valueColSql && win.valueColSql !== '*' ? [win.valueColSql] : []),
+      ])]
+    : win.grainRaw;
+  const OP_LABEL: Record<string, string> = {
+    DENSE_RANK: 'Dense Rank', RANK: 'Rank',
+    AGG_RUNNING: 'Running', AGG_PARTITION: 'Group',
+  };
   let helper = winCtx.helpers.get(key);
   if (!helper) {
     const cols: SigmaColumn[] = [];
     const order: string[] = [];
-    // Project grain dims (aggregated rank) or partition+order cols (row rank) so
-    // the workbook can group/join on them. SQL element → [Custom SQL/ALIAS] refs.
-    const passthrough = win.rowLevel
-      ? [...new Set([...win.partitionRaw, ...(win.orderColSql ? [win.orderColSql] : [])])]
-      : win.grainRaw;
     for (const g of passthrough) {
       if (g === '*') continue;
       const id = sigmaShortId();
@@ -1311,7 +1607,7 @@ function lowerPBIWindowCalc(
     const el: SigmaElement = {
       id: sigmaShortId(),
       kind: 'table',
-      name: `${win.op === 'DENSE_RANK' ? 'Dense Rank' : 'Rank'} ${(win.partitionRaw[0] || win.grainRaw[0] || 'Window')}`,
+      name: `${OP_LABEL[win.op] || 'Window'} ${(win.partitionRaw[0] || win.grainRaw[0] || win.orderColSql || 'Window')}`,
       source: { connectionId: winCtx.connectionId, kind: 'sql', statement: '__PBI_WINDOW_PLACEHOLDER__' },
       columns: cols,
       order,
@@ -1323,30 +1619,50 @@ function lowerPBIWindowCalc(
     };
     winCtx.helpers.set(key, helper);
     winCtx.extraElements.push(el);
+  } else if (win.rowLevel) {
+    // Reusing a shared helper: surface any passthrough cols this calc needs that
+    // earlier calcs on the same partition didn't project (e.g. a different value
+    // or order column).
+    for (const g of passthrough) {
+      if (g === '*' || helper.rowCols.has(g)) continue;
+      helper.rowCols.add(g);
+      const id = sigmaShortId();
+      helper.element.columns.push({ id, name: sigmaDisplayName(g), formula: `[Custom SQL/${g}]` });
+      helper.element.order.push(id);
+    }
   }
 
   // Build the OVER clause.
   const partBy = win.partitionRaw.length ? `PARTITION BY ${win.partitionRaw.join(', ')}` : '';
-  const fn = win.op === 'DENSE_RANK' ? 'DENSE_RANK' : 'RANK';
-  let orderExprSql: string;
-  if (win.rowLevel) {
-    // row grain: ORDER BY the raw column directly.
-    orderExprSql = win.orderColSql;
+  let overSql: string;
+  if (win.op === 'AGG_RUNNING' || win.op === 'AGG_PARTITION') {
+    // Family 2 (beads-sigma-fah8): running total / group total / peer count.
+    // The default frame with ORDER BY is RANGE UNBOUNDED PRECEDING..CURRENT ROW
+    // (ties included) — exactly the <=/>= EARLIER accumulation semantics.
+    const valExpr = win.valueColSql === '*' ? 'COUNT(*)' : `${win.valueFn}(${win.valueColSql})`;
+    const overBody = win.op === 'AGG_RUNNING'
+      ? [partBy, `ORDER BY ${win.orderColSql} ${win.orderDir}`].filter(Boolean).join(' ')
+      : partBy;
+    overSql = `${valExpr} OVER (${overBody})`;
   } else {
-    // aggregated grain: ORDER BY a pre-aggregated alias registered on the helper.
-    const sqlAgg = win.orderFn === 'COUNT_DISTINCT' ? `COUNT(DISTINCT ${win.orderColSql})`
-      : win.orderColSql === '*' ? 'COUNT(*)' : `${win.orderFn}(${win.orderColSql})`;
-    void sqlAgg;
-    orderExprSql = pbiRegisterInnerAgg(helper, win.orderFn, win.orderColSql);
+    const fn = win.op === 'DENSE_RANK' ? 'DENSE_RANK' : 'RANK';
+    let orderExprSql: string;
+    if (win.rowLevel) {
+      // row grain: ORDER BY the raw column directly.
+      orderExprSql = win.orderColSql;
+    } else {
+      // aggregated grain: ORDER BY a pre-aggregated alias registered on the helper.
+      orderExprSql = pbiRegisterInnerAgg(helper, win.orderFn, win.orderColSql);
+    }
+    overSql = `${fn}() OVER (${[partBy, `ORDER BY ${orderExprSql} ${win.orderDir}`].filter(Boolean).join(' ')})`;
   }
-  const overSql = `${fn}() OVER (${[partBy, `ORDER BY ${orderExprSql} ${win.orderDir}`].filter(Boolean).join(' ')})`;
   const winAlias = _pbiWindowAlias(calcName, winCtx.usedAliases);
   helper.overParts.push(`${overSql} AS ${winAlias}`);
   helper.windowAliases.add(winAlias);
   const calcId = sigmaShortId();
   helper.element.columns.push({ id: calcId, name: stripParens(sigmaDisplayName(calcName)), formula: `[Custom SQL/${winAlias}]` });
   helper.element.order.push(calcId);
-  warnings.push(`✅ "${calcName}" (${win.op}) → SQL window helper "${helper.element.name}" alias ${winAlias} (${win.rowLevel ? 'row-level' : 'grouped by ' + win.grainRaw.join(', ')}${win.partitionRaw.length ? ', partition ' + win.partitionRaw.join(', ') : ''}).`);
+  warnings.push(`✅ "${calcName}" (${win.op}) → SQL window helper "${helper.element.name}" alias ${winAlias} (${win.rowLevel ? 'row-level' : 'grouped by ' + win.grainRaw.join(', ')}${win.partitionRaw.length ? ', partition ' + win.partitionRaw.join(', ') : ''}${win.op === 'AGG_RUNNING' ? ', ordered by ' + win.orderColSql + ' ' + win.orderDir : ''}).`);
   return true;
 }
 
@@ -1379,6 +1695,63 @@ function finalizePBIWindowHelper(helper: PBIWindowHelper): void {
   const innerProj = [...groupCols, ...Object.values(helper.innerAggs).map(v => v.alias)];
   const outerProj = innerProj.concat(helper.overParts);
   helper.element.source.statement = `WITH base AS (${baseSelect}) SELECT ${outerProj.join(', ')} FROM base`;
+}
+
+// ── Family 1 (beads-sigma-fah8): USERELATIONSHIP inside CALCULATE ───────────
+
+// Parse a qualified PBI column ref 'Table'[Col] / Table[Col].
+function _pbiParseQualifiedRef(s: string): { table: string; column: string } | null {
+  const m = (s || '').trim().match(/^'([^']+)'\s*\[([^\]]+)\]$|^([A-Za-z_][\w ]*?)\s*\[([^\]]+)\]$/);
+  if (!m) return null;
+  return { table: (m[1] || m[3]).trim(), column: (m[2] || m[4]).trim() };
+}
+
+export interface PBIUseRelPair { a: { table: string; column: string }; b: { table: string; column: string } }
+
+// Strip every USERELATIONSHIP(col1, col2) filter arg out of a DAX expression,
+// returning the cleaned DAX plus the referenced column pairs. A CALCULATE left
+// with no filter args, CALCULATE(x), is unwrapped to x by the conditional-
+// aggregate rewrite. The TMSL model knows its inactive relationships — the
+// convert layer matches each pair to one and activates it as an alternate join
+// path (distinctly named relationship + alternate-keyed derived-view columns).
+export function extractUseRelationships(dax: string): { dax: string; pairs: PBIUseRelPair[] } {
+  let f = dax;
+  const pairs: PBIUseRelPair[] = [];
+  const re = /\bUSERELATIONSHIP\s*\(/gi;
+  for (let guard = 0; guard < 20; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (args.length >= 2) {
+      const a = _pbiParseQualifiedRef(args[0]);
+      const b = _pbiParseQualifiedRef(args[1]);
+      if (a && b) pairs.push({ a, b });
+    }
+    // Splice out the call plus ONE adjacent comma (leading if present, else trailing).
+    let start = m.index, end = endPos;
+    let i = start - 1;
+    while (i >= 0 && /\s/.test(f[i])) i--;
+    if (f[i] === ',') start = i;
+    else {
+      let j = end;
+      while (j < f.length && /\s/.test(f[j])) j++;
+      if (f[j] === ',') end = j + 1;
+    }
+    f = f.slice(0, start) + f.slice(end);
+  }
+  return { dax: f, pairs };
+}
+
+// Find the model relationship matching a USERELATIONSHIP column pair (either
+// argument order).
+function findModelRelationship(model: any, p: PBIUseRelPair): any | null {
+  for (const r of (model.relationships || [])) {
+    const fwd = r.fromTable === p.a.table && r.fromColumn === p.a.column && r.toTable === p.b.table && r.toColumn === p.b.column;
+    const rev = r.fromTable === p.b.table && r.fromColumn === p.b.column && r.toTable === p.a.table && r.toColumn === p.a.column;
+    if (fwd || rev) return r;
+  }
+  return null;
 }
 
 /** Strip parentheses from a name (parens collide with Sigma ref/function syntax). */
@@ -1512,6 +1885,40 @@ export function convertPowerBIToSigma(
     usedAliases: new Set(),
     extraElements: [],
     connectionId: connectionId || '<CONNECTION_ID>',
+  };
+
+  // ── Family 1 (beads-sigma-fah8): USERELATIONSHIP → alternate join paths ────
+  // Inactive model relationship → the distinct Sigma relationship name it gets
+  // when some measure activates it via USERELATIONSHIP. Inactive relationships
+  // NOT activated by any measure are skipped entirely (adding them would collide
+  // with the active relationship's name in [SRC/REL/Field] refs).
+  const relActivationNames = new Map<any, string>();
+  // measure name → the alternate relationship name its aggregate resolves
+  // through ('' = the active path). Used to refuse metrics that COMBINE measures
+  // resolving through different join paths (they'd conflate paths in one element).
+  const measureAltPath: Record<string, string> = {};
+  const processUseRelationships = (measureName: string, expr: string): string => {
+    if (!/\bUSERELATIONSHIP\s*\(/i.test(expr)) return expr;
+    const ur = extractUseRelationships(expr);
+    for (const pair of ur.pairs) {
+      const rel = findModelRelationship(model, pair);
+      if (!rel) {
+        warnings.push(`⚠ "${measureName}": USERELATIONSHIP(${pair.a.table}[${pair.a.column}], ${pair.b.table}[${pair.b.column}]) has no matching model relationship — filter ignored; verify the grouping path manually.`);
+        continue;
+      }
+      if (rel.isActive === false) {
+        let altName = relActivationNames.get(rel);
+        if (!altName) {
+          altName = `${String(rel.toTable).toUpperCase()}_VIA_${String(rel.fromColumn).toUpperCase()}`.replace(/[^A-Z0-9_]+/g, '_');
+          relActivationNames.set(rel, altName);
+        }
+        measureAltPath[measureName] = altName;
+        warnings.push(`✅ "${measureName}": CALCULATE over INACTIVE relationship ${rel.fromTable}[${rel.fromColumn}] → ${rel.toTable}[${rel.toColumn}] — activated as alternate join path "${altName}". The aggregate itself is unchanged; to reproduce the USERELATIONSHIP grouping, group by the "(${altName})" columns on the derived "${rel.fromTable} View" element (the active-path columns remain "(${rel.toTable})").`);
+      } else {
+        warnings.push(`ℹ "${measureName}": USERELATIONSHIP over an already-ACTIVE relationship (${rel.fromTable}[${rel.fromColumn}] → ${rel.toTable}[${rel.toColumn}]) — no-op, stripped.`);
+      }
+    }
+    return ur.dax;
   };
 
   // Detect "measures only" tables and calculation group tables
@@ -1707,7 +2114,10 @@ export function convertPowerBIToSigma(
       // emit a RankDense() that error-types). DEGRADE → fall through to the
       // normal path which then drops to a warning.
       const cExpr = Array.isArray(c.expression) ? c.expression.join('\n') : String(c.expression || '');
-      const cWin = pbiParseEarlierRank(cExpr);
+      // Family 2 (beads-sigma-fah8): also try the running-total / group-share /
+      // peer-count EARLIER idioms (pbiParseEarlierWindow) when the rank idiom
+      // doesn't match.
+      const cWin = pbiParseEarlierRank(cExpr) || pbiParseEarlierWindow(cExpr);
       if (cWin && lowerPBIWindowCalc(cWin, c.name, srcElProxy, winCtx, warnings)) {
         tableColMap[tableName][c.name] = sigmaShortId(); // placeholder id; ref lives on helper
         pbiToSigmaName[c.name] = c.name;
@@ -1756,12 +2166,15 @@ export function convertPowerBIToSigma(
       // error on Rank()). Parse the ORIGINAL DAX before pbiDaxToSigma drops it to
       // a warning; resolve the order-measure ref via the model measure-agg map.
       // DEGRADE → fall through to the existing drop-and-warn path.
-      const mExpr = Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || '');
+      const mExprRaw = Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || '');
+      // Family 1 (beads-sigma-fah8): strip USERELATIONSHIP filter args and
+      // activate the inactive relationship as a distinctly-named alternate path.
+      const mExpr = processUseRelationships(m.name, mExprRaw);
       const mWin = pbiParseRankx(mExpr, measureAggMap);
       if (mWin && lowerPBIWindowCalc(mWin, m.name, srcElProxy, winCtx, warnings)) {
         continue; // lowered to helper element; no metric on this element
       }
-      let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name, measureDaxMap);
+      let sigmaFormula = pbiDaxToSigma(mExpr, warnings, m.name, measureDaxMap);
       // bead jzd8 (measure path): a measure that translated to a window fn (e.g. an
       // EARLIER idiom → RankDense that lowering didn't claim) would post as an
       // error-typed DM metric. Drop-and-warn instead.
@@ -1832,7 +2245,9 @@ export function convertPowerBIToSigma(
         if (!t) continue;
         for (const m of (t.measures || [])) {
           if (m.name) measureToElementId[m.name] = factEl.id; // m1a cross-table detection
-          let sigmaFormula = pbiDaxToSigma(m.expression, warnings, m.name, measureDaxMap);
+          const moExpr = processUseRelationships(m.name,
+            Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || ''));
+          let sigmaFormula = pbiDaxToSigma(moExpr, warnings, m.name, measureDaxMap);
           if (sigmaFormula && hasBareWindowFn(sigmaFormula)) {  // bead jzd8 (measure path)
             warnings.push(`⛔ "${m.name}": window-function measure has no Sigma DM-metric equivalent — use a workbook Rank()/ordered table or a grouped element. Dropped.`);
             sigmaFormula = null;
@@ -1855,11 +2270,23 @@ export function convertPowerBIToSigma(
   }
 
   // ── Relationships ──────────────────────────────────────────────────────────
+  // Active relationships keep the target-table name (rule 2: [SRC/REL/Field]).
+  // INACTIVE relationships (isActive:false) are added ONLY when a measure
+  // activates them via USERELATIONSHIP, under a distinct alternate-path name
+  // (e.g. DIMDATE_VIA_SHIP_DATE) — adding them under the target-table name would
+  // collide with the active relationship's refs. (beads-sigma-fah8 family 1)
   for (const rel of (model.relationships || [])) {
     const fromTable = rel.fromTable;
     const toTable = rel.toTable;
     const fromCol = rel.fromColumn;
     const toCol = rel.toColumn;
+
+    const isActive = rel.isActive !== false;
+    const altName = relActivationNames.get(rel);
+    if (!isActive && !altName) {
+      warnings.push(`ℹ Inactive relationship ${fromTable}[${fromCol}] → ${toTable}[${toCol}] skipped — no measure activates it via USERELATIONSHIP.`);
+      continue;
+    }
 
     const fromElId = tableIdMap[fromTable];
     const toElId = tableIdMap[toTable];
@@ -1879,9 +2306,36 @@ export function convertPowerBIToSigma(
         id: sigmaShortId(),
         targetElementId: toElId,
         keys: [{ sourceColumnId: fromColId, targetColumnId: toColId }],
-        name: toTable
+        name: isActive ? toTable : altName!
       });
     }
+  }
+
+  // ── Family 1 follow-on: refuse metrics that COMBINE measures resolving
+  // through DIFFERENT join paths (e.g. Net Change = [Hires via HIRE_DATE path]
+  // - [Terms via TERMINATION_DATE path]). On one element both operands compile
+  // to the SAME aggregate — the difference only materializes through WHICH
+  // path's columns you group by, so a single-element scalar would silently
+  // conflate the paths (e.g. always 0). Flag with the recipe instead.
+  for (const el of elements) {
+    const mets: any[] = (el as any).metrics || [];
+    if (!mets.length) continue;
+    const kept: any[] = [];
+    for (const metric of mets) {
+      const refs = [...String(metric.formula).matchAll(/\[([^\]\/]+)\]/g)]
+        .map(x => x[1])
+        .filter(n => n in measureToElementId); // only measure refs
+      const paths = new Set(refs.map(r => measureAltPath[r] || ''));
+      if (metric.name in measureAltPath) paths.add(measureAltPath[metric.name]);
+      if (paths.size > 1) {
+        const detail = refs.map(r => `[${r}] via ${measureAltPath[r] ? `"${measureAltPath[r]}"` : 'the active path'}`).join(', ');
+        warnings.push(`⚠ "${metric.name}": combines measures that resolve through DIFFERENT relationship paths (${detail}). A single-element scalar conflates the paths — build each operand as its own grouped element on its path's columns, join on the shared period/dimension, then combine. Dropped.`);
+        continue;
+      }
+      kept.push(metric);
+    }
+    if (kept.length) (el as any).metrics = kept;
+    else delete (el as any).metrics;
   }
 
   // ── Cross-table ratio / combination measures (beads-sigma-m1a) ──────────────

@@ -814,8 +814,13 @@ Accepts Qlik Engine API "qtr" format or REST API "tables" format. Handles
 tables with fields → warehouse elements, shared field names → relationships,
 master measures → metrics, master dimensions → calculated columns.
 
-Qlik Set Analysis expressions are flagged as warnings and omitted since
-they have no direct Sigma equivalent.
+Qlik Set Analysis is translated to conditional aggregation where possible
+(alternate states / $-expansions / P()/E() degrade with warnings). Inter-record
+expressions translate as: Rank/Above/Below/Previous/Peek → Sigma Rank/Lag/Lead
+formulas returned in \`workbookPatterns\` (they only work in GROUPED workbook
+elements — window functions silently error in DM calc columns/metrics);
+FirstSortedValue → a SQL QUALIFY helper element (or the Rank=n-filter pattern);
+HRank and other pivot column-axis functions are flagged untranslatable.
 
 The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
 create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
@@ -836,7 +841,11 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+            text: JSON.stringify({
+              sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings,
+              ...(result.security?.length ? { security: result.security } : {}),
+              ...(result.workbookPatterns?.length ? { workbookPatterns: result.workbookPatterns } : {}),
+            }, null, 2),
           }],
         };
       } catch (e: any) {
