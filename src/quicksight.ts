@@ -1755,6 +1755,31 @@ export function quicksightFormulaToSigmaEx(expr: string, warnings: string[]): QS
     return { formula: 'Null', description: `QuickSight parameter-dependent calc (re-author at the Sigma workbook layer using the "${sigmaDisplayName(pname)}" control): ${expr}` };
   }
 
+  // 2c. Conditional aggregates with NO Sigma equivalent (Sigma has SumIf/AvgIf/
+  //     CountIf/MinIf/MaxIf/CountDistinctIf only — no medianIf/stdevIf/varIf
+  //     family). Flag-not-drop: degrade to Null + description (beads-sigma-lvdw).
+  const noEquivCondAggRe = /\b(medianIf|stdevIf|stdevpIf|varIf|varpIf)\s*\(/i;
+  if (noEquivCondAggRe.test(s)) {
+    const fn = s.match(noEquivCondAggRe)![1];
+    warnings.push(`⚠ Formula uses QuickSight ${fn}() — Sigma has no ${fn}-style conditional aggregate (only SumIf/AvgIf/CountIf/MinIf/MaxIf/CountDistinctIf). Degraded to a Null calc column with the original expression in its description; re-author as a Custom SQL element or a workbook-layer calculation.`);
+    return { formula: 'Null', description: `QuickSight ${fn} (no Sigma equivalent — re-author in Sigma): ${expr}` };
+  }
+
+  // 2d. REGEXP-style functions. QuickSight has no native regex calc functions,
+  //     but estate expressions carry SQL-dialect REGEXP_* tokens (Athena/
+  //     Presto/Snowflake passthrough). Sigma's verified regex functions are
+  //     RegexpExtract / RegexpReplace / RegexpMatch / RegexpCount (same names
+  //     the Tableau converter emits — live-verified). The 1:1 cases are mapped
+  //     via QS_FUNC_MAP below; anything else regex-shaped is flag-not-drop here
+  //     (beads-sigma-lvdw).
+  const regexTokenRe = /\b(regexp?_?[A-Za-z_]*)\s*\(/i;
+  const regexMapped = /^(regexp_extract|regexpextract|regex_extract|regexp_substr|regexp_replace|regexpreplace|regex_replace|regexp_like|regexp_matches|regexp_match|regexpmatch|rlike|regexp_count|regexpcount)$/i;
+  const rm = s.match(regexTokenRe);
+  if (rm && !regexMapped.test(rm[1])) {
+    warnings.push(`⚠ Formula uses regex function ${rm[1]}() — no 1:1 Sigma equivalent (Sigma offers RegexpExtract/RegexpReplace/RegexpMatch/RegexpCount). Degraded to a Null calc column with the original expression in its description; re-author with a Sigma Regexp* function or a Custom SQL element.`);
+    return { formula: 'Null', description: `Regex function ${rm[1]} (no 1:1 Sigma equivalent — re-author in Sigma): ${expr}` };
+  }
+
   // 3. Identifier substitution {col name} → [Col Name].
   //    QuickSight braces can NOT be nested. Qualifiers like {col[dsId]} are
   //    permitted but only appear inside join ON clauses (not calc-field
@@ -1769,6 +1794,18 @@ export function quicksightFormulaToSigmaEx(expr: string, warnings: string[]): QS
 
   // 5. switch(expr, case1, val1, case2, val2, ..., default) → nested If with equality checks
   s = transformSwitch(s);
+
+  // 5b. countIf(operand, condition) → CountIf(condition). Sigma's CountIf
+  //     takes conditions only (no operand) — the QS operand is dropped
+  //     (paren-balanced; counts rows where the condition holds). QS/Sigma
+  //     diverge only when the operand itself is Null on a qualifying row
+  //     (beads-sigma-lvdw).
+  s = qsDropFirstArg(s, 'countIf', 'CountIf');
+
+  // 5c. parseInt(text) → Int(Number(text)) — Sigma has no string→int parser;
+  //     Number() converts text to number, Int() truncates to integer
+  //     (beads-sigma-lvdw parse/string family).
+  s = qsWrapParse(s, 'parseInt');
 
   // 6. Function-name remapping (case-insensitive).
   s = remapFunctions(s);
@@ -1789,48 +1826,61 @@ export function quicksightFormulaToSigma(expr: string, warnings: string[]): stri
   return quicksightFormulaToSigmaEx(expr, warnings).formula;
 }
 
-function transformIfElse(s: string): string {
-  // Greedy from the inside out
-  let prev = '';
+// Paren-BALANCED ifelse/switch transforms. The previous regex form
+// (`[^()]*(?:\([^()]*\)[^()]*)*`) only matched ONE level of nested parens, so
+// any deeper nesting — e.g. `ifelse(sumIf({x}, ({a} OR {b})) > 0, …)`, exactly
+// what conditional aggregates produce — was silently left untransformed and
+// leaked a literal `ifelse(`/`switch(` into the Sigma formula (beads-sigma-lvdw).
+function transformBalanced(s: string, fnName: string, build: (parts: string[], inner: string) => string): string {
+  let out = s;
   let safety = 0;
-  while (prev !== s && safety++ < 50) {
-    prev = s;
-    s = s.replace(/\bifelse\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/i, (_, args) => {
-      const parts = splitTopLevel(args, ',');
-      if (parts.length < 3) return `If(${args})`;
-      // Pairs: cond, val ... ending with optional default
-      const isOdd = parts.length % 2 === 1;
-      let result = isOdd ? parts[parts.length - 1] : 'null';
-      const limit = isOdd ? parts.length - 1 : parts.length;
-      for (let i = limit - 2; i >= 0; i -= 2) {
-        result = `If(${parts[i]}, ${parts[i + 1]}, ${result})`;
-      }
-      return result;
-    });
+  const re = new RegExp(`\\b${fnName}\\s*\\(`, 'i');
+  while (safety++ < 50) {
+    const m = out.match(re);
+    if (!m || m.index === undefined) break;
+    const start = m.index;
+    let depth = 1;
+    let j = start + m[0].length;
+    for (; j < out.length && depth > 0; j++) {
+      if (out[j] === '(') depth++;
+      else if (out[j] === ')') depth--;
+    }
+    if (depth !== 0) break; // unbalanced — leave as-is
+    // Transform nested occurrences inside the body first.
+    const inner = transformBalanced(out.slice(start + m[0].length, j - 1), fnName, build);
+    const parts = splitTopLevel(inner, ',');
+    out = out.slice(0, start) + build(parts, inner) + out.slice(j);
   }
-  return s;
+  return out;
+}
+
+function transformIfElse(s: string): string {
+  return transformBalanced(s, 'ifelse', (parts, inner) => {
+    if (parts.length < 3) return `If(${inner})`;
+    // Pairs: cond, val ... ending with optional default
+    const isOdd = parts.length % 2 === 1;
+    let result = isOdd ? parts[parts.length - 1] : 'null';
+    const limit = isOdd ? parts.length - 1 : parts.length;
+    for (let i = limit - 2; i >= 0; i -= 2) {
+      result = `If(${parts[i]}, ${parts[i + 1]}, ${result})`;
+    }
+    return result;
+  });
 }
 
 function transformSwitch(s: string): string {
-  let prev = '';
-  let safety = 0;
-  while (prev !== s && safety++ < 50) {
-    prev = s;
-    s = s.replace(/\bswitch\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/i, (_, args) => {
-      const parts = splitTopLevel(args, ',');
-      if (parts.length < 3) return `Switch(${args})`;
-      const subject = parts[0];
-      const rest = parts.slice(1);
-      const isOdd = rest.length % 2 === 1;
-      let result = isOdd ? rest[rest.length - 1] : 'null';
-      const limit = isOdd ? rest.length - 1 : rest.length;
-      for (let i = limit - 2; i >= 0; i -= 2) {
-        result = `If(${subject} = ${rest[i]}, ${rest[i + 1]}, ${result})`;
-      }
-      return result;
-    });
-  }
-  return s;
+  return transformBalanced(s, 'switch', (parts, inner) => {
+    if (parts.length < 3) return `Switch(${inner})`;
+    const subject = parts[0];
+    const rest = parts.slice(1);
+    const isOdd = rest.length % 2 === 1;
+    let result = isOdd ? rest[rest.length - 1] : 'null';
+    const limit = isOdd ? rest.length - 1 : rest.length;
+    for (let i = limit - 2; i >= 0; i -= 2) {
+      result = `If(${subject} = ${rest[i]}, ${rest[i + 1]}, ${result})`;
+    }
+    return result;
+  });
 }
 
 function splitTopLevel(s: string, sep: string): string[] {
@@ -1855,6 +1905,60 @@ function splitTopLevel(s: string, sep: string): string[] {
   return out;
 }
 
+// Paren-balanced rewrite of `<qsFn>(operand, condition...)` → `<sigmaFn>(condition...)`,
+// dropping the leading operand. Used for countIf → CountIf (Sigma's CountIf takes
+// conditions only). Single-arg calls pass through with just the name remapped.
+function qsDropFirstArg(s: string, qsFn: string, sigmaFn: string): string {
+  let out = '';
+  let i = 0;
+  const re = new RegExp(`\\b${qsFn}\\s*\\(`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(i, m.index);
+    let depth = 1, j = re.lastIndex, commaIdx = -1;
+    while (j < s.length && depth > 0) {
+      const ch = s[j];
+      if (ch === '(') depth++;
+      else if (ch === ')') { depth--; if (depth === 0) break; }
+      else if (ch === ',' && depth === 1 && commaIdx === -1) commaIdx = j;
+      j++;
+    }
+    if (depth !== 0) { out += m[0]; i = re.lastIndex; continue; }   // unbalanced — leave as-is
+    const body = commaIdx === -1
+      ? s.slice(re.lastIndex, j).trim()          // single arg — treat as the condition
+      : s.slice(commaIdx + 1, j).trim();         // drop the operand
+    out += `${sigmaFn}(${body})`;
+    i = j + 1;
+    re.lastIndex = i;
+  }
+  out += s.slice(i);
+  return out;
+}
+
+// Paren-balanced rewrite of `parseInt(args)` → `Int(Number(args))`.
+function qsWrapParse(s: string, qsFn: string): string {
+  let out = '';
+  let i = 0;
+  const re = new RegExp(`\\b${qsFn}\\s*\\(`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(i, m.index);
+    let depth = 1, j = re.lastIndex;
+    while (j < s.length && depth > 0) {
+      const ch = s[j];
+      if (ch === '(') depth++;
+      else if (ch === ')') { depth--; if (depth === 0) break; }
+      j++;
+    }
+    if (depth !== 0) { out += m[0]; i = re.lastIndex; continue; }
+    out += `Int(Number(${s.slice(re.lastIndex, j).trim()}))`;
+    i = j + 1;
+    re.lastIndex = i;
+  }
+  out += s.slice(i);
+  return out;
+}
+
 // QuickSight function → Sigma function (Title-Case, applied case-insensitively).
 const QS_FUNC_MAP: Record<string, string> = {
   // aggregate
@@ -1863,6 +1967,24 @@ const QS_FUNC_MAP: Record<string, string> = {
   median: 'Median',
   percentile: 'Percentile', percentilecont: 'Percentile', percentiledisc: 'Percentile',
   stdev: 'Stdev', stdevp: 'StdevP', var: 'Var', varp: 'VarP',
+  // conditional aggregates — QS argument order is (measure, condition) and
+  // Sigma's verified order is ALSO (field, condition 1, ...) (SumIf docs +
+  // live-verified CountDistinctIf via the ThoughtSpot converter), so these
+  // remap 1:1 with no arg swap. countIf is handled by qsDropFirstArg above;
+  // the bare entry is a fallback for already-balanced single-condition forms.
+  sumif: 'SumIf', avgif: 'AvgIf', minif: 'MinIf', maxif: 'MaxIf',
+  countif: 'CountIf', distinct_countif: 'CountDistinctIf', distinctcountif: 'CountDistinctIf',
+  // regex — SQL-dialect tokens seen in QS estates → Sigma Regexp* (verified
+  // names; same emissions as the Tableau converter). Sigma RegexpExtract /
+  // RegexpReplace / RegexpMatch / RegexpCount are (text, pattern[, ...]) like
+  // their Snowflake/Presto counterparts. Unmapped regex tokens are flagged
+  // earlier in quicksightFormulaToSigmaEx.
+  regexp_extract: 'RegexpExtract', regexpextract: 'RegexpExtract', regex_extract: 'RegexpExtract',
+  regexp_substr: 'RegexpExtract',
+  regexp_replace: 'RegexpReplace', regexpreplace: 'RegexpReplace', regex_replace: 'RegexpReplace',
+  regexp_like: 'RegexpMatch', regexp_matches: 'RegexpMatch', regexp_match: 'RegexpMatch',
+  regexpmatch: 'RegexpMatch', rlike: 'RegexpMatch',
+  regexp_count: 'RegexpCount', regexpcount: 'RegexpCount',
   // conditional
   isnull: 'IsNull', notnull: 'IsNotNull',
   coalesce: 'Coalesce', nullif: 'Nullif',
@@ -1884,6 +2006,8 @@ const QS_FUNC_MAP: Record<string, string> = {
   extract: 'DatePart',
   epochdate: 'EpochDate',
   formatdate: 'Text', parsedate: 'Date',
+  // numeric parse/convert family (parseInt is rewritten to Int(Number(…)) above)
+  parsedecimal: 'Number', decimaltoint: 'Int', inttodecimal: 'Number', tostring: 'Text',
   // boolean / set
   in: 'In',
 };

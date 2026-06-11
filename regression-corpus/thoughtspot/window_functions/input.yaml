@@ -1,0 +1,74 @@
+worksheet:
+  name: TS Window Gap Test
+  tables:
+    - name: ORDER_FACT
+      db: CSA
+      schema: TJ
+    - name: CUSTOMER_DIM
+      db: CSA
+      schema: TJ
+  table_paths:
+    - id: order_fact_1
+      table: ORDER_FACT
+    - id: customer_dim_1
+      table: CUSTOMER_DIM
+  joins:
+    - name: order_to_customer
+      source: ORDER_FACT
+      destination: CUSTOMER_DIM
+      type: INNER
+      on: "[order_fact_1::CUSTOMER_KEY] = [customer_dim_1::CUSTOMER_KEY]"
+  formulas:
+    - id: rev_running
+      name: Revenue Running
+      expr: "cumulative_sum([order_fact_1::NET_REVENUE], [order_fact_1::ORDER_DATE_KEY])"
+    - id: rev_moving
+      name: Revenue Moving Avg
+      expr: "moving_average([order_fact_1::NET_REVENUE], 2, 1, [order_fact_1::ORDER_DATE_KEY])"
+    - id: region_rank
+      name: Region Revenue Rank
+      expr: "rank_desc(sum([order_fact_1::NET_REVENUE]), [customer_dim_1::REGION])"
+    - id: prev_rev
+      name: Prev Period Revenue
+      expr: "lag([order_fact_1::NET_REVENUE], [order_fact_1::ORDER_DATE_KEY], 1)"
+    - id: distinct_cust
+      name: Distinct Customers
+      expr: "unique count ([order_fact_1::CUSTOMER_KEY])"
+    - id: embedded_run
+      name: Running Pct
+      expr: "cumulative_sum([order_fact_1::NET_REVENUE], [order_fact_1::ORDER_DATE_KEY]) / 100"
+  worksheet_columns:
+    - name: Order Id
+      column_id: order_fact_1::ORDER_ID
+      type: ATTRIBUTE
+    - name: Order Date Key
+      column_id: order_fact_1::ORDER_DATE_KEY
+      type: ATTRIBUTE
+    - name: Customer Key
+      column_id: order_fact_1::CUSTOMER_KEY
+      type: ATTRIBUTE
+    - name: Net Revenue
+      column_id: order_fact_1::NET_REVENUE
+      type: MEASURE
+      aggregation: SUM
+    - name: Region
+      column_id: customer_dim_1::REGION
+      type: ATTRIBUTE
+    - name: Revenue Running
+      formula_id: rev_running
+      type: MEASURE
+    - name: Revenue Moving Avg
+      formula_id: rev_moving
+      type: MEASURE
+    - name: Region Revenue Rank
+      formula_id: region_rank
+      type: MEASURE
+    - name: Prev Period Revenue
+      formula_id: prev_rev
+      type: MEASURE
+    - name: Distinct Customers
+      formula_id: distinct_cust
+      type: MEASURE
+    - name: Running Pct
+      formula_id: embedded_run
+      type: MEASURE
