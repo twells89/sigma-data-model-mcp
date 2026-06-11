@@ -87,6 +87,25 @@ function lookmlCustomFormat(mask: string): Record<string, any> | null {
 }
 
 /**
+ * Snowflake/Oracle TO_CHAR numeric mask → Sigma format object.
+ * 9 = optional digit, 0 = forced digit, $/£/€/¥ = currency, "," = thousands
+ * group, "." = decimal point (FM modifier tolerated). Returns null for masks
+ * with date/text elements — those stay on the loud-warning path.
+ */
+function snowflakeNumericMaskFormat(mask: string): Record<string, any> | null {
+  if (typeof mask !== 'string') return null;
+  const m = mask.trim().replace(/^FM/i, '');
+  if (!m || !/^[\s$£€¥90,.]+$/.test(m)) return null;
+  const decM = m.match(/\.([90]+)/);
+  const decimals = decM ? decM[1].length : 0;
+  const curM = m.match(/[$£€¥]/);
+  const sep = m.includes(',') ? ',' : '';
+  if (curM) return { kind: 'number', formatString: `${curM[0]}${sep}.${decimals}f`, currencySymbol: curM[0] };
+  if (/[90]/.test(m)) return { kind: 'number', formatString: `${sep}.${decimals}f` };
+  return null;
+}
+
+/**
  * Resolve a LookML field's number format into a Sigma `format` object.
  * `value_format_name` (named) takes priority over a custom `value_format` mask.
  * Pushes an actionable warning when a format is present but can't be mapped.
@@ -1195,6 +1214,32 @@ function lookConvertView(
       ?? (msType === 'percent_of_total' ? { kind: 'number', formatString: ',.1%' } : undefined);
 
     // date / date_time / time measures — typically MAX/MIN over a dimension_group
+    // TO_CHAR / TO_VARCHAR display-mask measures, e.g.
+    //   sql: TO_CHAR(SUM(${TABLE}.NET_REVENUE), '$999,999,990.00')
+    // The mask IS portable: emit the inner aggregate as a numeric metric and
+    // translate the mask into a Sigma column format — display-identical to
+    // Looker, but the value stays numeric (sortable, chartable). Only masks we
+    // can't read (date/text masks, LISTAGG, …) stay on the loud-warning path.
+    {
+      const tcm = resolvedMsSql.trim().replace(/;;\s*$/, '').match(
+        /^TO_(?:CHAR|VARCHAR)\s*\(\s*(SUM|AVG|MIN|MAX|MEDIAN|COUNT)\s*\(\s*(?:\$\{TABLE\}\s*\.\s*)?("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\)\s*,\s*'([^']+)'\s*\)$/i);
+      const tcFmt = tcm ? snowflakeNumericMaskFormat(tcm[3]) : null;
+      if (tcm && tcFmt) {
+        const fnMap: Record<string, string> = { sum: 'Sum', avg: 'Avg', min: 'Min', max: 'Max', median: 'Median', count: 'Count' };
+        const pc = tcm[2].replace(/"/g, '').toUpperCase();
+        if (!colIdMap[pc]) {
+          const colId = makeColId(pc);
+          colIdMap[pc] = colId;
+          element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(pc)}]` });
+          element.order.push(colId);
+        }
+        const formula = `${fnMap[tcm[1].toLowerCase()]}([${colLabel(pc)}])`;
+        element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel, format: msFormat ?? tcFmt });
+        warnings.push(`✅ "${ms._name}" (TO_CHAR display mask) → ${formula} + Sigma column format "${(msFormat ?? tcFmt).formatString}" — value stays numeric, display matches the mask`);
+        return;
+      }
+    }
+
     // timeframe ref (e.g. sql: MAX(${event_ts_raw})). Translate the aggregate;
     // never fabricate a phantom column named after the SQL function.
     if (['date', 'datetime', 'date_time', 'time'].includes(msType)) {
