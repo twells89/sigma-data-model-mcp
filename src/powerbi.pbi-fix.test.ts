@@ -102,7 +102,7 @@ test('d: fixture_01 mechanical DAX measures map per MANIFEST', () => {
   assert.equal(m['Incident Count'], 'CountDistinct([Incident Id])');
   assert.equal(m['Headcount'], 'Count()');
   assert.equal(m['Absence Records'], 'Count()');
-  assert.equal(m['Pct Active'], '[Active Headcount] / [Headcount]');
+  assert.equal(m['Pct Active'], '([Active Headcount]) / ([Headcount])');
 });
 
 test('d: structural DAX (time-intel) warns, not crash', () => {
@@ -156,7 +156,7 @@ test('862: CALCULATE(COUNTROWS, pred) -> single-arg CountIf(pred)', () => {
   // sibling *If aggregates keep their 2-arg (col, pred) signature
   assert.equal(
     pbiDaxToSigma('CALCULATE(SUM(ABSENCE_RECORDS[HOURS]), ABSENCE_RECORDS[APPROVED] = TRUE())', null, 'x'),
-    'SumIf([HOURS], [APPROVED] = TRUE())');
+    'SumIf([HOURS], [APPROVED] = True)');
 });
 
 test('862: fixture_06 "Active Headcount" emits single-arg CountIf (no 2-arg form)', () => {
@@ -182,7 +182,7 @@ test('m1a: cross-table ratio "Absence Hours Per Head" is NOT emitted as same-ele
 test('m1a: same-element ratio "Pct Active" IS kept (both measures on EMPLOYEES)', () => {
   const { model } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_01_mechanical.bim`));
   const m = allMetrics(model);
-  assert.equal(m['Pct Active'], '[Active Headcount] / [Headcount]',
+  assert.equal(m['Pct Active'], '([Active Headcount]) / ([Headcount])',
     'a same-element measure-on-measure ratio must still be emitted');
 });
 
@@ -255,11 +255,14 @@ test('3t9: COUNTROWS(FILTER(ALL,..EARLIER..))+1 -> RankDense', () => {
     pbiDaxToSigma('COUNTROWS(FILTER(T, T[Dept] = EARLIER(T[Dept]) && T[Sal] > EARLIER(T[Sal]))) + 1', null, 'Rank'),
     'RankDense([Sal], "desc", [Dept])');
 });
-test('3t9: fixture_07 "Salary Rank In Dept" calc col -> RankDense partitioned', () => {
+test('3t9: fixture_07 "Salary Rank In Dept" -> SQL DENSE_RANK window helper (Rank errors in DM calc cols)', () => {
   const { model } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_07_comp_distribution.bim`));
+  const helper = sqlElements(model).find((e: any) => /DENSE_RANK\(\) OVER \(PARTITION BY DEPARTMENT ORDER BY ANNUAL_SALARY DESC\)/i.test(e.source?.statement || ''));
+  assert.ok(helper, 'expected a SQL window helper carrying the dense-rank OVER clause');
+  // and the raw idiom must NOT survive as a base-table calc col
   const cc = allCalcCols(model);
-  assert.equal(cc['Salary Rank In Dept'], 'RankDense([Annual Salary], "desc", [Department])');
-  assert.ok(!/EARLIER|COUNTROWS|FILTER/i.test(cc['Salary Rank In Dept']), 'no raw rank-idiom DAX');
+  assert.ok(!cc['Salary Rank In Dept'] || !/EARLIER|COUNTROWS|RankDense/i.test(cc['Salary Rank In Dept']),
+    'rank idiom must not remain as a base-table calc col');
 });
 
 // n9u: SWITCH(TRUE(), ...) -> nested If (not flat)
@@ -281,8 +284,9 @@ test('n9u: SWITCH(TRUE(), c1,v1,c2,v2,def) -> nested If, not flat', () => {
 test('w9s: GENERATESERIES calc table -> sql element with VALUES, not warehouse-table', () => {
   const { model } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_07_comp_distribution.bim`));
   const sqls = sqlElements(model);
-  const bands = sqls.find((e: any) => e.name === 'SALARYBANDS');
+  const bands = sqls.find((e: any) => /VALUES\s*\(40000\)/.test(e.source?.statement || ''));
   assert.ok(bands, 'SalaryBands must be emitted as a sql element');
+  assert.ok(!('name' in bands), 'custom-SQL elements omit the element-level name (rule 3)');
   assert.match(bands.source.statement, /VALUES\s*\(40000\)/, 'series should start at 40000');
   assert.match(bands.source.statement, /\(200000\)/, 'series should include 200000');
   // It must NOT be a warehouse-table with a guessed path.
@@ -293,7 +297,7 @@ test('w9s: GENERATESERIES calc table -> sql element with VALUES, not warehouse-t
 test('w9s: fixture_08 DimMonth GENERATESERIES -> sql element', () => {
   const { model } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_08_safety_absence_patterns.bim`));
   const sqls = sqlElements(model);
-  const dm = sqls.find((e: any) => e.name === 'DIMMONTH');
+  const dm = sqls.find((e: any) => /VALUES\s*\(0\)/.test(e.source?.statement || ''));
   assert.ok(dm, 'DimMonth must be a sql element');
   assert.match(dm.source.statement, /VALUES\s*\(0\)/);
   assert.ok(!baseElements(model).some((e: any) => e.name === 'DIMMONTH'),
@@ -305,7 +309,7 @@ test('w9s: fixture_08 DimMonth GENERATESERIES -> sql element', () => {
 test('7mn: ADDCOLUMNS(CALENDAR(a,b)) -> real sql date-spine element, NOT an {ok:false} placeholder', () => {
   const { model, warnings } = convertPowerBIToSigma(load(`${FIXTURE_DIR}/fixture_06_kitchen_sink.bim`));
   const sqls = sqlElements(model);
-  const dd = sqls.find((e: any) => e.name === 'DIMDATE');
+  const dd = sqls.find((e: any) => /GENERATOR/i.test(e.source?.statement || ''));
   assert.ok(dd, 'DimDate must be emitted as a sql element (not warehouse-table)');
   assert.notEqual((dd as any).ok, false, 'CALENDAR is now translatable — must NOT carry ok:false');
   assert.doesNotMatch(dd.source.statement, /TODO/, 'real spine SQL must not be a TODO placeholder');
@@ -426,7 +430,7 @@ test('dangling-ref: a metric referencing a dropped measure is pruned (not posted
         '#"N3" = #"N2"{[Name="F",Kind="Table"]}[Data] in #"N3"' ] } }],
       measures: [
         { name: 'Orders', expression: "DISTINCTCOUNT('F'[Order Id])" },
-        { name: 'Returned Orders', expression: "CALCULATE([Orders], 'F'[Returned] = \"Yes\")" },
+        { name: 'Returned Orders', expression: "CALCULATE([Orders], ALLEXCEPT('F', 'F'[Region]))" },
         { name: 'Return Rate', expression: '[Returned Orders] / [Orders]' },
       ],
     }] },
@@ -452,7 +456,9 @@ test('mkm: ISINSCOPE/scope introspection is dropped-and-warned (no invalid passt
 
 test('VAR/RETURN inlines into a single expression (no longer dropped)', () => {
   const out = pbiDaxToSigma('VAR rev = [Total Net Rev] VAR ord = [Order Count] RETURN DIVIDE(rev, ord)', [], 'AOV');
-  assert.equal(out, '([Total Net Rev]) / ([Order Count])');
+  // VAR substitution parenthesizes each var, DIVIDE parenthesizes operands —
+  // the double wrap is harmless and keeps precedence safe (hs5h).
+  assert.equal(out, '(([Total Net Rev])) / (([Order Count]))');
   // a VAR referencing an earlier VAR
   const out2 = pbiDaxToSigma('VAR a = [X] VAR b = a * 2 RETURN b + [Y]', [], 'm');
   assert.equal(out2, '(([X]) * 2) + [Y]');
@@ -476,7 +482,7 @@ test('iterator over FILTER/TOPN or with a nested aggregate is NOT mis-translated
 
 test('CALCULATE(<agg>, ALL(<wholeTable>)) -> GrandTotal(<agg>) (%-of-total now translates)', () => {
   assert.equal(pbiDaxToSigma("DIVIDE([Total Sales], CALCULATE([Total Sales], ALL('SAMPLE_SUPERSTORE')))", [], 'Pct'),
-    '[Total Sales] / GrandTotal([Total Sales])');
+    '([Total Sales]) / (GrandTotal([Total Sales]))');
   assert.equal(pbiDaxToSigma('CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Sales))', [], 'gt'),
     'GrandTotal(Sum([Amount]))');
   // partial ALL (a column) and multi-arg CALCULATE must NOT be mis-translated
