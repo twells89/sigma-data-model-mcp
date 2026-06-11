@@ -1908,6 +1908,13 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     const srcPath = srcEl.source.path as string[];
     const srcTableName = srcPath[srcPath.length - 1];
+    // The first segment of refs inside the derived element resolves against the
+    // SOURCE ELEMENT, not the warehouse table: an explicit `name` on the base
+    // element wins, otherwise Sigma falls back to the path-tail. Since elements
+    // now always carry a name (live-E2E fix), refs must use it — emitting the
+    // raw table tail compiles to `Unknown name: ["ORDER_FACT",...]`.
+    // (Same resolution rule as the shared buildDerivedElements in sigma-ids.ts.)
+    const baseName = srcEl.name || srcTableName;
 
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
@@ -1918,8 +1925,12 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     for (const col of srcEl.columns ?? []) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
       if (col.name) continue;
+      // Rewrite the [TABLE_TAIL/Col] prefix to the base element's resolvable
+      // name (see baseName above) — verbatim copies break once the base
+      // element is named.
+      const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
       const cId = sigmaShortId();
-      viewCols.push({ id: cId, formula: col.formula });
+      viewCols.push({ id: cId, formula: fm ? `[${baseName}/${fm[2]}]` : col.formula });
       viewOrder.push(cId);
     }
 
@@ -1954,7 +1965,7 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
           dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
         }
         const cId = sigmaShortId();
-        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);
       }
     }

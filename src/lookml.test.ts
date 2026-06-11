@@ -562,6 +562,25 @@ describe('bugfix: derived elements must skip the relationship\'s own join-key pa
     assert.equal(keyPassthroughs.length, 0,
       `join-key passthrough(s) emitted (compile to type "error" in Sigma): ${keyPassthroughs.join(', ')}`);
   });
+
+  test('derived-element refs resolve against the base element NAME, not the table tail', () => {
+    // Since elements carry explicit display names (live-E2E fix), the first
+    // segment of every ref inside the derived element must be that name —
+    // emitting the warehouse path-tail (ORDERS) compiles to
+    // `Unknown name: ["ORDERS",...]` in Sigma (CI regression, PR #46).
+    const { model: m } = run();
+    const base = m.pages[0].elements.find((e: any) =>
+      e.source?.kind === 'warehouse-table' && e.source.path?.includes('ORDERS'));
+    assert.ok(base, 'base orders element missing');
+    assert.equal(base.name, 'Orders', 'base element should carry its display name');
+    const derived = m.pages[0].elements.find((e: any) =>
+      e.source?.kind === 'table' && (e.source as any).elementId === base.id);
+    assert.ok(derived, 'derived element missing');
+    for (const c of derived.columns) {
+      assert.match(c.formula, /^\[Orders\//,
+        `derived ref must start with the base element name [Orders/…]: ${c.formula}`);
+    }
+  });
 });
 
 // ── Layered LookML (synthesized generic fixtures — trades/rates/counterparties
