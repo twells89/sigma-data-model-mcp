@@ -1,0 +1,10 @@
+{
+  "description": "Layered LookML (synthesized from a customer-trial structural pattern): derived table whose SQL is a CTE-continuation fragment (leading \", base AS (\") referencing another derived view via ${daily_rates.SQL_TABLE_NAME}, plus incremental-PDT config ({% incrementcondition %} Liquid, increment_key/increment_offset) and dimension_group edge cases (CAST-wrapped sql, timeframes without raw, raw-only group sharing a physical column, MAX(${group_raw}) date_time measure). The converter must inline daily_rates as a WITH CTE, complete the fragment, replace the Liquid with 1=1, and emit materialization warnings — the resulting Custom SQL element must compile with zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
