@@ -280,18 +280,22 @@ describe('gap-1: PDT-references-PDT self-join (customer pattern)', () => {
     assert.ok(!stmt.includes('SQL_TABLE_NAME'), `SQL_TABLE_NAME not resolved:\n${stmt}`);
   });
 
-  test('PDT SQL is inlined without a spurious AS alias (aliases a and b are preserved)', () => {
+  test('PDT is inlined as a single WITH CTE; aliases a and b are preserved', () => {
     const { model } = convertLookMLToSigma(pdtSelfJoinFiles, {
       exploreName: 'pdt_self_join_derived',
       connectionId: 'test-conn',
     });
     const stmt: string = model.pages[0].elements
       .find((e: any) => e.source?.kind === 'sql')!.source.statement;
-    // The subquery must end with ") a" or ") b", not ") AS order_fact_pdt a"
+    // The PDT body must land exactly once, as a named CTE — not be duplicated
+    // inline per reference — and the customer's own aliases (a, b) must stand.
     const spuriousAlias = new RegExp('\\) AS order_fact_pdt').test(stmt);
     assert.ok(!spuriousAlias, `Spurious AS alias found — invalid SQL:\n${stmt}`);
-    assert.ok(stmt.includes(') a'), `Expected ") a" alias after first subquery:\n${stmt}`);
-    assert.ok(stmt.includes(') b'), `Expected ") b" alias after second subquery:\n${stmt}`);
+    assert.match(stmt, /^\s*WITH\s+order_fact_pdt\s+AS\s*\(/i, `Expected a WITH order_fact_pdt AS ( CTE prelude:\n${stmt}`);
+    const bodyCount = (stmt.match(/FROM CSA\.TJ\.ORDER_FACT/gi) || []).length;
+    assert.equal(bodyCount, 1, `PDT body should be inlined exactly once (CTE), found ${bodyCount}:\n${stmt}`);
+    assert.match(stmt, /order_fact_pdt\s+a\b/, `Expected "order_fact_pdt a" reference:\n${stmt}`);
+    assert.match(stmt, /order_fact_pdt\s+b\b/, `Expected "order_fact_pdt b" reference:\n${stmt}`);
   });
 
   test('PDT SQL contains the physical table CSA.TJ.ORDER_FACT', () => {
@@ -557,5 +561,227 @@ describe('bugfix: derived elements must skip the relationship\'s own join-key pa
     const keyPassthroughs = crossEl.filter((f: string) => /\/Id\]$/.test(f));
     assert.equal(keyPassthroughs.length, 0,
       `join-key passthrough(s) emitted (compile to type "error" in Sigma): ${keyPassthroughs.join(', ')}`);
+  });
+
+  test('derived-element refs resolve against the base element NAME, not the table tail', () => {
+    // Since elements carry explicit display names (live-E2E fix), the first
+    // segment of every ref inside the derived element must be that name —
+    // emitting the warehouse path-tail (ORDERS) compiles to
+    // `Unknown name: ["ORDERS",...]` in Sigma (CI regression, PR #46).
+    const { model: m } = run();
+    const base = m.pages[0].elements.find((e: any) =>
+      e.source?.kind === 'warehouse-table' && e.source.path?.includes('ORDERS'));
+    assert.ok(base, 'base orders element missing');
+    assert.equal(base.name, 'Orders', 'base element should carry its display name');
+    const derived = m.pages[0].elements.find((e: any) =>
+      e.source?.kind === 'table' && (e.source as any).elementId === base.id);
+    assert.ok(derived, 'derived element missing');
+    for (const c of derived.columns) {
+      assert.match(c.formula, /^\[Orders\//,
+        `derived ref must start with the base element name [Orders/…]: ${c.formula}`);
+    }
+  });
+});
+
+// ── Layered LookML (synthesized generic fixtures — trades/rates/counterparties
+//    shapes: CTE-continuation fragments, cross-view SQL_TABLE_NAME refs,
+//    incremental PDTs, dimension_group edge cases, formatting measures) ──────
+
+const ratesViewLkml = `view: daily_rates {
+  derived_table: {
+    sql:
+      SELECT TO_DATE(ORDER_DATE) AS PRICE_DATE, REGION AS ASSET, AVG(UNIT_PRICE) AS USD_RATE
+      FROM CSA.TJ.ORDER_FACT
+      GROUP BY 1,2 ;;
+    datagroup_trigger: nightly_datagroup
+  }
+  dimension: asset {
+    type: string
+    sql: \${TABLE}."ASSET" ;;
+  }
+}
+`;
+
+const tradesViewLkml = `view: trades_enriched {
+  derived_table: {
+    sql:
+      -- continuation fragment: Looker prepends inlined PDT CTEs before this comma
+      , base AS (
+          SELECT t.ORDER_ID, t.ORDER_DATE, t.NET_REVENUE, t.REGION,
+                 REGEXP_REPLACE(t.ORDER_STATUS, '\\\\d+', '') AS STATUS_CLEAN
+          FROM CSA.TJ.ORDER_FACT t
+          WHERE {% incrementcondition %} t.ORDER_DATE {% endincrementcondition %}
+      )
+      SELECT b.*, r.USD_RATE
+      FROM base b
+      LEFT JOIN \${daily_rates.SQL_TABLE_NAME} r
+        ON TO_DATE(b.ORDER_DATE) = r.PRICE_DATE AND b.REGION = r.ASSET ;;
+    datagroup_trigger: nightly_datagroup
+    increment_key: "order_date"
+    increment_offset: 2
+    cluster_keys: ["ORDER_DATE"]
+  }
+  dimension: order_id {
+    type: string
+    sql: \${TABLE}."ORDER_ID" ;;
+  }
+  dimension: net_revenue {
+    type: number
+    sql: \${TABLE}."NET_REVENUE" ;;
+  }
+  dimension_group: order_date {
+    type: time
+    timeframes: [date, week, month]
+    sql: CAST(\${TABLE}."ORDER_DATE" AS TIMESTAMP_NTZ) ;;
+  }
+  dimension_group: max_seen_dim {
+    hidden: yes
+    type: time
+    timeframes: [raw]
+    sql: \${TABLE}."ORDER_DATE" ;;
+  }
+  measure: total_net_revenue {
+    type: sum
+    value_format_name: usd_0
+    sql: \${net_revenue} ;;
+  }
+  measure: max_seen {
+    type: date_time
+    convert_tz: no
+    sql: MAX(\${max_seen_dim_raw}) ;;
+  }
+  measure: formatted_revenue {
+    type: string
+    sql: CASE WHEN \${order_id} IN ('1','2') THEN TO_CHAR(\${total_net_revenue} / 1000, '$FM999,990.0') || ' K' ELSE TO_CHAR(\${total_net_revenue}, '$FM999,999,990') END ;;
+  }
+  measure: count {
+    type: count
+  }
+}
+`;
+
+const lonelyViewLkml = `view: cpty_rollup {
+  derived_table: {
+    sql: SELECT SHORT_NAME, MAX(STATUS) AS STATUS
+      FROM \${counterparty_deals.SQL_TABLE_NAME}
+      GROUP BY 1 ;;
+  }
+  dimension: short_name {
+    type: string
+    sql: \${TABLE}."SHORT_NAME" ;;
+  }
+}
+`;
+
+const layeredFiles = [
+  { name: 'trades_enriched.view.lkml', content: tradesViewLkml },
+  { name: 'daily_rates.view.lkml', content: ratesViewLkml },
+];
+
+describe('layered: view-only conversion (no model/explore file)', () => {
+  test('does not throw; converts each view to a standalone element', () => {
+    const { model, warnings } = convertLookMLToSigma(layeredFiles, { connectionId: 'test-conn' });
+    assert.equal(model.pages[0].elements.length, 2);
+    assert.ok(warnings.some((w: string) => /No explore\/model file provided/i.test(w)));
+  });
+
+  test('single view-only file converts and names the model after the view', () => {
+    const { model } = convertLookMLToSigma(
+      [{ name: 'daily_rates.view.lkml', content: ratesViewLkml }], { connectionId: 'test-conn' });
+    assert.equal(model.pages[0].elements.length, 1);
+    assert.equal(model.name, 'Daily Rates');
+  });
+});
+
+describe('layered: cross-view SQL_TABLE_NAME → CTE inlining + fragment completion', () => {
+  const { model, warnings } = convertLookMLToSigma(layeredFiles, { connectionId: 'test-conn' });
+  const trades: any = model.pages[0].elements[0];
+  const stmt: string = trades.source.statement;
+
+  test('referenced derived view is inlined as a WITH CTE named after the view', () => {
+    assert.match(stmt, /WITH\s+daily_rates\s+AS\s*\(/i, stmt);
+    assert.ok(stmt.includes('FROM daily_rates r') || /daily_rates\s+r\b/.test(stmt), stmt);
+  });
+
+  test('CTE-continuation fragment is completed (", base AS (" continues the WITH chain)', () => {
+    assert.ok(stmt.includes(', base AS ('), stmt);
+    assert.ok(warnings.some((w: string) => /inlined 1 referenced derived view/i.test(w)));
+  });
+
+  test('no ${...} refs or Liquid tags remain in the statement', () => {
+    assert.ok(!stmt.includes('${'), stmt);
+    assert.ok(!/\{%/.test(stmt), stmt);
+  });
+
+  test('incrementcondition Liquid replaced with 1=1 + materialization warning', () => {
+    assert.ok(/WHERE\s+1=1/.test(stmt), stmt);
+    assert.ok(warnings.some((w: string) => /incrementcondition.*replaced with 1=1.*materialization/is.test(w)));
+  });
+
+  test('increment_key emits a loud materialization recommendation', () => {
+    assert.ok(warnings.some((w: string) => /increment_key: "order_date".*materialization/is.test(w)));
+  });
+});
+
+describe('layered: unresolved cross-view ref → LOOKER_SCRATCH placeholder', () => {
+  const { model, warnings } = convertLookMLToSigma(
+    [{ name: 'cpty_rollup.view.lkml', content: lonelyViewLkml }], { connectionId: 'test-conn' });
+  const stmt: string = (model.pages[0].elements[0] as any).source.statement;
+
+  test('placeholder table substituted; no ${...} left', () => {
+    assert.ok(stmt.includes('LOOKER_SCRATCH.COUNTERPARTY_DEALS'), stmt);
+    assert.ok(!stmt.includes('${'), stmt);
+  });
+
+  test('LOUD warning names the unresolved view and both fixes', () => {
+    const w = warnings.find((w: string) => /UNRESOLVED VIEW "counterparty_deals"/.test(w));
+    assert.ok(w, warnings.join('\n'));
+    assert.ok(/counterparty_deals\.view\.lkml/.test(w!) && /LOOKER_SCRATCH\.COUNTERPARTY_DEALS/.test(w!), w);
+  });
+});
+
+describe('layered: dimension_group edge cases', () => {
+  const { model } = convertLookMLToSigma(layeredFiles, { connectionId: 'test-conn' });
+  const trades: any = model.pages[0].elements[0];
+  const colIds = new Set((trades.columns || []).map((c: any) => c.id));
+
+  test('every order entry references an existing column (no dangling raw id when timeframes lack raw/time)', () => {
+    for (const id of trades.order || []) {
+      assert.ok(colIds.has(id), `order id ${id} not found in columns`);
+    }
+  });
+
+  test('CAST-wrapped dimension_group expands to DateTrunc timeframes (not skipped)', () => {
+    const month = (trades.columns || []).find((c: any) => c.name === 'Order Date Month');
+    assert.ok(month, JSON.stringify(trades.columns));
+    assert.match(month.formula, /DateTrunc\("month", \[Custom SQL\/ORDER_DATE\]\)/);
+  });
+
+  test('two dimension_groups over the same physical column share one base column (no duplicates)', () => {
+    const base = (trades.columns || []).filter((c: any) => c.formula === '[Custom SQL/ORDER_DATE]');
+    assert.equal(base.length, 1, JSON.stringify(base));
+    const ids = (trades.columns || []).map((c: any) => c.id);
+    assert.equal(ids.length, new Set(ids).size, 'duplicate column ids found');
+  });
+});
+
+describe('layered: measure translation guards', () => {
+  const { model, warnings } = convertLookMLToSigma(layeredFiles, { connectionId: 'test-conn' });
+  const trades: any = model.pages[0].elements[0];
+  const metricByName = (n: string) => (trades.metrics || []).find((m: any) => m.name === n);
+
+  test('type: date_time measure MAX(${dim_group_raw}) → Max([col]) metric, no phantom [MAX] column', () => {
+    const m = metricByName('Max Seen');
+    assert.ok(m, JSON.stringify(trades.metrics));
+    assert.equal(m.formula, 'Max([ORDER_DATE])');
+    const phantom = (trades.columns || []).find((c: any) => /\[Custom SQL\/MAX\]/.test(c.formula || ''));
+    assert.ok(!phantom, 'phantom MAX column fabricated');
+  });
+
+  test('TO_CHAR/|| formatting measure warns with the exact fragment instead of emitting broken Sigma', () => {
+    assert.ok(!metricByName('Formatted Revenue'), 'broken TO_CHAR metric was emitted');
+    const w = warnings.find((w: string) => /"formatted_revenue".*untranslatable fragment/is.test(w));
+    assert.ok(w, warnings.join('\n'));
+    assert.ok(/TO_CHAR/.test(w!));
   });
 });
