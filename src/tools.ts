@@ -123,16 +123,24 @@ Provide one or more LookML files (views + model). Parses LookML, resolves
 explores/joins, converts dimensions → columns, measures → metrics,
 sql_on → relationships, and derived_table → Custom SQL elements.
 
+View-only input (no .model.lkml) is supported: each view converts to a
+standalone element (no relationships — joins live in the model file).
+
 ${'{'}view.SQL_TABLE_NAME{'}'} substitution is fully resolved including N-hop alias
-chains and PDT-referencing-PDT patterns (same PDT referenced multiple times
-with different SQL aliases is handled correctly).
+chains and PDT-referencing-PDT patterns. Referenced derived views in the parse
+set are inlined as WITH CTEs (CTE-continuation fragments — derived SQL starting
+with ", name AS (" — are completed/promoted to a full WITH). References to
+views NOT in the input become LOOKER_SCRATCH.<VIEW> placeholder tables with a
+LOUD 🔶 warning naming the unresolved view.
 
 include: directives are parsed and listed in warnings — resolution is limited
-to the files provided; referenced views not in the input are silently skipped.
+to the files provided.
 
-PDT materialization hints (distribution, sortkeys, datagroup_trigger,
-persist_with, cluster_keys, partition_keys) are not converted and emit
-informational warnings.
+Persistence config is never silent: datagroup_trigger / sql_trigger_value /
+persist_for / increment_key emit warnings recommending Sigma scheduled
+materialization on the element; {% incrementcondition %} Liquid is replaced
+with 1=1 (full scan) plus the same materialization recommendation. Other
+warehouse hints (distribution, sortkeys, cluster_keys, …) warn informationally.
 
 Pass files as an array of {name, content} objects.`,
     {

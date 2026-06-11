@@ -87,6 +87,25 @@ function lookmlCustomFormat(mask: string): Record<string, any> | null {
 }
 
 /**
+ * Snowflake/Oracle TO_CHAR numeric mask → Sigma format object.
+ * 9 = optional digit, 0 = forced digit, $/£/€/¥ = currency, "," = thousands
+ * group, "." = decimal point (FM modifier tolerated). Returns null for masks
+ * with date/text elements — those stay on the loud-warning path.
+ */
+function snowflakeNumericMaskFormat(mask: string): Record<string, any> | null {
+  if (typeof mask !== 'string') return null;
+  const m = mask.trim().replace(/^FM/i, '');
+  if (!m || !/^[\s$£€¥90,.]+$/.test(m)) return null;
+  const decM = m.match(/\.([90]+)/);
+  const decimals = decM ? decM[1].length : 0;
+  const curM = m.match(/[$£€¥]/);
+  const sep = m.includes(',') ? ',' : '';
+  if (curM) return { kind: 'number', formatString: `${curM[0]}${sep}.${decimals}f`, currencySymbol: curM[0] };
+  if (/[90]/.test(m)) return { kind: 'number', formatString: `${sep}.${decimals}f` };
+  return null;
+}
+
+/**
  * Resolve a LookML field's number format into a Sigma `format` object.
  * `value_format_name` (named) takes priority over a custom `value_format` mask.
  * Pushes an actionable warning when a format is present but can't be mapped.
@@ -319,7 +338,11 @@ function buildSqlTableNameMap(views: Record<string, any>): Record<string, string
     }
   }
 
-  // Iteratively follow ${ref.SQL_TABLE_NAME} hops until stable (max 20 iterations)
+  // Iteratively follow ${ref.SQL_TABLE_NAME} hops until stable (max 20 iterations).
+  // Only plain table paths are substituted here — PDT SQL bodies are never
+  // spliced into other map entries (that would leak the __PDT_SQL__ marker into
+  // SQL text). PDT→PDT references are resolved recursively at use time by
+  // resolveSqlTableNameRefs, which inlines them as CTEs.
   let changed = true;
   for (let i = 0; i < 20 && changed; i++) {
     changed = false;
@@ -328,8 +351,8 @@ function buildSqlTableNameMap(views: Record<string, any>): Record<string, string
       if (!val.includes('${')) continue;
       const next = val.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m, ref) => {
         const refVal = map[ref];
-        if (refVal !== undefined && !refVal.includes('${')) return refVal;
-        return _m; // not yet resolved
+        if (refVal !== undefined && !refVal.includes('${') && !refVal.startsWith(PDT_SQL_PREFIX)) return refVal;
+        return _m; // not yet resolved (or a PDT body — handled at use time)
       });
       if (next !== val) { map[name] = next; changed = true; }
     }
@@ -339,12 +362,38 @@ function buildSqlTableNameMap(views: Record<string, any>): Record<string, string
 }
 
 /**
+ * Split leading SQL line-comments / blank lines from a statement so structural
+ * checks (leading-comma CTE fragment, leading WITH) see the first real token.
+ */
+function splitLeadingSqlComments(sql: string): { head: string; rest: string } {
+  const m = sql.match(/^(?:\s*--[^\n]*\n|\s+)*/);
+  const head = m ? m[0] : '';
+  return { head, rest: sql.slice(head.length) };
+}
+
+/**
+ * True when a derived-table SQL is a CTE-continuation fragment — it starts with
+ * ", <name> AS (". Customers write this deliberately: Looker prepends the
+ * inlined SQL of referenced PDTs as leading CTEs, so the fragment continues
+ * that WITH chain (the common circular-reference workaround pattern).
+ */
+function isCteFragment(sql: string): boolean {
+  return splitLeadingSqlComments(sql).rest.startsWith(',');
+}
+
+/**
  * Resolve all ${viewName.SQL_TABLE_NAME} references inside a derived-table SQL
  * string using the pre-built map.
  *
  * Regular views   → substituted with the literal path (e.g. CSA.TJ.ORDER_FACT)
- * Derived tables  → substituted with an inline subquery: (SQL) AS viewName
- * Unknown refs    → left as-is; caller emits a warning
+ * Derived tables  → inlined as a WITH CTE named after the view (dependencies
+ *                   recursively first), and the reference becomes the CTE name.
+ * Unknown refs    → substituted with a LOOKER_SCRATCH.<VIEW> placeholder table
+ *                   plus a LOUD warning naming the unresolved view, so the
+ *                   emitted SQL is at least parseable and the fix is obvious.
+ *
+ * If the statement itself is a CTE-continuation fragment (leading ","), the
+ * generated CTE prelude completes it: WITH <inlined…> , <fragment…>.
  */
 function resolveSqlTableNameRefs(
   sql: string,
@@ -352,22 +401,78 @@ function resolveSqlTableNameRefs(
   warnings: string[],
   contextViewName: string
 ): string {
-  return sql.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m, ref) => {
-    const val = map[ref];
-    if (val === undefined) {
-      warnings.push(`⚠ View "${contextViewName}": could not resolve \${${ref}.SQL_TABLE_NAME} — view "${ref}" not found in provided files`);
-      return _m;
+  const ctes: Array<{ name: string; sql: string }> = [];
+  const cteOk = new Set<string>();    // refs successfully inlined as CTEs
+  const cteSeen = new Set<string>();  // refs we already attempted (dedup)
+  const warnedOnce = new Set<string>();
+  const stack = new Set<string>();    // cycle guard
+
+  const scratchTable = (ref: string) => `LOOKER_SCRATCH.${String(ref).toUpperCase()}`;
+  const placeholder = (ref: string) => `${scratchTable(ref)} /* unresolved Looker view: ${ref} */`;
+
+  function resolveBody(body: string): string {
+    return body.replace(/\$\{(\w+)\.SQL_TABLE_NAME\}/gi, (_m, ref) => {
+      const val = map[ref];
+      if (val === undefined) {
+        if (!warnedOnce.has(ref)) {
+          warnedOnce.add(ref);
+          warnings.push(`🔶 UNRESOLVED VIEW "${ref}": view "${contextViewName}" references \${${ref}.SQL_TABLE_NAME} but "${ref}" is not in the provided files. Emitted placeholder table ${scratchTable(ref)} — this SQL will NOT run until you either (a) re-run the conversion with ${ref}.view.lkml included so its SQL is inlined as a CTE, or (b) replace the placeholder with the real warehouse table behind that view (its Looker scratch-schema PDT or underlying source table).`);
+        }
+        return placeholder(ref);
+      }
+      if (val.startsWith(PDT_SQL_PREFIX)) {
+        if (stack.has(ref)) {
+          if (!warnedOnce.has(ref)) {
+            warnedOnce.add(ref);
+            warnings.push(`⚠ View "${contextViewName}": circular \${${ref}.SQL_TABLE_NAME} reference chain — emitted placeholder table ${scratchTable(ref)}; break the cycle manually (this is the pattern Looker customers inline as CTEs).`);
+          }
+          return placeholder(ref);
+        }
+        if (!cteSeen.has(ref)) {
+          cteSeen.add(ref);
+          stack.add(ref);
+          let depSql = val.slice(PDT_SQL_PREFIX.length);
+          depSql = resolveBody(depSql); // dependencies' CTEs land before this one
+          stack.delete(ref);
+          if (isCteFragment(depSql)) {
+            warnings.push(`🔶 View "${contextViewName}": \${${ref}.SQL_TABLE_NAME} resolves to a derived table whose SQL is itself a CTE-continuation fragment (starts with ", <name> AS ("), so it cannot be wrapped in a CTE. Emitted placeholder table ${scratchTable(ref)} — include that view's own upstream view files, or replace the placeholder manually.`);
+          } else {
+            ctes.push({ name: ref, sql: depSql });
+            cteOk.add(ref);
+          }
+        }
+        return cteOk.has(ref) ? ref : placeholder(ref);
+      }
+      if (val.includes('${')) {
+        if (!warnedOnce.has(ref)) {
+          warnedOnce.add(ref);
+          warnings.push(`🔶 View "${contextViewName}": \${${ref}.SQL_TABLE_NAME} could not be fully resolved (missing link in the reference chain) — emitted placeholder table ${scratchTable(ref)}. Provide the missing view file(s) and re-run.`);
+        }
+        return placeholder(ref);
+      }
+      return val;
+    });
+  }
+
+  let body = resolveBody(sql);
+
+  if (ctes.length) {
+    const prelude = 'WITH ' + ctes.map(c => `${c.name} AS (\n${c.sql}\n)`).join(',\n');
+    const { head, rest } = splitLeadingSqlComments(body);
+    if (rest.startsWith(',')) {
+      // fragment — the prelude completes the WITH chain the customer left open
+      body = head + prelude + '\n' + rest;
+      warnings.push(`ℹ View "${contextViewName}": inlined ${ctes.length} referenced derived view(s) as CTE(s) — ${ctes.map(c => c.name).join(', ')} — completing the view's CTE-continuation fragment.`);
+    } else if (/^WITH\b/i.test(rest)) {
+      body = head + prelude + ',\n' + rest.replace(/^WITH\b\s*/i, '');
+      warnings.push(`ℹ View "${contextViewName}": inlined ${ctes.length} referenced derived view(s) as CTE(s) — ${ctes.map(c => c.name).join(', ')} — merged into the view's existing WITH clause.`);
+    } else {
+      body = head + prelude + '\n' + rest;
+      warnings.push(`ℹ View "${contextViewName}": inlined ${ctes.length} referenced derived view(s) as CTE(s) — ${ctes.map(c => c.name).join(', ')}.`);
     }
-    if (val.includes('${')) {
-      warnings.push(`⚠ View "${contextViewName}": \${${ref}.SQL_TABLE_NAME} could not be fully resolved (circular or missing chain)`);
-      return _m;
-    }
-    if (val.startsWith(PDT_SQL_PREFIX)) {
-      const pdtSql = val.slice(PDT_SQL_PREFIX.length);
-      return `(\n${pdtSql}\n)`;
-    }
-    return val;
-  });
+  }
+
+  return body;
 }
 
 // ── LookML View → Sigma Element Conversion ───────────────────────────────────
@@ -587,9 +692,30 @@ function lookConvertView(
       warnings.push(`⚠ View "${viewName}" is a Native Derived Table (explore_source) but explore context was unavailable — rebuild it as a Sigma data element after import.`);
     }
 
+    // Incremental-PDT Liquid: {% incrementcondition %} <col> {% endincrementcondition %}
+    // expands (in Looker) to "<col> >= <watermark>". Sigma has no incremental
+    // build, so replace the whole block with an always-true predicate and point
+    // at materialization — NEVER leave Liquid tags in the emitted SQL.
+    if (/\{%\s*incrementcondition\s*%\}/i.test(rawSql)) {
+      rawSql = rawSql.replace(
+        /\{%\s*incrementcondition\s*%\}([\s\S]*?)\{%\s*endincrementcondition\s*%\}/gi,
+        (_m: string, inner: string) => `1=1 /* Looker incremental condition on ${inner.trim()} — full scan in Sigma */`
+      );
+      warnings.push(`🔶 View "${viewName}": incremental-PDT {% incrementcondition %} was replaced with 1=1 — Sigma always runs the full SQL. Enable scheduled materialization on this element (Materialization tab in the Sigma UI, or via the API) to keep refreshes warehouse-side; the migration skill can hand off to the materialization flow.`);
+    }
+
     // Gap 1: resolve ${ref.SQL_TABLE_NAME} references inside derived table SQL
     if (sqlTableNameMap && rawSql.includes('${')) {
       rawSql = resolveSqlTableNameRefs(rawSql, sqlTableNameMap, warnings, viewName);
+    }
+
+    // CTE-continuation fragment still unclosed (no CTEs were inlined — e.g. all
+    // refs were unresolved placeholders): promote the leading "," to WITH so the
+    // statement parses standalone.
+    if (rawSql && isCteFragment(rawSql)) {
+      const { head, rest } = splitLeadingSqlComments(rawSql);
+      rawSql = head + 'WITH ' + rest.slice(1);
+      warnings.push(`ℹ View "${viewName}": derived SQL was a CTE-continuation fragment (leading ","), expecting Looker to prepend inlined PDT CTEs. Prepended WITH so it parses standalone — verify the first CTE no longer depends on a missing upstream CTE.`);
     }
 
     // PDT persistence hints → Sigma scheduled materialization (informational).
@@ -605,6 +731,16 @@ function lookConvertView(
       }
     }
 
+    // Incremental PDT (increment_key / increment_offset) — never silent: the
+    // element is converted (full-SQL semantics) and we recommend the Sigma
+    // materialization handoff for the refresh cadence.
+    if (dt.increment_key !== undefined) {
+      const off = dt.increment_offset !== undefined ? `, increment_offset: ${dt.increment_offset}` : '';
+      warnings.push(`🔶 View "${viewName}": incremental PDT (increment_key: "${dt.increment_key}"${off}) has no Sigma equivalent — the converted element re-computes its full SQL on each refresh. Recommend Sigma scheduled materialization on this element (Materialization tab / API; the migration skill can hand off to the materialization flow).`);
+    } else if (dt.increment_offset !== undefined) {
+      warnings.push(`ℹ View "${viewName}": increment_offset is set without increment_key — ignored.`);
+    }
+
     // Other warehouse-specific PDT properties that have no Sigma equivalent.
     const PDT_SKIP_PROPS = ['distribution', 'sortkeys', 'persist_with', 'cluster_keys', 'partition_keys'];
     for (const prop of PDT_SKIP_PROPS) {
@@ -617,6 +753,10 @@ function lookConvertView(
     element = {
       id: elementId,
       kind: 'table',
+      // Explicit display name: without it Sigma falls back to "Custom SQL" for
+      // every sql element, making [Element/Column] refs ambiguous and breaking
+      // the orchestrators' name-based element lookup on readback.
+      name: view.label || sigmaDisplayName(viewName),
       source: {
         connectionId: connectionId || '<CONNECTION_ID>',
         statement: rawSql || '',
@@ -634,6 +774,7 @@ function lookConvertView(
     element = {
       id: elementId,
       kind: 'table',
+      name: view.label || sigmaDisplayName(viewName),
       source: {
         connectionId: connectionId || '<CONNECTION_ID>',
         kind: 'warehouse-table',
@@ -763,8 +904,15 @@ function lookConvertView(
         const calcId = sigmaShortId();
         colIdMap[colName] = calcId;
         const baseName = d.label || sigmaDisplayName(d._name);
-        const displayName = baseName + ' (T/F)';
-        element.columns.push({ id: calcId, formula: `[${colLabel(physicalCol)}] = ${val}`, name: displayName });
+        // NOTE: no "/" in the suffix — Sigma bracket refs are slash-delimited, so a
+        // display name containing "/" is unreferenceable downstream ([El/X (T/F)]
+        // over-segments and compiles to type "error"; found live in the E2E run).
+        const displayName = baseName + ' (T-F)';
+        // Qualified ref ([<table>/<col>], like the passthrough itself) — a BARE
+        // sibling ref to an unnamed passthrough compiles to type "error" on
+        // custom-SQL elements (live-verified: [IS_RETURNED] = 1 errored,
+        // [Custom SQL/IS_RETURNED] = 1 resolved).
+        element.columns.push({ id: calcId, formula: `[${tableName}/${colLabel(physicalCol)}] = ${val}`, name: displayName });
         element.order.push(calcId);
         continue;
       }
@@ -919,42 +1067,74 @@ function lookConvertView(
     const displayBase = sigmaDisplayName(dg._name);
     const colRef = `[${tableName}/${colLabel(physicalCol)}]`;
 
-    // Raw column — primary ID for this physical column
-    const rawColId = makeColId(physicalCol);
+    // Register the group (and each timeframe name) so measures can resolve
+    // ${group} / ${group_raw} / ${group_date} refs to the physical column.
+    dimPhysColMap.set(dg._name.toLowerCase(), physicalCol);
+    rawTimeframes.forEach(tf => dimPhysColMap.set(`${dg._name}_${tf}`.toLowerCase(), physicalCol));
+
+    // Raw column — primary ID for this physical column. A dimension or another
+    // dimension_group may already carry it; never emit a duplicate column.
+    const existingId = colIdMap[physicalCol];
+    const rawColId = existingId || makeColId(physicalCol);
     colIdMap[colName] = rawColId;
     colIdMap[physicalCol] = rawColId;
 
     if (timeframes.length <= 1) {
-      // No expansion needed — just emit raw column
-      element.columns.push({ id: rawColId, formula: colRef });
-      element.order.push(rawColId);
+      // No expansion needed — just emit (or reuse) the raw column
+      if (timeframes[0]) colIdMap[`${colName}_${timeframes[0].toUpperCase()}`] = rawColId;
+      if (!existingId) {
+        element.columns.push({ id: rawColId, formula: colRef });
+        element.order.push(rawColId);
+      }
       return;
     }
 
     // Folder to group the timeframes
     const folderItems: string[] = [];
+    let rawEmitted = !!existingId;
 
     timeframes.forEach(tf => {
       const { suffix, formula } = TIMEFRAME_MAP[tf];
       const tfFormula = formula(colRef);
       const tfName = `${displayBase} ${suffix}`;
       if (tf === 'raw' || tf === 'time') {
-        // Raw/time: emit the physical column itself
-        colIdMap[`${colName}_${tf.toUpperCase()}`] = rawColId;
-        element.columns.push({ id: rawColId, formula: colRef, name: tfName });
-        folderItems.push(rawColId);
+        // Raw/time: the physical column itself. The first one owns rawColId;
+        // any further raw/time timeframe gets its own id (same formula) so the
+        // spec never carries duplicate column ids.
+        if (!rawEmitted) {
+          colIdMap[`${colName}_${tf.toUpperCase()}`] = rawColId;
+          element.columns.push({ id: rawColId, formula: colRef, name: tfName });
+          folderItems.push(rawColId);
+          rawEmitted = true;
+        } else {
+          const dupId = sigmaShortId();
+          colIdMap[`${colName}_${tf.toUpperCase()}`] = dupId;
+          element.columns.push({ id: dupId, formula: colRef, name: tfName });
+          folderItems.push(dupId);
+          element.order.push(dupId);
+        }
       } else {
         const tfId = sigmaShortId();
+        colIdMap[`${colName}_${tf.toUpperCase()}`] = tfId;
         element.columns.push({ id: tfId, formula: tfFormula, name: tfName });
         folderItems.push(tfId);
         element.order.push(tfId);
       }
     });
 
+    // Timeframe lists without raw/time (e.g. [date, week, month]) still need
+    // the physical column present — measures reference it and rawColId is in
+    // colIdMap / order. Emit it once so no order entry dangles.
+    if (!rawEmitted) {
+      element.columns.push({ id: rawColId, formula: colRef, name: `${displayBase} Raw` });
+      folderItems.push(rawColId);
+      rawEmitted = true;
+    }
+
     // Add folder to group timeframes
     if (!(element as any).folders) (element as any).folders = [];
     (element as any).folders.push({ id: sigmaShortId(), name: displayBase, items: folderItems });
-    element.order.push(rawColId);
+    if (!existingId) element.order.push(rawColId);
   });
 
   // Measures → metrics
@@ -1033,6 +1213,55 @@ function lookConvertView(
     const msFormat = lookmlFieldFormat(ms, warnings)
       ?? (msType === 'percent_of_total' ? { kind: 'number', formatString: ',.1%' } : undefined);
 
+    // date / date_time / time measures — typically MAX/MIN over a dimension_group
+    // TO_CHAR / TO_VARCHAR display-mask measures, e.g.
+    //   sql: TO_CHAR(SUM(${TABLE}.NET_REVENUE), '$999,999,990.00')
+    // The mask IS portable: emit the inner aggregate as a numeric metric and
+    // translate the mask into a Sigma column format — display-identical to
+    // Looker, but the value stays numeric (sortable, chartable). Only masks we
+    // can't read (date/text masks, LISTAGG, …) stay on the loud-warning path.
+    {
+      const tcm = resolvedMsSql.trim().replace(/;;\s*$/, '').match(
+        /^TO_(?:CHAR|VARCHAR)\s*\(\s*(SUM|AVG|MIN|MAX|MEDIAN|COUNT)\s*\(\s*(?:\$\{TABLE\}\s*\.\s*)?("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\)\s*,\s*'([^']+)'\s*\)$/i);
+      const tcFmt = tcm ? snowflakeNumericMaskFormat(tcm[3]) : null;
+      if (tcm && tcFmt) {
+        const fnMap: Record<string, string> = { sum: 'Sum', avg: 'Avg', min: 'Min', max: 'Max', median: 'Median', count: 'Count' };
+        const pc = tcm[2].replace(/"/g, '').toUpperCase();
+        if (!colIdMap[pc]) {
+          const colId = makeColId(pc);
+          colIdMap[pc] = colId;
+          element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(pc)}]` });
+          element.order.push(colId);
+        }
+        const formula = `${fnMap[tcm[1].toLowerCase()]}([${colLabel(pc)}])`;
+        element.metrics!.push({ id: sigmaShortId(), formula, name: msLabel, format: msFormat ?? tcFmt });
+        warnings.push(`✅ "${ms._name}" (TO_CHAR display mask) → ${formula} + Sigma column format "${(msFormat ?? tcFmt).formatString}" — value stays numeric, display matches the mask`);
+        return;
+      }
+    }
+
+    // timeframe ref (e.g. sql: MAX(${event_ts_raw})). Translate the aggregate;
+    // never fabricate a phantom column named after the SQL function.
+    if (['date', 'datetime', 'date_time', 'time'].includes(msType)) {
+      const am = resolvedMsSql.trim().replace(/;;\s*$/, '')
+        .match(/^(MAX|MIN)\s*\(\s*(?:\$\{TABLE\}\s*\.\s*)?("?[A-Za-z_][A-Za-z0-9_]*"?)\s*\)$/i);
+      if (am) {
+        const fn = am[1].toUpperCase() === 'MAX' ? 'Max' : 'Min';
+        const pc = am[2].replace(/"/g, '').toUpperCase();
+        if (!colIdMap[pc]) {
+          const colId = makeColId(pc);
+          colIdMap[pc] = colId;
+          element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(pc)}]` });
+          element.order.push(colId);
+        }
+        element.metrics!.push({ id: sigmaShortId(), formula: `${fn}([${colLabel(pc)}])`, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
+        warnings.push(`✅ "${ms._name}" (${msType}) → ${fn}([${colLabel(pc)}])`);
+      } else {
+        warnings.push(`⚠ "${ms._name}": measure type "${msType}" with sql "${(ms.sql || '').trim().replace(/\s+/g, ' ').slice(0, 80)}" could not be translated — add this metric manually in Sigma.`);
+      }
+      return;
+    }
+
     // running_total / percent_of_total → calculated columns
     if (CALC_COL_MEASURE_TYPES.has(msType)) {
       if (!colIdMap[physicalCol]) {
@@ -1074,6 +1303,35 @@ function lookConvertView(
       expr = expr.replace(/\bNULLIF\s*\(/gi, 'NullIf(')
                  .replace(/\b(COALESCE|NVL|IFNULL)\s*\(/gi, 'Coalesce(')
                  .replace(/\b(IFF|IIF)\s*\(/gi, 'If(');
+
+      // Residual raw-SQL constructs are NOT valid Sigma formulas — translate
+      // via the rule engine where possible, otherwise WARN with the exact
+      // untranslatable fragment. Never emit a silently-broken metric.
+      const RAW_FN = /\b(TO_CHAR|TO_VARCHAR|TO_NUMBER|TO_DATE|LISTAGG|DECODE)\s*\(/i;
+      const hasRawFn = RAW_FN.test(expr);
+      const hasConcatOp = /\|\|/.test(expr);
+      const hasCast = /::\s*\w+/.test(expr);
+      const hasCase = /\bCASE\b[\s\S]*\bWHEN\b/i.test(expr);
+      if (hasRawFn || hasConcatOp || hasCast || hasCase) {
+        let viaRules: string | null = null;
+        if (hasCase && !hasRawFn && !hasConcatOp && !hasCast) {
+          viaRules = lookSqlToSigmaRules(expr.replace(/--[^\n]*/g, ''));
+          if (viaRules && /\b(CASE|WHEN|THEN)\b|\|\||::\s*\w/i.test(viaRules)) viaRules = null;
+        }
+        if (viaRules) {
+          element.metrics!.push({ id: sigmaShortId(), formula: viaRules.trim(), name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
+          warnings.push(`✅ "${ms._name}" (computed CASE) → ${viaRules.trim().slice(0, 70)}`);
+          return;
+        }
+        const fragMatch = expr.match(/\b(?:TO_CHAR|TO_VARCHAR|TO_NUMBER|TO_DATE|LISTAGG|DECODE)\s*\([^()]*(?:\([^()]*\)[^()]*)*\)/i);
+        const frag = (fragMatch ? fragMatch[0] : expr.replace(/--[^\n]*/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 110)).trim();
+        const hint = /TO_CHAR|TO_VARCHAR/i.test(expr)
+          ? ' TO_CHAR display masks have no Sigma formula equivalent — keep the underlying numeric metric and apply a Sigma column format instead.'
+          : ' Recreate this metric manually in Sigma.';
+        warnings.push(`⚠ "${ms._name}": measure could not be translated — untranslatable fragment: ${frag}${hint}`);
+        return;
+      }
+
       element.metrics!.push({ id: sigmaShortId(), formula: expr.trim(), name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
       warnings.push(`✅ "${ms._name}" (computed) → ${expr.trim().slice(0, 70)}`);
       return;
@@ -1137,6 +1395,14 @@ function lookConvertView(
       }
       element.metrics!.push({ id: sigmaShortId(), formula: `CountDistinct([${colLabel(cdCol)}])`, name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
     } else {
+      // Guard: don't fabricate a phantom column when the measure SQL didn't
+      // reduce to a real column — e.g. lookStripSql of "MAX(${ref})" yields the
+      // function head "MAX", or an intra-view ${ref} stayed unresolved.
+      const FN_HEADS = new Set(['MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'CASE', 'CAST', 'COALESCE', 'NULLIF', 'IFF', 'TO_CHAR', 'TO_NUMBER', 'TO_DATE', 'ROUND', 'ABS', 'CONCAT']);
+      if (/\$\{(?!TABLE\})[^.}]+\}/.test(resolvedMsSql) || (ms.sql && FN_HEADS.has(physicalCol) && /\(/.test(ms.sql))) {
+        warnings.push(`⚠ "${ms._name}": measure sql "${(ms.sql || '').trim().replace(/\s+/g, ' ').slice(0, 80)}" could not be resolved to a column — add this metric manually in Sigma.`);
+        return;
+      }
       if (!colIdMap[physicalCol]) {
         const colId = makeColId(physicalCol);
         colIdMap[physicalCol] = colId;
@@ -1197,9 +1463,45 @@ export function convertLookMLToSigma(
   // Determine which explore to convert
   let exploreName = options.exploreName;
   const exploreNames = Object.keys(explores);
+
+  // ── View-only mode ────────────────────────────────────────────────────────
+  // No model/explore in the input (the common "customer sent me some .view.lkml
+  // files" case). Convert every view as a standalone element — cross-view
+  // ${ref.SQL_TABLE_NAME} references still resolve against the parse set.
+  // Joins/explore-level settings live in the model file, so none are emitted.
+  if (exploreNames.length === 0) {
+    const viewNames = Object.keys(views);
+    if (viewNames.length === 0) {
+      throw new Error('No views or explores found in the LookML files.');
+    }
+    const targets = exploreName && views[exploreName] ? [exploreName] : viewNames;
+    warnings.push(`ℹ No explore/model file provided — converted ${targets.length} standalone view element(s). Joins and explore settings live in the .model.lkml; include it to carry relationships.`);
+    const sqlTableNameMapVO = buildSqlTableNameMap(views);
+    const ndtCtx: NdtContext = { views, explores };
+    const allElements = targets.map(v => lookConvertView(v, views[v], connectionId, warnings, sqlTableNameMapVO, ndtCtx).element);
+    if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
+    const model = {
+      name: targets.length === 1 ? sigmaDisplayName(targets[0]) : 'LookML Views',
+      schemaVersion: 1,
+      pages: [{ id: sigmaShortId(), name: 'Page 1', elements: allElements }]
+    };
+    return {
+      model,
+      warnings,
+      ...(security.length ? { security } : {}),
+      stats: {
+        views: viewNames.length,
+        explores: 0,
+        elements: allElements.length,
+        columns: allElements.reduce((s, e) => s + (e.columns?.length || 0), 0),
+        metrics: allElements.reduce((s, e) => s + (e.metrics?.length || 0), 0),
+        relationships: 0
+      }
+    };
+  }
+
   if (!exploreName) {
     if (exploreNames.length === 1) exploreName = exploreNames[0];
-    else if (exploreNames.length === 0) throw new Error('No explores found in the LookML files. Upload a .model.lkml file.');
     else throw new Error(`Multiple explores found: ${exploreNames.join(', ')}. Specify exploreName.`);
   }
 
@@ -1606,6 +1908,13 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     const srcPath = srcEl.source.path as string[];
     const srcTableName = srcPath[srcPath.length - 1];
+    // The first segment of refs inside the derived element resolves against the
+    // SOURCE ELEMENT, not the warehouse table: an explicit `name` on the base
+    // element wins, otherwise Sigma falls back to the path-tail. Since elements
+    // now always carry a name (live-E2E fix), refs must use it — emitting the
+    // raw table tail compiles to `Unknown name: ["ORDER_FACT",...]`.
+    // (Same resolution rule as the shared buildDerivedElements in sigma-ids.ts.)
+    const baseName = srcEl.name || srcTableName;
 
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
@@ -1616,8 +1925,12 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     for (const col of srcEl.columns ?? []) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
       if (col.name) continue;
+      // Rewrite the [TABLE_TAIL/Col] prefix to the base element's resolvable
+      // name (see baseName above) — verbatim copies break once the base
+      // element is named.
+      const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
       const cId = sigmaShortId();
-      viewCols.push({ id: cId, formula: col.formula });
+      viewCols.push({ id: cId, formula: fm ? `[${baseName}/${fm[2]}]` : col.formula });
       viewOrder.push(cId);
     }
 
@@ -1652,7 +1965,7 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
           dispName = slashIdx >= 0 ? inner.slice(slashIdx + 1) : inner;
         }
         const cId = sigmaShortId();
-        viewCols.push({ id: cId, formula: `[${srcTableName}/${rel.name}/${dispName}]` });
+        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
         viewOrder.push(cId);
       }
     }
@@ -1661,7 +1974,9 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       derived.push({
         id: sigmaShortId(),
         kind: 'table',
-        name: srcEl.name ?? sigmaDisplayName(srcTableName),
+        // " View" suffix matches sigma-ids.ts buildDerivedElements — without it
+        // the derived element collides with the (now-named) source element.
+        name: `${srcEl.name ?? sigmaDisplayName(srcTableName)} View`,
         source: { kind: 'table', elementId: srcEl.id },
         columns: viewCols,
         order: viewOrder,
