@@ -2138,6 +2138,12 @@ export function convertPowerBIToSigma(
     for (const c of (t.columns || [])) {
       if (c.type === 'rowNumber' || c.isGenerated) continue;
       if (c.type === 'calculated') continue;
+      // Binary columns (embedded images etc.) have no warehouse representation —
+      // a [TABLE/Display] ref to one fails the POST with "dependency not found".
+      if (c.dataType === 'binary') {
+        warnings.push(`⚠ Table "${tableName}": binary column "${c.name}" skipped — no warehouse/Sigma representation (embedded asset).`);
+        continue;
+      }
       const sourceCol = c.sourceColumn || c.name;
       const displayName = sigmaDisplayName(sourceCol);
       const colId = sigmaInodeId(sigmaPhysicalName(sourceCol));
