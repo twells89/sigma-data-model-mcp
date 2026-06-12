@@ -299,7 +299,8 @@ export interface SecurityRule {
  * workbook builder places them in a grouped element on the chart's dimension.
  */
 export interface WorkbookPattern {
-  kind: 'rank' | 'lag' | 'lead' | 'first-sorted-value' | 'unsupported';
+  kind: 'rank' | 'lag' | 'lead' | 'cumulative' | 'moving' | 'percent-of-total'
+      | 'index' | 'window' | 'first-sorted-value' | 'unsupported';
   name: string;            // source measure/dimension title
   source: string;          // original source-tool expression
   formula?: string;        // ready-to-use Sigma formula (grouped-element context)

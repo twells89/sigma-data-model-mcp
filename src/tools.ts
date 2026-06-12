@@ -230,8 +230,15 @@ direct warehouse connection, pass database and schema to set the warehouse
 path. Table names are uppercased automatically (Orders → ORDERS). Use
 table_mapping to override specific names when they differ in the warehouse.
 
-Complex patterns (LOD INCLUDE/EXCLUDE, table calculations, RUNNING_SUM, RANK)
-generate warnings with community article links.`,
+Table calculations: RUNNING_*/WINDOW_*/RANK*/LOOKUP/INDEX are lowered to SQL
+OVER-clause helper elements when the worksheet context allows; otherwise the
+WINPROBE-validated chart-context Sigma formula (Cumulative*/Moving*/Rank/
+RankDense/RankPercentile/PercentOfTotal/RowNumber/Lag/Lead) is returned in
+\`workbookPatterns\` — those only work in GROUPED workbook elements (window
+functions silently error in DM calc columns/metrics). Untranslatable table
+calcs (WINDOW_MEDIAN/PERCENTILE/CORR/COVAR, PREVIOUS_VALUE, SIZE) are flagged
+loudly, never silently dropped. Detected RLS calcs are reported in
+\`security\` (not injected).`,
     {
       xml_content: z.string().describe('Tableau XML content (.twb or .tds file content)'),
       connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
@@ -257,7 +264,11 @@ generate warnings with community article links.`,
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
+            text: JSON.stringify({
+              sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings,
+              ...(result.security?.length ? { security: result.security } : {}),
+              ...(result.workbookPatterns?.length ? { workbookPatterns: result.workbookPatterns } : {}),
+            }, null, 2),
           }],
         };
       } catch (e: any) {
@@ -467,7 +478,18 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
     `Convert a Tableau calculated field formula to a Sigma Computing formula.
 
 Handles: IF/ELSEIF/ELSE/END, CASE/WHEN, IIF, ZN, COUNTD, DATEPART,
-DATETRUNC, DATEADD, DATEDIFF. LOD expressions → comment placeholder.`,
+DATETRUNC, DATEADD, DATEDIFF. LOD expressions → comment placeholder.
+
+Table calcs use WINPROBE-validated mappings: RUNNING_* → Cumulative*;
+WINDOW_*(agg, -n, m) → Moving*; WINDOW_STDEV → MovingStdDev; agg/WINDOW_SUM(agg)
+→ PercentOfTotal(agg, "grand_total"); RANK/RANK_DENSE/RANK_PERCENTILE →
+Rank/RankDense/RankPercentile(agg, "desc"); INDEX() → RowNumber();
+LOOKUP(agg, ±n) → Lag/Lead(agg, n). CAVEAT (also emitted as a warning): these
+Sigma window functions only work in CHART/grouped-workbook-element context —
+they silently error in data-model element calc columns and workbook master
+calc columns. Never emits *Over functions. Untranslatable table calcs
+(WINDOW_MEDIAN/PERCENTILE/CORR/COVAR, PREVIOUS_VALUE, SIZE) return a loud
+warning naming the fragment.`,
     {
       formula: z.string().describe('The Tableau formula to convert'),
     },

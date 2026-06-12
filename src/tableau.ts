@@ -9,9 +9,13 @@
 import { XMLParser } from 'fast-xml-parser';
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements, makeRlsSecurity,
-  type SigmaElement, type ConversionResult, type SecurityRule,
+  type SigmaElement, type ConversionResult, type SecurityRule, type WorkbookPattern,
 } from './sigma-ids.js';
-import { tableauFormulaToSigma, tableauIsAggregate, tableauFormulaIsRls } from './formulas.js';
+import {
+  tableauFormulaToSigma, tableauIsAggregate, tableauFormulaIsRls,
+  tableauWindowToSigmaChart, tableauWindowUntranslatable,
+  SIGMA_CHART_ONLY_WINDOW_RE, TABLEAU_TABLE_CALC_TOKEN_RE,
+} from './formulas.js';
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
 
@@ -106,7 +110,7 @@ interface WindowResult {
   _isWindow: true;
   windowType: 'RUNNING_SUM' | 'RUNNING_AVG' | 'RUNNING_MIN' | 'RUNNING_MAX'
             | 'WINDOW_SUM' | 'WINDOW_AVG' | 'WINDOW_MIN' | 'WINDOW_MAX' | 'WINDOW_COUNT'
-            | 'LOOKUP' | 'PREVIOUS_VALUE'
+            | 'LOOKUP'
             | 'RANK' | 'RANK_DENSE' | 'RANK_UNIQUE' | 'INDEX'
             | 'FIRST' | 'LAST';
   innerAggFunc: string;       // SUM/AVG/MIN/MAX/COUNT — the inner aggregate (or '' for RANK()/INDEX())
@@ -125,9 +129,13 @@ function _windowInnerToSql(expr: string): string {
 
 function tableauParseWindow(formula: string): WindowResult | null {
   const f = formula.trim();
-  if (!/^(WINDOW_|RUNNING_|LOOKUP\(|PREVIOUS_VALUE\(|RANK\b|RANK_DENSE\b|RANK_UNIQUE\b|INDEX\(|FIRST\(|LAST\()/i.test(f)) {
+  if (!/^(WINDOW_|RUNNING_|LOOKUP\(|RANK\b|RANK_DENSE\b|RANK_UNIQUE\b|INDEX\(|FIRST\(|LAST\()/i.test(f)) {
     return null;
   }
+  // PREVIOUS_VALUE is self-referential (returns the calc's own prior result) —
+  // a LAG over the inner aggregate is NOT equivalent. It is flagged loudly by
+  // the untranslatable path downstream; never lowered here.
+  if (/^PREVIOUS_VALUE\s*\(/i.test(f)) return null;
   // RUNNING_SUM(SUM([x])), RUNNING_AVG(AVG([x])), etc.
   let m = f.match(/^(RUNNING_(?:SUM|AVG|MIN|MAX))\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*\)\s*$/i);
   if (m) return {
@@ -156,14 +164,6 @@ function tableauParseWindow(formula: string): WindowResult | null {
     innerAggFunc: m[1].toUpperCase(), innerColRaw: m[2],
     innerExprSql: _windowInnerToSql(m[2]),
     lookupOffset: parseInt(m[3], 10),
-  };
-  // PREVIOUS_VALUE([x]) — best effort: treat as LAG-1 of inner
-  m = f.match(/^PREVIOUS_VALUE\s*\(\s*(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(\[[^\]]+\]|[A-Z0-9_]+)\s*\)\s*\)\s*$/i);
-  if (m) return {
-    _isWindow: true, windowType: 'PREVIOUS_VALUE',
-    innerAggFunc: m[1].toUpperCase(), innerColRaw: m[2],
-    innerExprSql: _windowInnerToSql(m[2]),
-    lookupOffset: -1,
   };
   // FIRST() / LAST() — emit constant 0/-1 placeholders as offsets vs current row;
   // We handle them as RANK-style offset-from-partition-start/end via FIRST_VALUE/LAST_VALUE.
@@ -717,6 +717,38 @@ export function convertTableauToSigma(
   const ds = datasources[dsIdx];
   const warnings: string[] = [];
   const security: SecurityRule[] = [];   // detected RLS — reported, not injected (architecture B)
+  // Window/table calcs whose faithful Sigma equivalent only works in CHART /
+  // grouped-workbook-element context — reported for the workbook builder, NOT
+  // injected as DM columns (window functions silently error there).
+  const workbookPatterns: WorkbookPattern[] = [];
+
+  // Report a table calc as a ready-to-place chart-context formula (validated
+  // WINPROBE mapping) in workbookPatterns, or — when it has no Sigma
+  // equivalent — as a loud 'unsupported' entry naming the fragment. Returns
+  // false when the formula matched neither (caller decides what to do).
+  function _reportChartWindowPattern(caption: string, formula: string, why: string): boolean {
+    const chartWin = tableauWindowToSigmaChart(formula);
+    if (chartWin) {
+      workbookPatterns.push({
+        kind: chartWin.kind, name: caption, source: formula.trim(), formula: chartWin.formula,
+        requires: 'GROUPED workbook element (group by the chart/viz dimensions) — NOT valid as a DM calc column or metric',
+        ...(chartWin.verify ? { verify: true } : {}),
+        note: `${why}. Place the ready formula in a grouped workbook element (chart context); window functions silently error in DM element calc columns and workbook master calc columns.${chartWin.note ? ' ' + chartWin.note : ''}`,
+      });
+      warnings.push(`ℹ "${caption}": table calc → ready Sigma formula ${chartWin.formula} in result.workbookPatterns — CHART/grouped-element context only (${why}); not emitted as a DM column.`);
+      return true;
+    }
+    const untrans = tableauWindowUntranslatable(formula);
+    if (untrans) {
+      workbookPatterns.push({
+        kind: 'unsupported', name: caption, source: formula.trim(),
+        note: `${untrans}() has no Sigma equivalent — recreate manually. Untranslated fragment: ${formula.trim().slice(0, 160)}`,
+      });
+      warnings.push(`⚠ "${caption}": ${untrans}() has no Sigma equivalent — NOT translated. Untranslated fragment: ${formula.trim().slice(0, 120)}`);
+      return true;
+    }
+    return false;
+  }
   const elements: SigmaElement[] = [];
   const connId = connectionId || '<CONNECTION_ID>';
 
@@ -1619,8 +1651,7 @@ export function convertTableauToSigma(
           overSql = `${fn}(${innerAlias}) OVER (${partBy})`;
           break;
         }
-        case 'LOOKUP':
-        case 'PREVIOUS_VALUE': {
+        case 'LOOKUP': {
           if (!rec.orderDimAlias) return { ok: false, reason: 'no order dim' };
           const offset = win.lookupOffset ?? -1;
           const fn = offset < 0 ? 'LAG' : (offset > 0 ? 'LEAD' : '');
@@ -2055,7 +2086,11 @@ export function convertTableauToSigma(
             partitionResolved.push(r);
           }
           if (!allP || partitionResolved.length === 0) {
-            warnings.push(`⚠ Window calc "${caption}" — no partition dims resolved on base; skipped`);
+            // No DM-safe SQL lowering possible — hand the validated chart-context
+            // mapping to the workbook layer instead of dropping the calc.
+            if (!_reportChartWindowPattern(caption, formula, 'SQL window lowering failed (no partition dims resolved on base)')) {
+              warnings.push(`⚠ Window calc "${caption}" — no partition dims resolved on base; skipped. Untranslated fragment: ${formula.trim().slice(0, 120)}`);
+            }
             continue;
           }
 
@@ -2076,7 +2111,9 @@ export function convertTableauToSigma(
           // Ensure column carries the user-facing caption as `name`
           const emitRes = _emitWindowOverClause(helperRes.rec, win, winAlias, innerAlias);
           if (!emitRes.ok) {
-            warnings.push(`⚠ Window calc "${caption}" → ${win.windowType}: ${emitRes.reason}; skipped`);
+            if (!_reportChartWindowPattern(caption, formula, `SQL window lowering failed (${win.windowType}: ${emitRes.reason})`)) {
+              warnings.push(`⚠ Window calc "${caption}" → ${win.windowType}: ${emitRes.reason}; skipped. Untranslated fragment: ${formula.trim().slice(0, 120)}`);
+            }
             // Pop placeholder column we may have added
             continue;
           }
@@ -2087,9 +2124,37 @@ export function convertTableauToSigma(
           continue;
         }
 
+        // Table-calc patterns the SQL lowering can't express (moving windows
+        // WINDOW_*(agg, -n, m), percent-of-total ratios, RANK_PERCENTILE) —
+        // WINPROBE-validated Sigma window formulas exist but are valid ONLY in
+        // chart/grouped-element context, so report them in workbookPatterns
+        // (never as DM columns). Untranslatable table calcs (WINDOW_MEDIAN/
+        // PERCENTILE/CORR/COVAR, PREVIOUS_VALUE, SIZE) are flagged loudly here.
+        if (_reportChartWindowPattern(caption, formula, 'no DM-safe SQL OVER lowering for this pattern')) continue;
+
         // Regular calculated field
         const sigmaFormula = tableauFormulaToSigma(formula, warnings);
         if (!sigmaFormula || sigmaFormula.startsWith('/*')) continue;
+
+        // Hard guard: chart-context-only window functions (or leftover raw
+        // table-calc tokens embedded in a larger expression) must NEVER land in
+        // a DM column/metric — they silently error there. Route to
+        // workbookPatterns / loud warning instead.
+        if (SIGMA_CHART_ONLY_WINDOW_RE.test(sigmaFormula) || TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula)) {
+          const clean = !TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula);
+          workbookPatterns.push({
+            kind: clean ? 'window' : 'unsupported', name: caption, source: formula.trim(),
+            ...(clean ? { formula: sigmaFormula } : {}),
+            requires: 'GROUPED workbook element (group by the chart/viz dimensions) — NOT valid as a DM calc column or metric',
+            note: clean
+              ? 'Expression contains chart-context-only window functions — place in a grouped workbook element; not emitted as a DM column (window functions silently error there).'
+              : `Table-calc fragment embedded in a larger expression — NOT fully translatable. Untranslated fragment: ${formula.trim().slice(0, 160)}`,
+          });
+          warnings.push(clean
+            ? `ℹ "${caption}" → ${sigmaFormula} — CHART/grouped-element context only; reported in result.workbookPatterns, not emitted as a DM column.`
+            : `⚠ "${caption}" embeds a table-calc fragment that could not be translated — NOT emitted as a DM column. Untranslated fragment: ${formula.trim().slice(0, 120)}`);
+          continue;
+        }
 
         // Row-level security: a calc that tests the viewer's identity/group
         // (USERNAME/ISMEMBEROF/USERATTRIBUTE/…). Emit a fail-closed RLS artifact —
@@ -2341,6 +2406,7 @@ export function convertTableauToSigma(
     model: sigmaModel,
     warnings,
     ...(security.length ? { security } : {}),
+    ...(workbookPatterns.length ? { workbookPatterns } : {}),
     stats: {
       datasources: datasources.length,
       elements: elements.length,

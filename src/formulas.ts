@@ -258,6 +258,162 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'SPLIT': 'SplitPart',
 };
 
+// ── Tableau table calcs → Sigma window functions (CHART context only) ───────
+// WINPROBE-validated mappings (live-proven 930/930 against warehouse window
+// functions). CONTEXT CAVEAT: every Sigma function emitted here
+// (Cumulative*/Moving*/Rank/RankDense/RankPercentile/PercentOfTotal/
+// RowNumber/Lag/Lead) is valid ONLY in chart / grouped-workbook-element
+// context. They silently error in data-model element calc columns and in
+// workbook master calc columns (feedback_sigma_window_functions.md), so the
+// DM converter must route them to result.workbookPatterns, never into a DM
+// column/metric. NEVER rewrite to *Over functions — SumOver/MaxOver/CountOver
+// resolve as 'Unknown function' in spec contexts.
+
+/** Sigma window functions that only resolve in chart/grouped-element context.
+ *  Any converted formula matching this must NOT be emitted as a DM calc
+ *  column or metric (GrandTotal is deliberately absent — it is DM-safe). */
+export const SIGMA_CHART_ONLY_WINDOW_RE =
+  /\b(?:Cumulative(?:Sum|Avg|Min|Max|Count)|Moving(?:Sum|Avg|Min|Max|Count|StdDev)|RankDense|RankPercentile|Rank|PercentOfTotal|RowNumber|Lag|Lead)\s*\(/;
+
+/** Raw Tableau table-calc tokens — used to detect table calcs embedded inside
+ *  larger expressions (which the anchored mapper can't claim) so they are
+ *  flagged loudly instead of leaking as silently-broken DM formulas.
+ *  Deliberately case-sensitive (Tableau table calcs are conventionally
+ *  uppercase) so converted Sigma output like Rank(...) never false-positives. */
+export const TABLEAU_TABLE_CALC_TOKEN_RE =
+  /\b(?:WINDOW_[A-Z]+|RUNNING_[A-Z]+|LOOKUP|PREVIOUS_VALUE|RANK(?:_[A-Z]+)?|INDEX|SIZE|TOTAL|FIRST|LAST)\s*\(/;
+
+const _TC_AGG_MAP: Record<string, string> = {
+  SUM: 'Sum', AVG: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count',
+  COUNTD: 'CountDistinct', MEDIAN: 'Median', STDEV: 'StdDev', VAR: 'Variance',
+};
+
+const _TC_COL = '(\\[[^\\]]+\\]|[A-Za-z_][A-Za-z0-9_]*)';
+const _TC_AGG = '(SUM|AVG|MIN|MAX|COUNT|COUNTD|MEDIAN|STDEV|VAR)';
+// groups: 1 = agg func, 2 = column ref
+const _TC_AGG_EXPR = `${_TC_AGG}\\s*\\(\\s*${_TC_COL}\\s*\\)`;
+
+/** Bracketed display-name column ref (same ALL_CAPS → Title Case rule as the
+ *  main formula converter's final pass). */
+function _tcCol(raw: string): string {
+  const name = raw.replace(/^\[|\]$/g, '');
+  if (/^[A-Z][A-Z0-9_]{2,}$/.test(name)) return '[' + sigmaDisplayName(name) + ']';
+  return '[' + name + ']';
+}
+
+function _tcAgg(aggFunc: string, colRaw: string): string {
+  const fn = _TC_AGG_MAP[aggFunc.toUpperCase()] || 'Sum';
+  return `${fn}(${_tcCol(colRaw)})`;
+}
+
+function _tcSameRef(a: string, b: string): boolean {
+  const norm = (s: string) => s.replace(/^\[|\]$/g, '').replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+  return norm(a) === norm(b);
+}
+
+export interface TableauWindowChartResult {
+  formula: string;   // ready-to-place Sigma formula — CHART/grouped-element context ONLY
+  kind: 'cumulative' | 'moving' | 'percent-of-total' | 'rank' | 'lag' | 'lead' | 'index';
+  verify?: boolean;  // semantics approximated — verify numbers vs Tableau
+  note?: string;
+}
+
+/** Returns the name of a Tableau table-calc function that has NO validated
+ *  Sigma equivalent (must be flagged loudly, never emitted), or null. */
+export function tableauWindowUntranslatable(formula: string): string | null {
+  const m = (formula || '').match(/\b(WINDOW_MEDIAN|WINDOW_PERCENTILE|WINDOW_CORR|WINDOW_COVARP?|WINDOW_VARP?|WINDOW_STDEVP|PREVIOUS_VALUE|SIZE)\s*\(/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+/**
+ * Map a complete Tableau table-calc formula to its validated Sigma
+ * chart-context window-function equivalent. Returns null when the formula is
+ * not a recognised (validated) table-calc pattern. Patterns are anchored —
+ * table calcs embedded inside larger expressions are NOT claimed (use
+ * TABLEAU_TABLE_CALC_TOKEN_RE to detect and flag those).
+ */
+export function tableauWindowToSigmaChart(formula: string): TableauWindowChartResult | null {
+  const f = (formula || '').trim();
+  if (!f || tableauWindowUntranslatable(f)) return null;
+  let m: RegExpMatchArray | null;
+
+  // AGG([x]) / WINDOW_SUM(AGG([x]))  →  PercentOfTotal(Agg([x]), "grand_total")
+  m = f.match(new RegExp(`^${_TC_AGG_EXPR}\\s*\\/\\s*WINDOW_SUM\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)$`, 'i'));
+  if (m && m[1].toUpperCase() === m[3].toUpperCase() && _tcSameRef(m[2], m[4])) {
+    return { formula: `PercentOfTotal(${_tcAgg(m[1], m[2])}, "grand_total")`, kind: 'percent-of-total' };
+  }
+
+  // RUNNING_SUM(AGG([x])) / TOTAL(AGG([x]))  (or / WINDOW_SUM(AGG([x])))
+  //   →  CumulativeSum(PercentOfTotal(Agg([x]), "grand_total"))
+  m = f.match(new RegExp(`^RUNNING_SUM\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)\\s*\\/\\s*(?:TOTAL|WINDOW_SUM)\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)$`, 'i'));
+  if (m && m[1].toUpperCase() === m[3].toUpperCase() && _tcSameRef(m[2], m[4])) {
+    return { formula: `CumulativeSum(PercentOfTotal(${_tcAgg(m[1], m[2])}, "grand_total"))`, kind: 'cumulative' };
+  }
+
+  // RUNNING_SUM/AVG/MAX/MIN/COUNT(AGG([x]))  →  Cumulative*(Agg([x]))
+  m = f.match(new RegExp(`^RUNNING_(SUM|AVG|MIN|MAX|COUNT)\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)$`, 'i'));
+  if (m) {
+    const fn = 'Cumulative' + m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+    return { formula: `${fn}(${_tcAgg(m[2], m[3])})`, kind: 'cumulative' };
+  }
+  // Bare-column form RUNNING_SUM([x]) — inner aggregate implied by the outer fn
+  m = f.match(new RegExp(`^RUNNING_(SUM|AVG|MIN|MAX|COUNT)\\s*\\(\\s*${_TC_COL}\\s*\\)$`, 'i'));
+  if (m) {
+    const fn = 'Cumulative' + m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+    return { formula: `${fn}(${_tcAgg(m[1], m[2])})`, kind: 'cumulative' };
+  }
+
+  // WINDOW_SUM/AVG/MIN/MAX/STDEV(AGG([x]), -n, 0)  →  Moving*(Agg([x]), n)
+  // WINDOW_*(AGG([x]), -n, m)                      →  Moving*(Agg([x]), n, m)
+  m = f.match(new RegExp(`^WINDOW_(SUM|AVG|MIN|MAX|STDEV)\\s*\\(\\s*${_TC_AGG_EXPR}\\s*,\\s*(-?\\d+)\\s*,\\s*(-?\\d+)\\s*\\)$`, 'i'));
+  if (m) {
+    const back = parseInt(m[4], 10);
+    const fwd = parseInt(m[5], 10);
+    if (back <= 0 && fwd >= 0) {
+      const movMap: Record<string, string> = {
+        SUM: 'MovingSum', AVG: 'MovingAvg', MIN: 'MovingMin', MAX: 'MovingMax',
+        STDEV: 'MovingStdDev',
+      };
+      const fn = movMap[m[1].toUpperCase()];
+      const args = fwd === 0 ? `${-back}` : `${-back}, ${fwd}`;
+      return { formula: `${fn}(${_tcAgg(m[2], m[3])}, ${args})`, kind: 'moving' };
+    }
+    return null; // offsets that don't span the current row — not validated
+  }
+
+  // RANK/RANK_DENSE/RANK_PERCENTILE(AGG([x])[, 'asc'|'desc'])
+  //   →  Rank/RankDense/RankPercentile(Agg([x]), "desc")
+  m = f.match(new RegExp(`^(RANK|RANK_DENSE|RANK_PERCENTILE|RANK_UNIQUE)\\s*\\(\\s*${_TC_AGG_EXPR}\\s*(?:,\\s*['"]?(asc|desc)['"]?\\s*)?\\)$`, 'i'));
+  if (m) {
+    const fnMap: Record<string, string> = {
+      RANK: 'Rank', RANK_DENSE: 'RankDense', RANK_PERCENTILE: 'RankPercentile', RANK_UNIQUE: 'Rank',
+    };
+    const fn = fnMap[m[1].toUpperCase()];
+    const dir = (m[4] || 'desc').toLowerCase();
+    const unique = m[1].toUpperCase() === 'RANK_UNIQUE';
+    return {
+      formula: `${fn}(${_tcAgg(m[2], m[3])}, "${dir}")`, kind: 'rank',
+      ...(unique ? { verify: true, note: 'RANK_UNIQUE breaks ties arbitrarily; Sigma Rank assigns equal ranks to ties — verify against Tableau.' } : {}),
+    };
+  }
+
+  // INDEX() → RowNumber()
+  if (/^INDEX\s*\(\s*\)$/i.test(f)) return { formula: 'RowNumber()', kind: 'index' };
+
+  // LOOKUP(AGG([x]), -n) → Lag(Agg([x]), n);  LOOKUP(AGG([x]), n) → Lead(Agg([x]), n)
+  m = f.match(new RegExp(`^LOOKUP\\s*\\(\\s*${_TC_AGG_EXPR}\\s*,\\s*(-?\\d+)\\s*\\)$`, 'i'));
+  if (m) {
+    const off = parseInt(m[3], 10);
+    const agg = _tcAgg(m[1], m[2]);
+    if (off === 0) return { formula: agg, kind: 'lag', note: 'LOOKUP(expr, 0) is the identity — no window function needed.' };
+    return off < 0
+      ? { formula: `Lag(${agg}, ${-off})`, kind: 'lag' }
+      : { formula: `Lead(${agg}, ${off})`, kind: 'lead' };
+  }
+
+  return null;
+}
+
 function tableauIfToSigma(f: string): string {
   return f.replace(/\bIF\b([\s\S]+?)\bEND\b/gi, (match) => {
     let inner = match.replace(/^\s*IF\s*/i, '').replace(/\s*END\s*$/i, '');
@@ -312,45 +468,36 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     if (warnings) warnings.push('⚠ LOD expression not converted: ' + f.slice(0, 60));
     return '/* LOD: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
-  // Table calcs — convert common patterns to Sigma window functions
-  if (/^(WINDOW_|RUNNING_|FIRST\(|LAST\(|INDEX\(|RANK\b|RANK_|LOOKUP\(|PREVIOUS_VALUE\()/i.test(f)) {
-    // RUNNING_SUM(SUM([x])) or RUNNING_SUM([x]) → CumulativeSum([x])
-    let tcMatch = f.match(/^RUNNING_SUM\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'CumulativeSum(' + tcMatch[1] + ')';
-
-    // RUNNING_AVG(SUM([x])) → CumulativeAvg([x])
-    tcMatch = f.match(/^RUNNING_AVG\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'CumulativeAvg(' + tcMatch[1] + ')';
-
-    // RUNNING_MIN/MAX
-    tcMatch = f.match(/^RUNNING_(MIN|MAX)\s*\(\s*(?:(?:SUM|MIN|MAX)\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'Cumulative' + tcMatch[1].charAt(0) + tcMatch[1].slice(1).toLowerCase() + '(' + tcMatch[2] + ')';
-
-    // RANK(SUM([x])) or RANK([x]) → Rank([x])
-    tcMatch = f.match(/^RANK\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'Rank(' + tcMatch[1] + ')';
-
-    // RANK_DENSE → DenseRank
-    tcMatch = f.match(/^RANK_DENSE\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'DenseRank(' + tcMatch[1] + ')';
-
-    // RANK_UNIQUE → Rank
-    tcMatch = f.match(/^RANK_UNIQUE\s*\(\s*(?:SUM\s*\(\s*)?(\[[^\]]+\])\s*\)?\s*\)/i);
-    if (tcMatch) return 'Rank(' + tcMatch[1] + ')';
-
-    // INDEX() → RowNumber()
-    if (/^INDEX\s*\(\s*\)/i.test(f)) return 'RowNumber()';
-
-    // WINDOW_SUM(SUM([x])) → GrandTotal(Sum([x]))
-    tcMatch = f.match(/^WINDOW_SUM\s*\(\s*(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\[[^\]]+\])\s*\)\s*\)/i);
-    if (tcMatch) {
-      const aggMap: Record<string, string> = { SUM: 'Sum', COUNT: 'Count', AVG: 'Avg', MIN: 'Min', MAX: 'Max' };
-      return 'GrandTotal(' + (aggMap[tcMatch[1].toUpperCase()] || tcMatch[1]) + '(' + tcMatch[2] + '))';
+  // Table calcs — WINPROBE-validated mappings to Sigma window functions.
+  // CONTEXT CAVEAT: the emitted Sigma window functions are valid in CHART /
+  // grouped-workbook-element context ONLY — they silently error in DM element
+  // calc columns and workbook master calc columns. Never emit *Over functions
+  // (SumOver/MaxOver/CountOver = 'Unknown function' in spec contexts).
+  {
+    const winChart = tableauWindowToSigmaChart(f);
+    if (winChart) {
+      if (warnings) warnings.push(
+        `ℹ Table calc → ${winChart.formula} — CHART/grouped-element context ONLY: place in a grouped workbook element (group by the viz dimensions); window functions silently error in data-model calc columns and workbook master calc columns.`
+        + (winChart.note ? ' ' + winChart.note : ''));
+      return winChart.formula;
     }
-
-    // Couldn't parse — fall back to comment
-    if (warnings) warnings.push('⚠ Table calculation not converted: ' + f.slice(0, 60));
-    return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+    const untrans = tableauWindowUntranslatable(f);
+    if (untrans) {
+      if (warnings) warnings.push(`⚠ Table calculation NOT converted — ${untrans}() has no Sigma equivalent. Untranslated fragment: ${f.slice(0, 120)}`);
+      return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+    }
+    if (/^(WINDOW_|RUNNING_|FIRST\(|LAST\(|INDEX\(|RANK\b|RANK_|LOOKUP\(|TOTAL\s*\()/i.test(f)) {
+      // WINDOW_SUM(AGG([x])) with no offsets → GrandTotal(Agg([x])) — DM-safe
+      // (exact when the chart groups by a single dimension set).
+      const gt = f.match(/^WINDOW_SUM\s*\(\s*(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\[[^\]]+\])\s*\)\s*\)$/i);
+      if (gt) {
+        const aggMap: Record<string, string> = { SUM: 'Sum', COUNT: 'Count', AVG: 'Avg', MIN: 'Min', MAX: 'Max' };
+        return 'GrandTotal(' + (aggMap[gt[1].toUpperCase()] || gt[1]) + '(' + gt[2] + '))';
+      }
+      // Anchored table calc we couldn't map — flag loudly, never emit silently.
+      if (warnings) warnings.push(`⚠ Table calculation not converted. Untranslated fragment: ${f.slice(0, 120)}`);
+      return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+    }
   }
 
   // ZN([x]) → Coalesce([x], 0)
@@ -437,6 +584,13 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
     return '[' + sigmaDisplayName(colName) + ']';
   });
+
+  // Loud (never silent) flag for table-calc tokens embedded inside larger
+  // expressions that the anchored mapper could not claim — the leftover token
+  // would otherwise pass through as a silently-broken formula.
+  if (warnings && TABLEAU_TABLE_CALC_TOKEN_RE.test(f)) {
+    warnings.push(`⚠ Table-calc function embedded in a larger expression — NOT translated in place. Untranslated fragment: ${f.slice(0, 120)}`);
+  }
 
   return f.trim();
 }
