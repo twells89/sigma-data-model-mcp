@@ -35,6 +35,36 @@ export function sigmaInodeId(identifier: string): string {
 }
 
 /**
+ * Warehouse-physical identifier for a model column name (beads-sigma-f5kp).
+ *
+ * The emitted column id's physical segment and the [TABLE/Display Name] formula
+ * ref must agree: Sigma derives the display name FROM the physical column, so
+ * the physical name we emit must be one whose Sigma display equals
+ * sigmaDisplayName(name). Plain toUpperCase() breaks camelCase names —
+ * "LocationID" → LOCATIONID displays as "Locationid", but the ref says
+ * "Location Id" → "dependency not found" at POST.
+ *
+ * Already-canonical warehouse names (ALL_CAPS_WITH_DIGITS, e.g. CY_Q1_REVENUE)
+ * pass through VERBATIM — they are real warehouse columns and Sigma's display
+ * derivation already round-trips them. Everything else (camelCase, spaces,
+ * mixed case) is normalized with the SAME boundary splits as sigmaDisplayName,
+ * then upper-snaked: LocationID → LOCATION_ID ("Location Id" ✓), "City Name" →
+ * CITY_NAME ("City Name" ✓), Sum_GrossMarginAmount → SUM_GROSS_MARGIN_AMOUNT
+ * ("Sum Gross Margin Amount" ✓).
+ */
+export function sigmaPhysicalName(s: string): string {
+  const r = (s || '').trim();
+  if (/^[A-Z0-9_]+$/.test(r)) return r; // real warehouse-style name — keep verbatim
+  const normalized = r
+    .replace(/[^A-Za-z0-9_\s]/g, ' ')           // identifier-safe
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/([A-Za-z])([0-9])/g, '$1_$2')
+    .replace(/([0-9])([A-Za-z])/g, '$1_$2');
+  return normalized.toUpperCase().split(/[_\s]+/).filter(Boolean).join('_');
+}
+
+/**
  * SNAKE_CASE or camelCase → "Title Case" display name.
  *
  * Matches Sigma's OWN derivation rule for warehouse column names (verified
