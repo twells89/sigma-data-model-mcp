@@ -286,11 +286,36 @@ export interface SecurityRule {
   note: string;                   // provisioning guidance / caveats
 }
 
+/**
+ * A source-tool expression whose faithful Sigma equivalent is a WORKBOOK
+ * construct, not a data-model metric/calc column — mirroring the PBI
+ * time-intel handoff (DateLookback/CumulativeSum grouped elements). Window
+ * functions (Rank/RankDense/Lag/Lead) silently error in DM calc columns and
+ * in workbook master calc columns; they only work in date/dim-GROUPED
+ * workbook elements (feedback_sigma_window_functions.md; live-verified
+ * 2026-06-11: grouped workbook element Rank/RankDense/Lag/Lead == warehouse
+ * RANK/DENSE_RANK/LAG/LEAD exactly). The converter reports these — ready-to-
+ * place formula included where translatable — and the migration skill's
+ * workbook builder places them in a grouped element on the chart's dimension.
+ */
+export interface WorkbookPattern {
+  kind: 'rank' | 'lag' | 'lead' | 'first-sorted-value' | 'unsupported';
+  name: string;            // source measure/dimension title
+  source: string;          // original source-tool expression
+  formula?: string;        // ready-to-use Sigma formula (grouped-element context)
+  requires?: string;       // placement requirement (grouping/sort context)
+  elementId?: string;      // suggested source element in the returned model
+  elementName?: string;
+  verify?: boolean;        // semantics approximated — verify numbers vs source
+  note: string;
+}
+
 export interface ConversionResult {
   model: SigmaDataModel;
   warnings: string[];
   stats: Record<string, number>;
   security?: SecurityRule[];      // detected RLS/CLS — reported, NOT injected into `model`
+  workbookPatterns?: WorkbookPattern[];  // window/inter-record calcs — reported for the workbook builder, NOT injected
 }
 
 export interface ElementResult {
