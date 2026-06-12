@@ -424,9 +424,15 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
     for (const col of (srcEl.columns || [])) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
+      // CALC columns carry an explicit `name` and an expression formula — they
+      // are first-class columns of the base element and pass through by name
+      // (skipping them used to break visuals bound to calc columns through the
+      // derived view, e.g. the Retail Analysis Sample's Store Type).
+      let dispName: string | undefined;
       const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
-      if (!fm) continue; // skip calc cols
-      const dispName = fm[2];
+      if (fm) dispName = fm[2];
+      else if ((col as any).name) dispName = String((col as any).name);
+      if (!dispName) continue;
       // A "/" in the display name breaks Sigma's slash-delimited bracket ref — skip.
       if (dispName.includes('/')) continue;
       const cId = sigmaShortId();
@@ -445,14 +451,21 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       for (const col of (tgtEl.columns || [])) {
         if (tgtKeyIds.has(col.id)) continue;
         if (!col.formula || col.formula.startsWith('/*')) continue;
+        let dispName: string;
         const fm = col.formula.match(/^\[([^\]]+)\]$/);
-        if (!fm) continue;
-        const inner = fm[1];
-        // The display name is everything after the FIRST slash (the table/element
-        // prefix). Use indexOf, not lastIndexOf — a display name may itself contain a
-        // slash (e.g. Tableau caption "Product Key/Name").
-        const s = inner.indexOf('/');
-        const dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        if (fm) {
+          const inner = fm[1];
+          // The display name is everything after the FIRST slash (the table/element
+          // prefix). Use indexOf, not lastIndexOf — a display name may itself contain a
+          // slash (e.g. Tableau caption "Product Key/Name").
+          const s = inner.indexOf('/');
+          dispName = s >= 0 ? inner.slice(s + 1) : inner;
+        } else if ((col as any).name) {
+          // CALC column on the relationship target — referenceable by name.
+          dispName = String((col as any).name);
+        } else {
+          continue;
+        }
         // A display name containing a "/" cannot be referenced via Sigma's
         // slash-delimited bracket syntax ([Base/Rel/Field] would over-segment). Such a
         // column stays accessible on its own dimension element; just don't surface it as
