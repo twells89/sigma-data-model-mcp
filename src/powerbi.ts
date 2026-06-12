@@ -1040,6 +1040,15 @@ export function pbiDaxToSigma(
   // the quoted prefix) gets unwrapped here.
   f = f.replace(/\bRELATED\s*\(\s*(\[[^\]]+\])\s*\)/gi, '$1');
 
+  // DAX `&` auto-coerces operands to text; Sigma's `&` does NOT ("Argument 1
+  // invalid for function '&'. Expected text; received number." at QUERY time —
+  // the spec posts clean and the column errors silently later). Wrap bare
+  // column-ref operands of a concat in Text(): identity for text columns,
+  // the missing cast for numeric ones (e.g. [MonthID]&"01" — the MS Retail
+  // Analysis Sample's Time join key).
+  f = f.replace(/(\[[^\]]+\])(\s*&)/g, 'Text($1)$2');
+  f = f.replace(/(&\s*)(\[[^\]]+\])/g, '$1Text($2)');
+
   return f.trim();
 }
 

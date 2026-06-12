@@ -136,3 +136,13 @@ test('f5kp end-to-end: emitted physical id matches its own display ref', () => {
   const locId = store.columns.find((c: any) => String(c.id).endsWith('/LOCATION_ID'));
   assert.ok(locId, `LocationID should emit physical LOCATION_ID (ids: ${store.columns.map((c: any) => c.id).join(', ')})`);
 });
+
+test('concat coercion: DAX & wraps column-ref operands in Text()', () => {
+  const out = pbiDaxToSigma('Sales[MonthID]&"01"', [], 'ReportingPeriodID');
+  assert.equal(out, 'Text([MonthID]) & "01"'.replace(' & ', '&'), `got: ${out}`);
+});
+
+test('concat coercion: chained concat coerces every column operand', () => {
+  const out = pbiDaxToSigma('[City Name] & ", "&[Territory]', [], 'City');
+  assert.match(out!, /^Text\(\[City Name\]\) & ", "&Text\(\[Territory\]\)$/, `got: ${out}`);
+});
