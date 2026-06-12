@@ -2405,6 +2405,40 @@ export function convertPowerBIToSigma(
       continue;
     }
 
+    // Mixed-type relationship keys: PBI's engine coerces (the MS Retail
+    // Analysis Sample joins a STRING calc column to an int64 key); Sigma's
+    // lookup errors at QUERY time ("Argument 3 expected String, found
+    // Integer"). When one side is a CALCULATED column whose formula we emit,
+    // coerce that formula to the other side's type family.
+    {
+      const typeOf = (tbl: string, col: string): string => {
+        const t = (model.tables || []).find((x: any) => x.name === tbl);
+        const c = t && (t.columns || []).find((x: any) => x.name === col);
+        return c ? String(c.dataType || '') : '';
+      };
+      const isNum = (d: string) => ['int64', 'double', 'decimal'].includes(d);
+      const fromType = typeOf(fromTable, fromCol), toType = typeOf(toTable, toCol);
+      if (fromType && toType && isNum(fromType) !== isNum(toType)) {
+        const fixSide = (tbl: string, col: string, colId: string, wrap: 'Number' | 'Text'): boolean => {
+          const t = (model.tables || []).find((x: any) => x.name === tbl);
+          const c = t && (t.columns || []).find((x: any) => x.name === col);
+          if (!c || c.type !== 'calculated') return false;
+          const el = elements.find(e => e.id === tableIdMap[tbl]);
+          const ec: any = el && (el.columns || []).find((x: any) => x.id === colId);
+          if (!ec || typeof ec.formula !== 'string' || ec.formula.startsWith(`${wrap}(`)) return false;
+          ec.formula = `${wrap}(${ec.formula})`;
+          warnings.push(`ℹ Relationship ${fromTable}[${fromCol}] → ${toTable}[${toCol}]: mixed-type keys (${fromType} vs ${toType}) — coerced calc column "${col}" with ${wrap}() to match.`);
+          return true;
+        };
+        const fixed = isNum(toType)
+          ? (fixSide(fromTable, fromCol, fromColId, 'Number') || fixSide(toTable, toCol, toColId, 'Text'))
+          : (fixSide(toTable, toCol, toColId, 'Number') || fixSide(fromTable, fromCol, fromColId, 'Text'));
+        if (!fixed) {
+          warnings.push(`⚠ Relationship ${fromTable}[${fromCol}] → ${toTable}[${toCol}]: mixed-type keys (${fromType} vs ${toType}) on physical columns — the Sigma join will error at query time; align the warehouse column types.`);
+        }
+      }
+    }
+
     const fromElement = elements.find(e => e.id === fromElId);
     if (fromElement) {
       if (!fromElement.relationships) fromElement.relationships = [];
