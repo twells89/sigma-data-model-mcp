@@ -56,8 +56,32 @@ app.get('/', (_req: Request, res: Response) => {
 // This is ideal because all our tools are pure functions: YAML in → JSON out.
 // No user state, no auth, no side effects.
 
+// One structured line per tool invocation so hosted request logs can answer
+// "which converter is being used, by whom". Logs metadata ONLY — never the
+// tool arguments, which may contain customer model content.
+function logToolCalls(req: Request): void {
+  const messages = Array.isArray(req.body) ? req.body : [req.body];
+  for (const msg of messages) {
+    if (!msg || msg.method !== 'tools/call' || !msg.params?.name) continue;
+    const argBytes = msg.params.arguments
+      ? Buffer.byteLength(JSON.stringify(msg.params.arguments), 'utf8')
+      : 0;
+    console.log(
+      'TOOLCALL ' +
+        JSON.stringify({
+          tool: msg.params.name,
+          ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '',
+          ua: req.headers['user-agent'] || '',
+          argBytes,
+          ts: new Date().toISOString(),
+        })
+    );
+  }
+}
+
 async function handleMcp(req: Request, res: Response): Promise<void> {
   try {
+    logToolCalls(req);
     const server = createSigmaServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless — no sessions
