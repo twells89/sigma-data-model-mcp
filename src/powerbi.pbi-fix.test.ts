@@ -211,7 +211,7 @@ test('9l2 (a): stat-iterator DAX maps to correct Sigma function names', () => {
   assert.equal(pbiDaxToSigma('VARX.P(T, T[Sal])', null, 'x'), 'VariancePop([Sal])');
   assert.equal(pbiDaxToSigma('GEOMEANX(T, T[Sal])', null, 'x'), 'Exp(Avg(Ln([Sal])))');
   assert.equal(pbiDaxToSigma('DISTINCTCOUNTNOBLANK(T[Role])', null, 'x'), 'CountDistinct([Role])');
-  assert.equal(pbiDaxToSigma('COMBINEVALUES(" | ", T[Dept], T[Role])', null, 'x'), '[Dept] & " | " & [Role]');
+  assert.equal(pbiDaxToSigma('COMBINEVALUES(" | ", T[Dept], T[Role])', null, 'x'), 'Text([Dept]) & " | " & Text([Role])');
   assert.equal(
     pbiDaxToSigma('IF(HASONEVALUE(T[Dept]), SELECTEDVALUE(T[Dept]), "All")', null, 'x'),
     'If(CountDistinct([Dept]) = 1, Min([Dept]), "All")');
