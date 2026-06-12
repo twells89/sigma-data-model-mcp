@@ -12,7 +12,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { pbiDaxToSigma, convertPowerBIToSigma, hasBareWindowFn } from './powerbi.js';
 
 const COMP_BIM = '/tmp/pbi-migrate/workforce-comp-distribution-untested-dax/model/model.bim';
@@ -52,7 +52,7 @@ test('jzd8 false-positive: a string literal containing "Rank (" is not dropped',
   assert.equal(hasBareWindowFn('RankDense([Salary], "desc", [Dept])'), true);
 });
 
-test('jzd8: window calc column never lands as a base-table column formula', () => {
+test('jzd8: window calc column never lands as a base-table column formula', { skip: !existsSync(COMP_BIM) && 'fixture not on this machine' }, () => {
   const model = JSON.parse(readFileSync(COMP_BIM, 'utf8'));
   const { model: dm, warnings } = convertPowerBIToSigma(model, {
     connectionId: 'c', database: 'CSA', schema: 'TJ',
@@ -72,7 +72,7 @@ test('jzd8: window calc column never lands as a base-table column formula', () =
   assert.ok(hasHelper || warned, 'expected a sql helper element or a drop warning for the rank column');
 });
 
-test('qx16 end-to-end: Comp model emits a Mgmt Headcount metric (not dropped)', () => {
+test('qx16 end-to-end: Comp model emits a Mgmt Headcount metric (not dropped)', { skip: !existsSync(COMP_BIM) && 'fixture not on this machine' }, () => {
   const model = JSON.parse(readFileSync(COMP_BIM, 'utf8'));
   const { model: dm } = convertPowerBIToSigma(model, {
     connectionId: 'c', database: 'CSA', schema: 'TJ',
@@ -86,7 +86,7 @@ test('qx16 end-to-end: Comp model emits a Mgmt Headcount metric (not dropped)', 
   assert.match(String(mgmt.formula), /Find\(\[Role\]/, `expected SEARCH→Find on [Role], got: ${mgmt.formula}`);
 });
 
-test('hs5h end-to-end: Salary vs Company Median is parenthesized when present', () => {
+test('hs5h end-to-end: Salary vs Company Median is parenthesized when present', { skip: !existsSync(COMP_BIM) && 'fixture not on this machine' }, () => {
   const model = JSON.parse(readFileSync(COMP_BIM, 'utf8'));
   const { model: dm } = convertPowerBIToSigma(model, {
     connectionId: 'c', database: 'CSA', schema: 'TJ',
