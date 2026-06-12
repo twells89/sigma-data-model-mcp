@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-5d9k — ThoughtSpot window functions (cumulative_sum, moving_average, rank_desc, lag) must NOT land as DM calc cols/metrics (silent error type). Each becomes a flagged Null placeholder on the host + an auto-built grouped child element carrying the Sigma window calc (CumulativeSum/MovingAvg/Rank/Lag). Cross-element dim (rank by CUSTOMER_DIM.REGION) groups on the derived join view. Embedded usage (cumulative_sum(...)/100) degrades flag-only. `unique count` maps to CountDistinct.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": { "minElements": 7, "minRelationships": 1, "noErrorColumns": true }
+}
