@@ -323,7 +323,7 @@ export function convertCubeToSigma(
       // Parse sql: ${CUBE}.fk = ${OtherCube.pk}  (or full match in either direction)
       let srcColId: string | null = null;
       let tgtColId: string | null = null;
-      const m = join.sql && join.sql.match(/\$\{(\w+)\}?\.?(\w+)?\s*=\s*\$\{(\w+)\}?\.?(\w+)?/);
+      const m = join.sql && join.sql.match(/\$?\{(\w+)\}?\.?(\w+)?\s*=\s*\$?\{(\w+)\}?\.?(\w+)?/);
       // Full pattern: ${CUBE}.col1 = ${OtherCube.col2} OR ${CUBE}.col1 = ${OtherCube}.col2
       if (join.sql) {
         const refs = parseJoinSqlRefs(join.sql, cube.name, join.name);
@@ -734,8 +734,8 @@ function ensureFilterColumns(
 ): void {
   if (!sql) return;
   const cols = new Set<string>();
-  for (const m of sql.matchAll(/\$\{CUBE\}\.(\w+)/g))    cols.add(m[1].toUpperCase());
-  for (const m of sql.matchAll(/\$\{CUBE\.(\w+)\}/g))    cols.add(m[1].toUpperCase());
+  for (const m of sql.matchAll(/\$?\{CUBE\}\.(\w+)/g))    cols.add(m[1].toUpperCase());
+  for (const m of sql.matchAll(/\$?\{CUBE\.(\w+)\}/g))    cols.add(m[1].toUpperCase());
   for (const col of cols) {
     if (colIdMap[col]) continue;
     const formula = _isCustomSql
@@ -778,8 +778,8 @@ const CUBE_FUNC_MAP: Record<string, string> = {
 function isSimpleColumnRef(sql: string | undefined, _cubeName: string): boolean {
   if (!sql) return false;
   const s = sql.trim();
-  if (/^\$\{CUBE\}\.\w+$/.test(s)) return true;
-  if (/^\$\{CUBE\.\w+\}$/.test(s)) return true;
+  if (/^\$?\{CUBE\}\.\w+$/.test(s)) return true;
+  if (/^\$?\{CUBE\.\w+\}$/.test(s)) return true;
   if (/^\w+$/.test(s)) return true;
   return false;
 }
@@ -787,9 +787,9 @@ function isSimpleColumnRef(sql: string | undefined, _cubeName: string): boolean 
 function extractColumnName(sql: string | undefined, _cubeName: string): string | null {
   if (!sql) return null;
   const s = sql.trim();
-  let m = s.match(/^\$\{CUBE\}\.(\w+)$/);
+  let m = s.match(/^\$?\{CUBE\}\.(\w+)$/);
   if (m) return m[1];
-  m = s.match(/^\$\{CUBE\.(\w+)\}$/);
+  m = s.match(/^\$?\{CUBE\.(\w+)\}$/);
   if (m) return m[1];
   m = s.match(/^(\w+)$/);
   if (m) return m[1];
@@ -811,24 +811,24 @@ function translateCubeFormula(
   let expr = sql.trim();
 
   // 1. ${CUBE}.col → table-qualified ref
-  expr = expr.replace(/\$\{CUBE\}\.(\w+)/g, (_, col) =>
+  expr = expr.replace(/\$?\{CUBE\}\.(\w+)/g, (_, col) =>
     isCustomSql ? `[${sigmaDisplayName(col)}]` : `[${tableName}/${sigmaDisplayName(col)}]`
   );
   // 1b. ${CUBE.col} (alternate inline form)
-  expr = expr.replace(/\$\{CUBE\.(\w+)\}/g, (_, col) =>
+  expr = expr.replace(/\$?\{CUBE\.(\w+)\}/g, (_, col) =>
     isCustomSql ? `[${sigmaDisplayName(col)}]` : `[${tableName}/${sigmaDisplayName(col)}]`
   );
   // 2. ${OtherCube.field} or ${OtherCube}.field → linked-column placeholder.
   //    For dim/measure context, calc-column formulas can't easily reach across joins, so emit
   //    the relative form [Field] and rely on Sigma's display-name resolution at the view level.
-  expr = expr.replace(/\$\{(\w+)\.(\w+)\}/g, (_, _other, field) =>
+  expr = expr.replace(/\$?\{(\w+)\.(\w+)\}/g, (_, _other, field) =>
     `[${sigmaDisplayName(field)}]`
   );
-  expr = expr.replace(/\$\{(\w+)\}\.(\w+)/g, (_, _other, field) =>
+  expr = expr.replace(/\$?\{(\w+)\}\.(\w+)/g, (_, _other, field) =>
     `[${sigmaDisplayName(field)}]`
   );
   // 3. ${field_name} (intra-cube measure ref) → [Display Field]
-  expr = expr.replace(/\$\{(\w+)\}/g, (_, field) =>
+  expr = expr.replace(/\$?\{(\w+)\}/g, (_, field) =>
     `[${sigmaDisplayName(field)}]`
   );
 
@@ -878,10 +878,10 @@ function translateCubeSql(sql: string, cubeName: string, _isCustomSql: boolean):
   // For Custom SQL element source, we strip Cube template refs to produce plain SQL.
   // ${CUBE} → cubeName alias (so user can adjust); ${OtherCube} also normalized.
   let s = sql;
-  s = s.replace(/\$\{CUBE\}/g, cubeName);
-  s = s.replace(/\$\{CUBE\.(\w+)\}/g, `${cubeName}.$1`);
-  s = s.replace(/\$\{(\w+)\.(\w+)\}/g, '$1.$2');
-  s = s.replace(/\$\{(\w+)\}/g, '$1');
+  s = s.replace(/\$?\{CUBE\}/g, cubeName);
+  s = s.replace(/\$?\{CUBE\.(\w+)\}/g, `${cubeName}.$1`);
+  s = s.replace(/\$?\{(\w+)\.(\w+)\}/g, '$1.$2');
+  s = s.replace(/\$?\{(\w+)\}/g, '$1');
   return s;
 }
 
@@ -895,11 +895,11 @@ function translateCubeMeasureExpr(
   _cube: CubeDef,
 ): string | null {
   let expr = sql.trim();
-  expr = expr.replace(/\$\{CUBE\}\.(\w+)/g, (_, col) => `[${sigmaDisplayName(col)}]`);
-  expr = expr.replace(/\$\{CUBE\.(\w+)\}/g, (_, col) => `[${sigmaDisplayName(col)}]`);
-  expr = expr.replace(/\$\{(\w+)\.(\w+)\}/g, (_, _other, field) => `[${sigmaDisplayName(field)}]`);
-  expr = expr.replace(/\$\{(\w+)\}\.(\w+)/g, (_, _other, field) => `[${sigmaDisplayName(field)}]`);
-  expr = expr.replace(/\$\{(\w+)\}/g, (_, m) => `[${sigmaDisplayName(m)}]`);
+  expr = expr.replace(/\$?\{CUBE\}\.(\w+)/g, (_, col) => `[${sigmaDisplayName(col)}]`);
+  expr = expr.replace(/\$?\{CUBE\.(\w+)\}/g, (_, col) => `[${sigmaDisplayName(col)}]`);
+  expr = expr.replace(/\$?\{(\w+)\.(\w+)\}/g, (_, _other, field) => `[${sigmaDisplayName(field)}]`);
+  expr = expr.replace(/\$?\{(\w+)\}\.(\w+)/g, (_, _other, field) => `[${sigmaDisplayName(field)}]`);
+  expr = expr.replace(/\$?\{(\w+)\}/g, (_, m) => `[${sigmaDisplayName(m)}]`);
   expr = expr.replace(/'([^']*)'/g, '"$1"');
   expr = sqlCaseToIf(expr);
   expr = expr.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g, (match, fn) =>
@@ -1025,7 +1025,7 @@ function parseJoinSqlRefs(
   //   ${CUBE}.col          → cube=CUBE col=col
   //   ${name.col}          → cube=name col=col
   //   ${name}.col          → cube=name col=col
-  const refPattern = /\$\{(\w+)(?:\.(\w+))?\}(?:\.(\w+))?/g;
+  const refPattern = /\$?\{(\w+)(?:\.(\w+))?\}(?:\.(\w+))?/g;
   const refs: { cube: string; col: string }[] = [];
   let m: RegExpExecArray | null;
   while ((m = refPattern.exec(sql)) !== null) {
