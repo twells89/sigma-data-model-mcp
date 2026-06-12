@@ -164,3 +164,27 @@ test('declared-type coercion: int64 calc column with text concat wraps in Number
   assert.ok(rp, 'calc column emitted');
   assert.match(String(rp.formula), /^Number\(/, `expected Number() wrap, got: ${rp.formula}`);
 });
+
+test('relationship key coercion: string calc key joining int64 key gets Number() wrap', () => {
+  const bim = {
+    model: {
+      tables: [
+        { name: 'Sales',
+          columns: [
+            { name: 'MonthID', dataType: 'int64', sourceColumn: 'MonthID' },
+            { name: 'ReportingPeriodID', dataType: 'string', type: 'calculated', expression: '[MonthID]&"01"', isDataTypeInferred: true },
+          ],
+          partitions: [{ name: 'Sales', source: { type: 'query', query: 'SELECT * FROM [Sales]' } }] },
+        { name: 'Time',
+          columns: [{ name: 'ReportingPeriodID', dataType: 'int64', sourceColumn: 'ReportingPeriodID' }],
+          partitions: [{ name: 'Time', source: { type: 'query', query: 'SELECT * FROM [Time]' } }] },
+      ],
+      relationships: [{ name: 'r1', fromTable: 'Sales', fromColumn: 'ReportingPeriodID', toTable: 'Time', toColumn: 'ReportingPeriodID' }],
+    },
+  };
+  const { model: dm, warnings } = convertPowerBIToSigma(bim as any, { connectionId: 'c', database: 'CSA', schema: 'TJ' }) as any;
+  const sales = dm.pages[0].elements.find((e: any) => e.name === 'SALES');
+  const rp = sales.columns.find((c: any) => c.name === 'ReportingPeriodID');
+  assert.match(String(rp.formula), /^Number\(/, `expected Number() wrap on join key, got: ${rp.formula}`);
+  assert.ok((warnings as string[]).some(w => w.includes('mixed-type keys')), 'should warn-inform about the coercion');
+});
