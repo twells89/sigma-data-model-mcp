@@ -2220,6 +2220,14 @@ export function convertPowerBIToSigma(
         const colId = sigmaShortId();
         tableColMap[tableName][c.name] = colId;
         pbiToSigmaName[c.name] = c.name;
+        // Honor the calc column's DECLARED type: DAX coerces a concat result
+        // back to the declared numeric type ([MonthID]&"01" declared int64);
+        // Sigma keeps it text, which then breaks any RELATIONSHIP keyed on the
+        // column ("(lookup) Argument 3 expected String, found Integer"). Wrap
+        // text-producing formulas in Number() when the model says numeric.
+        if (['int64', 'double', 'decimal'].includes(String(c.dataType)) && /&|^\s*(Text|Concat|Format)\s*\(/i.test(sigmaFormula)) {
+          sigmaFormula = `Number(${sigmaFormula})`;
+        }
         const _calcFmt = inferSigmaFormat(sigmaFormula, c.name, (c as any).formatString);
         const _calcCol: any = { id: colId, formula: sigmaFormula, name: c.name };
         if (_calcFmt) _calcCol.format = _calcFmt;
