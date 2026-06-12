@@ -134,6 +134,10 @@ function shapeSummary(model, result = {}) {
     security: sec.length,
     rlsRules: sec.filter(s => s.kind === 'rls').length,
     clsRules: sec.filter(s => s.kind === 'cls').length,
+    // Chart-context window calcs reported for the workbook builder (NOT in the
+    // model) — MCP-runner-only assert; the browser runner only sees the model
+    // JSON, so minWorkbookPatterns is ignored there.
+    workbookPatterns: (result.workbookPatterns || []).length,
     elements: elements.length,
     columns: elements.reduce((n, e) => n + (e.columns?.length || 0), 0),
     metrics: elements.reduce((n, e) => n + (e.metrics?.length || 0), 0),
@@ -173,6 +177,10 @@ function checkAsserts(asserts, summary) {
   }
   if (asserts?.minClsRules != null && summary.clsRules < asserts.minClsRules) {
     issues.push(`reported CLS rules ${summary.clsRules} < expected min ${asserts.minClsRules}`);
+  }
+  if (asserts?.minWorkbookPatterns != null && summary.workbookPatterns != null
+      && summary.workbookPatterns < asserts.minWorkbookPatterns) {
+    issues.push(`reported workbook patterns ${summary.workbookPatterns} < expected min ${asserts.minWorkbookPatterns}`);
   }
   return issues;
 }

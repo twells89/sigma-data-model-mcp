@@ -1,0 +1,63 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Superstore Window Calcs' inline='true' name='federated.superstore' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0' />
+        </named-connections>
+        <relation connection='snowflake.0' name='SUPERSTORE_ORDERS' table='[TJ].[PUBLIC].[SUPERSTORE_ORDERS]' type='table'>
+          <columns>
+            <column datatype='string' name='ORDER_ID' ordinal='1' />
+            <column datatype='date' name='ORDER_DATE' ordinal='2' />
+            <column datatype='string' name='REGION' ordinal='3' />
+            <column datatype='string' name='CATEGORY' ordinal='4' />
+            <column datatype='real' name='SALES' ordinal='5' />
+            <column datatype='real' name='PROFIT' ordinal='6' />
+          </columns>
+        </relation>
+      </connection>
+      <!-- RUNNING_SUM with NO worksheet context: SQL lowering fails (no partition dims)
+           → falls back to the CumulativeSum(Sum([Sales])) chart-context workbookPattern. -->
+      <column caption='Running Sales' datatype='real' name='[Calc_RunningSum]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='RUNNING_SUM(SUM([SALES]))' />
+      </column>
+      <!-- WINDOW_AVG with offsets → MovingAvg(Sum([Sales]), 2) workbookPattern (chart context only). -->
+      <column caption='Sales 3p Moving Avg' datatype='real' name='[Calc_MovingAvg]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='WINDOW_AVG(SUM([SALES]), -2, 0)' />
+      </column>
+      <!-- WINDOW_STDEV with offsets → MovingStdDev workbookPattern. -->
+      <column caption='Sales 6p Moving StdDev' datatype='real' name='[Calc_MovingStdDev]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='WINDOW_STDEV(SUM([SALES]), -5, 0)' />
+      </column>
+      <!-- Percent-of-total ratio → PercentOfTotal(Sum([Sales]), "grand_total") workbookPattern. -->
+      <column caption='Pct of Total Sales' datatype='real' name='[Calc_PctTotal]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([SALES]) / WINDOW_SUM(SUM([SALES]))' />
+      </column>
+      <!-- Cumulative percent-of-total → CumulativeSum(PercentOfTotal(...)) workbookPattern. -->
+      <column caption='Cumulative Pct of Sales' datatype='real' name='[Calc_CumPct]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='RUNNING_SUM(SUM([SALES])) / TOTAL(SUM([SALES]))' />
+      </column>
+      <!-- RANK_PERCENTILE (no SQL lowering parse) → RankPercentile workbookPattern. -->
+      <column caption='Sales Rank Percentile' datatype='real' name='[Calc_RankPctl]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='RANK_PERCENTILE(SUM([SALES]))' />
+      </column>
+      <!-- Untranslatable: WINDOW_MEDIAN → loud unsupported pattern, NEVER a DM column. -->
+      <column caption='Median Window Sales' datatype='real' name='[Calc_WinMedian]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='WINDOW_MEDIAN(MEDIAN([SALES]))' />
+      </column>
+      <!-- Untranslatable: SIZE() → loud unsupported pattern. -->
+      <column caption='Partition Size' datatype='integer' name='[Calc_Size]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SIZE()' />
+      </column>
+      <!-- Untranslatable: PREVIOUS_VALUE is self-referential — must NOT lower to LAG. -->
+      <column caption='Prev Accumulator' datatype='real' name='[Calc_PrevVal]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='PREVIOUS_VALUE(SUM([SALES]))' />
+      </column>
+      <!-- Plain calc stays a DM column — control that the guard doesn't over-trigger. -->
+      <column caption='Profit Ratio' datatype='real' name='[Calc_ProfitRatio]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='[PROFIT] / [SALES]' />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>

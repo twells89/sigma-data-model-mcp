@@ -1,0 +1,13 @@
+{
+  "description": "Tableau window/table calcs → WINPROBE-validated chart-context Sigma formulas. Moving windows (WINDOW_AVG/STDEV with offsets), percent-of-total ratios, cumulative pct, and RANK_PERCENTILE must be reported in result.workbookPatterns (chart/grouped-element context only) and must NEVER land in DM columns/metrics (window functions silently error there — noErrorColumns is the hard gate). Untranslatable calcs (WINDOW_MEDIAN, SIZE, PREVIOUS_VALUE) are flagged loudly as unsupported patterns. One plain calc (Profit Ratio) stays a DM column as the control.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "TJ",
+    "schema": "PUBLIC"
+  },
+  "asserts": {
+    "minElements": 1,
+    "minWorkbookPatterns": 9,
+    "noErrorColumns": true
+  }
+}
