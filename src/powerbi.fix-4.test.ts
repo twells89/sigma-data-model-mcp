@@ -146,3 +146,21 @@ test('concat coercion: chained concat coerces every column operand', () => {
   const out = pbiDaxToSigma('[City Name] & ", "&[Territory]', [], 'City');
   assert.match(out!, /^Text\(\[City Name\]\) & ", "&Text\(\[Territory\]\)$/, `got: ${out}`);
 });
+
+test('declared-type coercion: int64 calc column with text concat wraps in Number()', () => {
+  const bim = {
+    model: { tables: [{
+      name: 'Sales',
+      columns: [
+        { name: 'MonthID', dataType: 'int64', sourceColumn: 'MonthID' },
+        { name: 'ReportingPeriodID', dataType: 'int64', type: 'calculated', expression: '[MonthID]&"01"' },
+      ],
+      partitions: [{ name: 'Sales', source: { type: 'query', query: 'SELECT * FROM [Sales]' } }],
+    }] },
+  };
+  const { model: dm } = convertPowerBIToSigma(bim as any, { connectionId: 'c', database: 'CSA', schema: 'TJ' }) as any;
+  const sales = dm.pages[0].elements.find((e: any) => e.name === 'SALES');
+  const rp = sales.columns.find((c: any) => c.name === 'ReportingPeriodID');
+  assert.ok(rp, 'calc column emitted');
+  assert.match(String(rp.formula), /^Number\(/, `expected Number() wrap, got: ${rp.formula}`);
+});
