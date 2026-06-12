@@ -13,7 +13,7 @@
  */
 
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat,
+  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, sigmaPhysicalName, inferSigmaFormat,
   buildDerivedElements,
   makeRlsSecurity, makeClsSecurity,
   type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
@@ -582,6 +582,37 @@ const CALC_TIME_INTEL_RE = /\b(TOTALYTD|TOTALQTD|TOTALMTD|SAMEPERIODLASTYEAR|DAT
 //   CALCULATE(x)  [1 arg, e.g. after USERELATIONSHIP strip] → x
 // Subtotal re-scopes with no faithful scalar equivalent (ALLEXCEPT, ALLSELECTED,
 // multi-col ALL) and non-row-level predicates → { dropped:true } with the original
+// beads-sigma-p146: recursively inline bare [Measure] refs through a measure
+// CHAIN until only base expressions remain. Returns null on a cycle / depth
+// blowout so the caller can leave the formula for the structural guards.
+// TotalSalesTY = CALCULATE([TotalSales], ...) where TotalSales = [m1]+[m2] and
+// m1/m2 are SUM(col) needs the full chain flattened before the conditional
+// rewrite can distribute the predicate over each leaf aggregate.
+export function expandMeasureRefs(dax: string, measureDax: Record<string, string>): string | null {
+  let out = String(dax).trim();
+  for (let depth = 0; depth < 8; depth++) {
+    let changed = false;
+    out = out.replace(/(^|[^\w\]')])\[([^\[\]]+)\]/g, (full, pre, name) => {
+      const body = (measureDax as any)[name];
+      if (body === undefined) return full;
+      changed = true;
+      const b = Array.isArray(body) ? (body as string[]).join('\n') : String(body);
+      return `${pre}(${b.trim()})`;
+    });
+    if (!changed) return out;
+  }
+  return null; // still expanding at max depth - treat as a cycle
+}
+
+// beads-sigma-p146: true when an expanded expression is a pure combination of
+// simple aggregates, numeric literals, and +-*/() - i.e. a shape we can
+// distribute a CALCULATE row-predicate over, aggregate by aggregate.
+const SIMPLE_AGG_RE = /\b(SUM|AVERAGE|MIN|MAX|COUNT|COUNTA|COUNTROWS|DISTINCTCOUNT)\s*\(([^()]*)\)/gi;
+export function isAggCombination(expr: string): boolean {
+  const stripped = String(expr).replace(SIMPLE_AGG_RE, '1');
+  return /\d/.test(stripped) && /^[\d\s+\-*/().]+$/.test(stripped);
+}
+
 // DAX preserved in the warning (flag-not-drop). Time-intel filters are declined
 // silently so the time-intelligence guard classifies them.
 function rewriteCalculateConditionals(
@@ -619,12 +650,33 @@ function rewriteCalculateConditionals(
       const refDax = measureDax[aggRefM[1]].trim();
       // qx16 guard: only inline a SINGLE simple aggregate (one call, no nested
       // parens / top-level operators) — a multi-aggregate body would mis-split.
-      if (/^(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\([^()]*\)$/i.test(refDax)) {
+      if (/^(SUM|AVERAGE|MIN|MAX|COUNT|COUNTA|COUNTROWS|DISTINCTCOUNT)\s*\([^()]*\)$/i.test(refDax)) {
         aggExpr = refDax;
       }
     }
-    const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
-    if (!aggM) { cursor = m.index + m[0].length; continue; } // not a simple aggregate — leave for the guards
+    const aggM = aggExpr.match(/^\s*(SUM|AVERAGE|MIN|MAX|COUNT|COUNTA|COUNTROWS|DISTINCTCOUNT)\s*\(([\s\S]*)\)\s*$/i);
+    // beads-sigma-p146: not a single simple aggregate — try flattening a measure
+    // CHAIN ([TotalSales] = [m1]+[m2], m1/m2 = SUM(col)) into a pure aggregate
+    // combination; the row predicate then distributes over each leaf aggregate.
+    let composite: string | null = null;
+    if (!aggM) {
+      const expanded = expandMeasureRefs(aggExpr, measureDax);
+      if (expanded && isAggCombination(expanded)) composite = expanded;
+      else { cursor = m.index + m[0].length; continue; } // leave for the guards
+    }
+    const sigmaAggPlain = (fn: string, arg: string): string => {
+      const F = fn.toUpperCase();
+      if (F === 'COUNTROWS' || (F === 'COUNT' && !arg.trim())) return 'Count()';
+      const map: Record<string, string> = { SUM: 'Sum', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count', COUNTA: 'Count', DISTINCTCOUNT: 'CountDistinct' };
+      return `${map[F]}(${bareRef(arg.trim())})`;
+    };
+    const sigmaAggCond = (fn: string, arg: string, combined: string): string => {
+      const F = fn.toUpperCase();
+      if (F === 'COUNTROWS' || F === 'COUNT' || F === 'COUNTA') return `CountIf(${combined})`; // Sigma CountIf takes ONE logical arg (beads-sigma-862)
+      if (F === 'DISTINCTCOUNT') return `CountDistinctIf(${bareRef(arg.trim())}, ${combined})`;
+      const map: Record<string, string> = { SUM: 'SumIf', AVERAGE: 'AvgIf', MIN: 'MinIf', MAX: 'MaxIf' };
+      return `${map[F] || 'SumIf'}(${bareRef(arg.trim())}, ${combined})`;
+    };
 
     // Classify each filter arg.
     let grandTotal = false;
@@ -677,15 +729,18 @@ function rewriteCalculateConditionals(
       if (warnings) warnings.push(flagged);
       return { f, dropped: true };
     }
-    const aggFnEarly = aggM[1].toUpperCase();
+    const aggFnEarly = aggM ? aggM[1].toUpperCase() : '';
     if (!preds.length) {
       if (!grandTotal) { cursor = m.index + m[0].length; continue; } // nothing usable — leave for the guards
       // ALL/REMOVEFILTERS-only (incl. the single-column strip): GrandTotal(agg).
       let aggSigma: string;
-      if (aggFnEarly === 'COUNTROWS') aggSigma = 'Count()';
+      if (composite) {
+        // beads-sigma-p146: plain-aggregate each leaf, GrandTotal the whole.
+        aggSigma = `(${composite.replace(SIMPLE_AGG_RE, (_mm, fn, arg) => sigmaAggPlain(fn, arg))})`;
+      } else if (aggFnEarly === 'COUNTROWS') aggSigma = 'Count()';
       else {
-        const map: Record<string, string> = { SUM: 'Sum', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count', DISTINCTCOUNT: 'CountDistinct' };
-        aggSigma = `${map[aggFnEarly]}(${bareRef(aggM[2].trim())})`;
+        const map: Record<string, string> = { SUM: 'Sum', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count', COUNTA: 'Count', DISTINCTCOUNT: 'CountDistinct' };
+        aggSigma = `${map[aggFnEarly]}(${bareRef(aggM![2].trim())})`;
       }
       const gOut = `GrandTotal(${aggSigma})`;
       f = f.slice(0, m.index) + gOut + f.slice(endPos);
@@ -697,13 +752,16 @@ function rewriteCalculateConditionals(
       : preds.map(p => /\b(or)\b/i.test(p) ? `(${p})` : p).join(' and ');
     const aggFn = aggFnEarly;
     let out: string;
-    if (aggFn === 'COUNTROWS' || aggFn === 'COUNT') {
+    if (composite) {
+      // beads-sigma-p146: distribute the predicate over every leaf aggregate.
+      out = `(${composite.replace(SIMPLE_AGG_RE, (_mm, fn, arg) => sigmaAggCond(fn, arg, combined))})`;
+    } else if (aggFn === 'COUNTROWS' || aggFn === 'COUNT' || aggFn === 'COUNTA') {
       out = `CountIf(${combined})`; // Sigma CountIf takes ONE logical arg (beads-sigma-862)
     } else if (aggFn === 'DISTINCTCOUNT') {
-      out = `CountDistinctIf(${bareRef(aggM[2].trim())}, ${combined})`;
+      out = `CountDistinctIf(${bareRef(aggM![2].trim())}, ${combined})`;
     } else {
       const aggMap: Record<string, string> = { SUM: 'SumIf', AVERAGE: 'AvgIf', MIN: 'MinIf', MAX: 'MaxIf' };
-      out = `${aggMap[aggFn] || 'SumIf'}(${bareRef(aggM[2].trim())}, ${combined})`;
+      out = `${aggMap[aggFn] || 'SumIf'}(${bareRef(aggM![2].trim())}, ${combined})`;
     }
     if (grandTotal) out = `GrandTotal(${out})`; // FILTER(ALL(T), pred): context-strip = total over matching rows
     f = f.slice(0, m.index) + out + f.slice(endPos);
@@ -2013,7 +2071,7 @@ export function convertPowerBIToSigma(
         const aliasEmitted = built.ok &&
           new RegExp(`AS\\s+"${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'i').test(statement);
         if (built.ok && !aliasEmitted) { droppedCols.push(displayName); continue; }
-        const colId = sigmaInodeId((sourceCol || c.name).toUpperCase().replace(/\s+/g, '_'));
+        const colId = sigmaInodeId(sigmaPhysicalName(sourceCol || c.name));
         tableColMap[tableName][c.name] = colId;
         allPbiToSigmaNames[c.name] = displayName;
         // Bug E: reference the SQL alias with the QUALIFIED `[Custom SQL/Display
@@ -2082,7 +2140,7 @@ export function convertPowerBIToSigma(
       if (c.type === 'calculated') continue;
       const sourceCol = c.sourceColumn || c.name;
       const displayName = sigmaDisplayName(sourceCol);
-      const colId = sigmaInodeId(sourceCol.toUpperCase().replace(/\s+/g, '_'));
+      const colId = sigmaInodeId(sigmaPhysicalName(sourceCol));
       tableColMap[tableName][c.name] = colId;
       pbiToSigmaName[c.name] = displayName;
       allPbiToSigmaNames[c.name] = displayName;
@@ -2201,6 +2259,31 @@ export function convertPowerBIToSigma(
         (t.measures || []).map((mm: any) => mm.name).filter((nm: string) => nm && !emitted.has(nm))
       );
       pruneDanglingMetrics(metrics, dropped, warnings);
+    }
+
+    // A metric whose formula references a column on ANOTHER table (e.g. a Sales
+    // measure summing Store[SellingAreaSize]) compiles to a silent error-typed
+    // metric in Sigma — the element has no such column. Drop-and-warn with grain
+    // guidance instead of posting a broken metric. Multi-pass so dependents of a
+    // dropped cross-table metric collapse too. (beads-sigma-p146 follow-on)
+    {
+      const colDisplays = new Set<string>([
+        ...Object.values(pbiToSigmaName),
+        ...Object.keys(pbiToSigmaName),
+      ]);
+      for (let pass = 0; pass < 5; pass++) {
+        const metricNames = new Set(metrics.map((mm: any) => mm.name));
+        const before = metrics.length;
+        for (let i = metrics.length - 1; i >= 0; i--) {
+          const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
+          const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
+          if (bad) {
+            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns).`);
+            metrics.splice(i, 1);
+          }
+        }
+        if (metrics.length === before) break;
+      }
     }
 
     // Display folders
