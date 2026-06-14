@@ -1,0 +1,13 @@
+{
+  "description": "beads-sigma-zsbt regression: Tableau DATA BLEND (workbook-level <datasource-relationships>) → ONE merged data model. Two facts (BLEND_SALES order-grain + BLEND_TARGETS region×quarter-grain) linked on REGION with a cross-source calc SUM([Sales])-SUM([Target]). Before the fix the converter picked only the first datasource and the blended target measure was lost; a naive row-grain relationship returns NULL in Sigma (relationships are many-to-one lookups, not fan-out joins). The fix pre-groups the secondary to link grain (many-to-one) and surfaces the looked-up value with Max (non-additive). Validated E2E = exact ground truth (East 600/700/-100, West 900/700/+200, Central 250/200/+50). Requires CSA.TJ.BLEND_SALES + CSA.TJ.BLEND_TARGETS on connection cb2f5180 (granted to PUBLIC, schema-synced).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 5,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
