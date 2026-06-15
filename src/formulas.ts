@@ -238,6 +238,8 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'AVG': 'Avg', 'MAX': 'Max', 'MIN': 'Min', 'MEDIAN': 'Median',
   'SUM': 'Sum', 'ABS': 'Abs', 'CEILING': 'Ceiling', 'FLOOR': 'Floor',
   'ROUND': 'Round', 'SQRT': 'Sqrt', 'POWER': 'Power',
+  // scalar math (verified resolve in Sigma 2026-06-15; Tableau LOG default base 10 == Sigma Log default base 10)
+  'LN': 'Ln', 'LOG': 'Log', 'EXP': 'Exp', 'MOD': 'Mod', 'SIGN': 'Sign', 'PI': 'Pi',
   'STR': 'Text', 'INT': 'Int', 'FLOAT': 'Number',
   'LEN': 'Len', 'UPPER': 'Upper', 'LOWER': 'Lower',
   'TRIM': 'Trim', 'LTRIM': 'Ltrim', 'RTRIM': 'Rtrim',
@@ -253,7 +255,7 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'REGEXP_EXTRACT': 'RegexpExtract', 'REGEXP_REPLACE': 'RegexpReplace', 'REGEXP_MATCH': 'RegexpMatch',
   // statistical aggregates (sample variants direct; STDEVP handled above)
   'STDEV': 'StdDev', 'VAR': 'Variance', 'VARP': 'VariancePop',
-  'PERCENTILE': 'PercentileCont',
+  'PERCENTILE': 'PercentileCont', 'CORR': 'Corr',
   // string split — both 1-indexed, negatives count from the right
   'SPLIT': 'SplitPart',
 };
@@ -500,6 +502,13 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     }
   }
 
+  // COVAR/COVARP have no Sigma equivalent — flag loudly, never emit silently
+  // (Sigma has Corr but no covariance function; verified 2026-06-15).
+  if (/\bCOVARP?\s*\(/i.test(f)) {
+    if (warnings) warnings.push(`⚠ COVAR/COVARP has no Sigma equivalent — not converted. Fragment: ${f.slice(0, 120)}`);
+    return '/* no Sigma equivalent: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+  }
+
   // ZN([x]) → Coalesce([x], 0)
   f = f.replace(/\bZN\s*\(([^)]+)\)/gi, 'Coalesce($1, 0)');
   f = f.replace(/\bIFNULL\s*\(/gi, 'Coalesce(').replace(/\bIFERROR\s*\(/gi, 'Coalesce(');
@@ -597,7 +606,7 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
 /** Check if a Tableau formula contains aggregate functions */
 export function tableauIsAggregate(formula: string): boolean {
-  return /\b(SUM|AVG|COUNT|COUNTD|MAX|MIN|MEDIAN|STDEV|STDEVP|VAR|VARP|PERCENTILE|ATTR)\s*\(/i.test(formula);
+  return /\b(SUM|AVG|COUNT|COUNTD|MAX|MIN|MEDIAN|STDEV|STDEVP|VAR|VARP|PERCENTILE|CORR|ATTR)\s*\(/i.test(formula);
 }
 
 /** A Tableau calc is row-level security if it tests the viewer's identity/membership. */
