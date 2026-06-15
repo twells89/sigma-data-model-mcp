@@ -1,0 +1,12 @@
+{
+  "description": "beads-sigma-dnia regression: scalar math + stat functions that previously passed through the Tableau formula translator UNCHANGED (silent gap — POST clean, error at query). LN/LOG/EXP/MOD/SIGN/PI now map to Ln/Log/Exp/Mod/Sign/Pi (verified Sigma Log default base 10 == Tableau LOG); CORR maps to Corr and routes as a metric (aggregate); DATEPARSE maps to DateParse(text, strftime) — confirmed to resolve in Sigma 2026-06-15 (the column-gotchas 'DateParse does not exist' note was stale). COVAR/COVARP are now flagged (no Sigma equivalent) instead of silently passing. Targets CSA.TJ.BLEND_SALES on connection cb2f5180.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

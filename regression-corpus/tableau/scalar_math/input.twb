@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook version='18.1'>
+  <datasources>
+    <datasource caption='Math' inline='true' name='federated.math01' version='18.1'>
+      <connection class='snowflake' dbname='CSA' schema='TJ' server='x.snowflakecomputing.com'>
+        <relation name='BLEND_SALES' table='[CSA].[TJ].[BLEND_SALES]' type='table'>
+          <columns>
+            <column datatype='string' name='REGION' />
+            <column datatype='date' name='ORDER_DATE' />
+            <column datatype='real' name='SALES' />
+          </columns>
+        </relation>
+      </connection>
+      <column caption='Ln Sales' datatype='real' name='[Calculation_ln]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='LN([Sales])' />
+      </column>
+      <column caption='Log Sales' datatype='real' name='[Calculation_log]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='LOG([Sales])' />
+      </column>
+      <column caption='Exp Sign' datatype='real' name='[Calculation_exp]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='EXP(SIGN([Sales]))' />
+      </column>
+      <column caption='Sales Mod 7' datatype='real' name='[Calculation_mod]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='MOD([Sales], 7)' />
+      </column>
+      <column caption='Sales Sign' datatype='real' name='[Calculation_sign]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SIGN([Sales])' />
+      </column>
+      <column caption='Pi Const' datatype='real' name='[Calculation_pi]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='PI()' />
+      </column>
+      <column caption='Order Date Parsed' datatype='date' name='[Calculation_dp]' role='dimension' type='ordinal'>
+        <calculation class='tableau' formula='DATEPARSE("yyyy-MM-dd", STR([Order Date]))' />
+      </column>
+      <column caption='Sales Self Corr' datatype='real' name='[Calculation_corr]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='CORR([Sales], [Sales])' />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>
