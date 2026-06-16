@@ -1,0 +1,24 @@
+{
+  "description": "BusinessObjects universe whose physical names do NOT match the warehouse — the customer restructured into a platinum layer (FCT_ORDERS_RAW→ORDER_FACT, CUST_DIM_DE→CUSTOMER_DIM, and renamed columns). Exercises the target-layer remap (tableMap/columnMap on convert_bobj_to_sigma): without it every column would resolve to a non-existent table. Regression guard that the remapped output binds to real CSA.TJ tables and that the cross-element relationship + View still resolve with zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ",
+    "tableMap": { "FCT_ORDERS_RAW": "ORDER_FACT", "CUST_DIM_DE": "CUSTOMER_DIM" },
+    "columnMap": {
+      "FCT_ORDERS_RAW.CHANNEL_CODE": "ORDER_CHANNEL",
+      "FCT_ORDERS_RAW.STATUS_CODE": "ORDER_STATUS",
+      "FCT_ORDERS_RAW.REV_NET": "NET_REVENUE",
+      "FCT_ORDERS_RAW.OID": "ORDER_ID",
+      "FCT_ORDERS_RAW.CUST_FK": "CUSTOMER_KEY",
+      "CUST_DIM_DE.GEO_REGION": "REGION",
+      "CUST_DIM_DE.SEG_NAME": "CUSTOMER_SEGMENT",
+      "CUST_DIM_DE.CUST_FK": "CUSTOMER_KEY"
+    }
+  },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}

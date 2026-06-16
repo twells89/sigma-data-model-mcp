@@ -1,0 +1,26 @@
+{
+  "universe": {
+    "name": "Retail Universe — restructured (remap regression)",
+    "classes": [
+      {
+        "name": "Orders",
+        "objects": [
+          { "name": "Order Channel", "type": "Dimension", "select": "FCT_ORDERS_RAW.CHANNEL_CODE" },
+          { "name": "Order Status",  "type": "Dimension", "select": "FCT_ORDERS_RAW.STATUS_CODE" },
+          { "name": "Net Revenue",   "type": "Measure",   "aggregation": "Sum", "select": "FCT_ORDERS_RAW.REV_NET" },
+          { "name": "Order Count",   "type": "Measure",   "select": "count(FCT_ORDERS_RAW.OID)" }
+        ]
+      },
+      {
+        "name": "Customer",
+        "objects": [
+          { "name": "Customer Region",  "type": "Dimension", "select": "CUST_DIM_DE.GEO_REGION" },
+          { "name": "Customer Segment", "type": "Dimension", "select": "CUST_DIM_DE.SEG_NAME" }
+        ]
+      }
+    ],
+    "joins": [
+      { "expression": "FCT_ORDERS_RAW.CUST_FK = CUST_DIM_DE.CUST_FK", "cardinality": "many-to-one" }
+    ]
+  }
+}
