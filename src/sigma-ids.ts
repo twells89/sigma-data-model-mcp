@@ -234,10 +234,19 @@ export interface SigmaDataModel {
   pages: SigmaPage[];
 }
 
+export interface SecurityRule {
+  kind: 'rls' | 'cls';
+  name: string;
+  expression: string;       // the source rule expression, verbatim
+  table?: string;           // owning table, if scoped
+}
+
 export interface ConversionResult {
   model: SigmaDataModel;
   warnings: string[];
   stats: Record<string, number>;
+  security?: SecurityRule[]; // detected RLS/CLS — NEVER injected into the spec;
+                             // the skill provisions it post-model (apply_sigma_rls.py)
 }
 
 export interface ElementResult {

@@ -7,7 +7,7 @@ import yaml from 'js-yaml';
 import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName,
   sigmaColFormula, inferSigmaFormat, buildDerivedElements,
-  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult,
+  type SigmaElement, type SigmaColumn, type SigmaMetric, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
 
 export interface ThoughtSpotConvertOptions {
@@ -34,6 +34,26 @@ export function convertThoughtSpotToSigma(
 
   const ws: any = tml.worksheet || tml.model || tml;
   const modelName: string = ws.name || 'ThoughtSpot Model';
+
+  // ── Row-/column-level security detection ──────────────────────────────────
+  // ThoughtSpot carries RLS as `rls_rules` (on the worksheet/model or per table)
+  // and CLS as column-level `security`. Sigma has no in-spec equivalent — its RLS
+  // is user-attributes + DM filters provisioned separately (apply_sigma_rls.py).
+  // We do NOT auto-port here, but we MUST surface it (silently dropping a security
+  // rule is a data-exposure risk), with the rule text so it can be re-created.
+  const rlsRules: any[] = [
+    ...(Array.isArray(ws.rls_rules) ? ws.rls_rules : []),
+    ...(ws.model_tables || []).flatMap((mt: any) => Array.isArray(mt?.rls_rules) ? mt.rls_rules : []),
+    ...(ws.tables || []).flatMap((t: any) => Array.isArray(t?.rls_rules) ? t.rls_rules : []),
+  ];
+  const security: SecurityRule[] = [];
+  if (rlsRules.length) {
+    for (const r of rlsRules) {
+      const expr = r?.expression || r?.expr || r?.formula || JSON.stringify(r);
+      security.push({ kind: 'rls', name: r?.name || 'unnamed', expression: expr, table: r?.table });
+      warnings.push(`🔒 ThoughtSpot RLS rule "${r?.name || 'unnamed'}" detected (${expr}) — NOT auto-applied. Recreate it in Sigma as a user-attribute + data-model filter (map ts_username→CurrentUserEmail(), ts_groups→CurrentUserInTeam) via apply_sigma_rls.py before sharing.`);
+    }
+  }
 
   // Build table metadata map. Worksheet TML lists tables under `tables:`;
   // model TML (the format ThoughtSpot actually exports) lists them under
@@ -278,6 +298,8 @@ export function convertThoughtSpotToSigma(
     for (const { col, formulaExpr } of formulaCols) {
       const dispName: string = col.name || 'Calculated';
       const sigmaFormula = tsFormulaToSigma(formulaExpr, elementByTable);
+      const winFn = tsWindowFnWarning(formulaExpr);
+      if (winFn) warnings.push(`Formula "${dispName}" uses ThoughtSpot window function ${winFn}() — Sigma window functions do not resolve inside data-model elements and will error at query time. Recompute it in the workbook with a grouped element (CountOver/SumOver over a grouping).`);
       const refs = sigmaFormula.match(/\[([^\]\/]+)\]/g) || [];
       const refElIds = new Set<string>();
       for (const ref of refs) {
@@ -413,6 +435,7 @@ export function convertThoughtSpotToSigma(
     model: { name: modelName, schemaVersion: 1, pages: [{ id: pageId, name: 'Page 1', elements }] },
     warnings,
     stats,
+    ...(security.length ? { security } : {}),
   };
 }
 
@@ -422,8 +445,17 @@ export function convertThoughtSpotToSigma(
 // column — its value is one number per group, not per row. Such formulas must
 // become Sigma metrics, not row-level calc columns.
 function tsIsAggregateFormula(expr: string): boolean {
-  return /\b(sum|count|count_distinct|unique_count|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total|sum_if|count_if|average_if|max_if|min_if|unique_count_if)\s*\(/i
+  return /\b(sum|count|count_distinct|unique_count|unique\s+count|count\s+distinct|count_not_null|average|avg|max|min|median|std_deviation|stddev|variance|cumulative_sum|running_total|sum_if|count_if|average_if|max_if|min_if|unique_count_if)\s*\(/i
     .test(expr || '');
+}
+
+// ThoughtSpot window/inter-record functions don't have a data-model-element
+// equivalent in Sigma — CumulativeSum/RankOver/etc. silently error inside DM
+// element calc columns (see feedback_sigma_window_functions). Return the matched
+// function name so the caller can WARN (flag, not silently ship a broken column).
+function tsWindowFnWarning(expr: string): string | null {
+  const m = /\b(cumulative_sum|running_total|moving_average|moving_sum|moving_max|moving_min|rank|group_aggregate|growth|difference)\s*\(/i.exec(expr || '');
+  return m ? m[1].toLowerCase() : null;
 }
 
 function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): string {
@@ -434,6 +466,12 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
   // single-/cross-element bucketing (which key off display names) resolve them.
   // Worksheet TML uses bare identifiers, so this is a no-op there.
   s = s.replace(/\[([^\]:]+)::([^\]]+)\]/g, (_, _tbl, col) => `[${sigmaDisplayName(col.trim())}]`);
+  // ThoughtSpot exports distinct-count as the SPACE-separated `unique count(` /
+  // `count distinct(` — not the underscore form. Normalize to count_distinct so the
+  // agg map below produces CountDistinct (else `unique` is wrapped to [Unique] and
+  // the DM POST hard-fails with "Invalid formula").
+  s = s.replace(/\bunique\s+count\s*\(/gi, 'count_distinct(');
+  s = s.replace(/\bcount\s+distinct\s*\(/gi, 'count_distinct(');
   s = tsConvertIfThenElse(s);
   // `<col> in { "a", "b" }` → `In(<col>, "a", "b")`. The left side may now be a
   // bracketed display-name ref (from the rewrite above) or a bare identifier.
@@ -590,7 +628,12 @@ function tsWrapColumnRefs(expr: string): string {
   const saved: string[] = [];
   let s = expr
     .replace(/\[[^\]]*\]/g, m => { saved.push(m); return `\x02${saved.length - 1}\x03`; })
-    .replace(/"[^"]*"/g,    m => { saved.push(m); return `\x02${saved.length - 1}\x03`; });
+    .replace(/"[^"]*"/g,    m => { saved.push(m); return `\x02${saved.length - 1}\x03`; })
+    // ThoughtSpot string literals are SINGLE-quoted ('Bulk', {'Electronics'}); Sigma
+    // uses DOUBLE quotes. Mask them BEFORE the identifier-wrap pass (else 'Bulk'
+    // becomes the column ref [Bulk]) and emit them double-quoted. Without this every
+    // if/then/else text branch and `in {…}` set value is silently corrupted.
+    .replace(/'[^']*'/g,    m => { saved.push('"' + m.slice(1, -1).replace(/"/g, '\\"') + '"'); return `\x02${saved.length - 1}\x03`; });
   const skip = /^(if|then|else|and|or|not|in|null|true|false|today|IsNull|If|In|List|Sum|Count|Avg|Max|Min|CountDistinct|StdDev|Variance|DateDiff|Today|CumulativeSum|Not)$/;
   s = s.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/gi, (match, ident) => {
     if (skip.test(ident)) return match;
