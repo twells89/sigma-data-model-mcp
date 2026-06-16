@@ -1200,6 +1200,10 @@ object expressions → calculated columns; joins → relationships. Predefined
 filters and universe @-functions (@Prompt/@Select/@Variable/@Aggregate_Aware)
 are surfaced as warnings.
 
+If the warehouse was restructured vs. the universe (renamed or consolidated
+tables — e.g. a "platinum" layer), pass table_map / column_map to repoint the
+output at the new physical names. Unmatched map keys are surfaced as warnings.
+
 The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
 create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     {
@@ -1207,14 +1211,18 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
       connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
       database: z.string().describe('Override database name; pass empty string to omit'),
       schema: z.string().describe('Override schema name; pass empty string to omit'),
+      table_map: z.string().describe('Optional JSON object remapping universe tables to your restructured/platinum-layer tables, e.g. {"CUSTOMER_DIM_DE":"DIM_CUSTOMER","CUSTOMER_DIM_AT":{"table":"DIM_CUSTOMER","schema":"PLATINUM"}}. Many old tables may map to one. Pass empty string to omit.'),
+      column_map: z.string().describe('Optional JSON object remapping physical columns, keyed "OLD_TABLE.OLD_COL" or "*.OLD_COL" (any table) → new column name, e.g. {"CUSTOMER_DIM_DE.CUST_NAME":"CUSTOMER_NAME"}. Pass empty string to omit.'),
     },
-    async ({ universe_json, connection_id, database, schema }) => {
+    async ({ universe_json, connection_id, database, schema, table_map, column_map }) => {
       try {
         const parsed = JSON.parse(universe_json);
         const result = convertBobjToSigma(parsed, {
           connectionId: connection_id || undefined,
           database: database || undefined,
           schema: schema || undefined,
+          tableMap: table_map ? JSON.parse(table_map) : undefined,
+          columnMap: column_map ? JSON.parse(column_map) : undefined,
         });
         return {
           content: [{
