@@ -1,0 +1,12 @@
+{
+  "description": "Regression for the self-referencing physical-column bug: an EXPRESSION dimension (discount_pct = ${TABLE}.DISCOUNT_PCT / 100.0) and a legacy case: dimension (discount_band) whose names collide with the physical column they reference. The converter used to emit the BARE display ref [Discount Pct], which self-collides with the calc column's own output name → circular reference → type 'error'. The fix (qualifyPhysRefs) rewrites physical-column refs in expression/case dimensions to the qualified base ref [PROMO_DIM/Discount Pct], breaking the cycle. A correctly-fixed converter produces zero error columns.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}

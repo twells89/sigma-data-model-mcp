@@ -838,6 +838,33 @@ function lookConvertView(
     });
   }
 
+  // Physical-column display names of THIS view (every column reachable as a
+  // passthrough off the base table). A bare `[Display]` ref to one of these
+  // self-collides when a calc dimension shares the column's name (e.g.
+  // `dimension: discount_pct { sql: ${TABLE}.DISCOUNT_PCT / 100 }` → the column
+  // "Discount Pct" referencing bare `[Discount Pct]` = itself → type "error").
+  // qualifyPhysRefs() rewrites those to the qualified `[<table>/<Display>]` base
+  // ref (same form passthrough/(T-F) columns already use), which resolves to the
+  // raw source column and breaks the cycle.
+  const physColDisplays = new Set<string>();
+  {
+    const allDims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
+    const allGroups = view.dimension_group ? (Array.isArray(view.dimension_group) ? view.dimension_group : [view.dimension_group]) : [];
+    const scan = (sql: string) => {
+      const re = /\$\{TABLE\}\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(sql || '')) !== null) physColDisplays.add(colLabel(m[1].toUpperCase()));
+    };
+    allDims.forEach((d: any) => { scan(d.sql); if (d.case) JSON.stringify(d.case).replace(/\$\{TABLE\}\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)/gi, (_: string, c: string) => { physColDisplays.add(colLabel(c.toUpperCase())); return ''; }); });
+    allGroups.forEach((g: any) => { scan(g.sql); scan(g.sql_start); scan(g.sql_end); });
+  }
+  // Qualify bare `[Display]` refs to physical columns of this view → `[<table>/Display]`.
+  // Leaves already-qualified `[a/b]` refs and bare refs to sibling CALC columns alone.
+  function qualifyPhysRefs(formula: string): string {
+    return formula.replace(/\[([^\]\/]+)\]/g, (m, disp) =>
+      physColDisplays.has(disp) ? `[${tableName}/${disp}]` : m);
+  }
+
   // Pre-expand ${field_ref} in dimension SQL before passing to the converter.
   // Yesno refs → (BOOLEAN_EXPR); other refs → [Display Name] using label if present.
   function expandFieldRefs(sql: string): string {
@@ -871,7 +898,7 @@ function lookConvertView(
       for (let i = whens.length - 1; i >= 0; i--) {
         const w = whens[i];
         if (typeof w !== 'object' || !w.sql) continue;
-        formula = `If(${toCond(w.sql)}, "${String(w.label ?? w._name ?? '')}", ${formula})`;
+        formula = `If(${qualifyPhysRefs(toCond(w.sql))}, "${String(w.label ?? w._name ?? '')}", ${formula})`;
       }
       const caseColId = sigmaShortId();
       colIdMap[colName] = caseColId;
@@ -943,6 +970,7 @@ function lookConvertView(
         }
       }
       if (sigmaFormula) {
+        sigmaFormula = qualifyPhysRefs(sigmaFormula);
         element.columns.push({ id: colId, formula: sigmaFormula, name: d.label || sigmaDisplayName(d._name), ...(dFormat ? { format: dFormat } : {}) });
         element.order.push(colId);
         warnings.push(`ℹ "${d._name}" → calculated column: ${sigmaFormula}`);
