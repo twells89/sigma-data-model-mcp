@@ -352,6 +352,12 @@ async function drivePaste(page, fx, opts, cfg) {
     }
     if (c.dbId && db) document.getElementById(c.dbId).value = db;
     if (c.schemaId && schema) document.getElementById(c.schemaId).value = schema;
+    // optional target-layer remap (e.g. bobj tableMap/columnMap) — must be staged
+    // in its textarea BEFORE the run so the converter reads it.
+    if (c.remapId && c.remap) {
+      const r = document.getElementById(c.remapId);
+      if (r) { r.value = c.remap; r.dispatchEvent(new Event('input')); }
+    }
     try {
       // reset any cached "_qlikModel" / "_pbiModel" etc. so paste-driven path is taken
       if (c.resetGlobal) window[c.resetGlobal] = null;
@@ -488,6 +494,13 @@ async function driveThoughtSpot(page, fx, opts) {
 
 async function driveBobj(page, fx, opts) {
   // bobj fixture is a single RWS universe JSON, pasted into the bobjJsonInput textarea.
+  // Stage the fixture's target-layer remap (tableMap/columnMap) into #bobjRemapJson
+  // so a restructured-universe fixture binds to real warehouse tables (mirrors the
+  // MCP convertOptions). Without it the unmapped physical names (e.g. CUST_DIM_DE)
+  // POST as "Source not found".
+  const remap = {};
+  if (opts.tableMap) remap.tableMap = opts.tableMap;
+  if (opts.columnMap) remap.columnMap = opts.columnMap;
   return drivePaste(page, fx, opts, {
     inputId: 'bobjJsonInput',
     connId: 'bobjConnectionId',
@@ -495,6 +508,8 @@ async function driveBobj(page, fx, opts) {
     schemaId: 'bobjSchema',
     runFn: 'runBobjConversion',
     outputId: 'bobjJsonOutput',
+    remapId: 'bobjRemapJson',
+    remap: Object.keys(remap).length ? JSON.stringify(remap) : '',
   });
 }
 
@@ -804,7 +819,9 @@ async function runFixture(page, fx) {
   page.on('pageerror', err => process.stderr.write(`[page-error] ${err.message}\n`));
 
   try {
-    await page.goto(SMM_HTML, { waitUntil: 'domcontentloaded' });
+    // index.html is a single ~30k-line file; cold Chrome starts on slower hosts
+    // can exceed the 30s default, so allow more headroom (load is one-time).
+    await page.goto(SMM_HTML, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await new Promise(r => setTimeout(r, 1000));
 
     // Connect to Sigma so the connection lists populate (even though we
