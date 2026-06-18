@@ -1,0 +1,9 @@
+{
+  "description": "SAP BusinessObjects universe via a Semantic-Layer-SDK / IDT XML export (data foundation + business layer), NOT RWS JSON. Same eFashion model as universe_basic — exercises the ingestBobjSdkXml path: XML tables→elements, relational-binding SELECTs→columns/metrics, join+cardinality→relationship, predefined filter→warning, plus the name-aware View element. Guards that the XML and JSON ingests stay structurally identical. The .xml input (not .json) is passed to convert_bobj_to_sigma as a raw string and auto-detected.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
