@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic Semantic-Layer / IDT export (data foundation + business layer).
+     Mirrors fixtures/efashion_universe.json so the XML ingest path and the RWS
+     JSON path produce the same Sigma data model. This is the shape an SL-SDK
+     extractor (scripts/extract-universe-sdk.groovy) emits when it walks the
+     RelationalBinding of each business object plus the data foundation. -->
+<universe name="Retail Universe (CSA.TJ)">
+  <dataFoundation>
+    <tables>
+      <table name="ORDER_FACT" catalog="CSA" schema="TJ">
+        <column name="ORDER_CHANNEL"  dataType="String"/>
+        <column name="ORDER_STATUS"   dataType="String"/>
+        <column name="NET_REVENUE"    dataType="Numeric"/>
+        <column name="GROSS_REVENUE"  dataType="Numeric"/>
+        <column name="ORDER_ID"       dataType="Numeric"/>
+        <column name="CUSTOMER_KEY"   dataType="Numeric"/>
+        <column name="ORDER_DATE_KEY" dataType="Numeric"/>
+      </table>
+      <table name="CUSTOMER_DIM" catalog="CSA" schema="TJ">
+        <column name="REGION"           dataType="String"/>
+        <column name="CUSTOMER_SEGMENT" dataType="String"/>
+        <column name="FIRST_NAME"       dataType="String"/>
+        <column name="LAST_NAME"        dataType="String"/>
+        <column name="CUSTOMER_KEY"     dataType="Numeric"/>
+      </table>
+    </tables>
+    <joins>
+      <join cardinality="many-to-one">
+        <expression>ORDER_FACT.CUSTOMER_KEY = CUSTOMER_DIM.CUSTOMER_KEY</expression>
+      </join>
+    </joins>
+  </dataFoundation>
+  <businessLayer>
+    <folder name="Orders">
+      <item name="Order Channel" qualification="Dimension">
+        <relationalBinding><select>ORDER_FACT.ORDER_CHANNEL</select></relationalBinding>
+      </item>
+      <item name="Order Status" qualification="Dimension">
+        <relationalBinding><select>ORDER_FACT.ORDER_STATUS</select></relationalBinding>
+      </item>
+      <item name="Net Revenue" qualification="Measure" aggregation="Sum">
+        <relationalBinding><select>ORDER_FACT.NET_REVENUE</select></relationalBinding>
+      </item>
+      <item name="Gross Revenue" qualification="Measure">
+        <relationalBinding><select>sum(ORDER_FACT.GROSS_REVENUE)</select></relationalBinding>
+      </item>
+      <item name="Order Count" qualification="Measure">
+        <relationalBinding><select>count(ORDER_FACT.ORDER_ID)</select></relationalBinding>
+      </item>
+    </folder>
+    <folder name="Customer">
+      <item name="Customer Region" qualification="Dimension">
+        <relationalBinding><select>CUSTOMER_DIM.REGION</select></relationalBinding>
+      </item>
+      <item name="Customer Segment" qualification="Dimension">
+        <relationalBinding><select>CUSTOMER_DIM.CUSTOMER_SEGMENT</select></relationalBinding>
+      </item>
+      <item name="Full Name" qualification="Attribute">
+        <relationalBinding><select>CUSTOMER_DIM.FIRST_NAME || ' ' || CUSTOMER_DIM.LAST_NAME</select></relationalBinding>
+      </item>
+    </folder>
+    <conditions>
+      <filter name="Recent Orders">
+        <where>ORDER_FACT.ORDER_DATE_KEY &gt;= 20240101</where>
+      </filter>
+    </conditions>
+  </businessLayer>
+</universe>

@@ -245,12 +245,16 @@ async function runFixture(fx, converters) {
     })));
     arg = fileBased.includes(fx.fmt) ? parts : parts.map(p => p.content).join('\n');
   } else {
-    const xml = await readFile(fx.inputFile, 'utf-8');
+    const raw = await readFile(fx.inputFile, 'utf-8');
+    // jsonBased formats take a parsed object (incl. JSON-content files with other
+    // extensions, e.g. powerbi input.bim) — but an .xml input (the bobj SL-SDK
+    // fixture) is passed as a raw string for the converter to auto-detect.
+    const isXmlFile = fx.inputFile.endsWith('.xml');
     arg = fileBased.includes(fx.fmt)
-      ? [{ name: basename(fx.inputFile), content: xml }]
+      ? [{ name: basename(fx.inputFile), content: raw }]
       : jsonBased.includes(fx.fmt)
-        ? JSON.parse(xml)
-        : xml;
+        ? (isXmlFile ? raw : JSON.parse(raw))
+        : raw;
   }
   let result;
   try {

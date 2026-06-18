@@ -1189,10 +1189,19 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     'convert_bobj_to_sigma',
     `Convert a SAP BusinessObjects Universe to Sigma Computing data model JSON.
 
-Accepts BI RESTful Web Service (RWS) universe JSON — as returned by
-GET /biprws/sl/v1/universes/{id} on an on-prem BO 4.x server. The ingest is
-tolerant of the common RWS shape variants (nested outline/items, class/objects,
-or a flat objects[] array).
+Accepts EITHER (auto-detected — a leading "<" means XML):
+  • BI RESTful Web Service (RWS) universe JSON — GET /biprws/sl/v1/universes/{id}
+    on an on-prem BO 4.x server. This is the business OUTLINE only: object names,
+    datatypes, folders. The REST endpoint does NOT return object SELECT/WHERE
+    expressions or the data foundation (physical tables/columns/joins).
+  • Semantic Layer SDK / Information Design Tool XML export of the data foundation
+    + business layer — REQUIRED to migrate the actual warehouse columns and
+    calculations, since RWS JSON lacks them. (See the businessobjects-to-sigma
+    skill's scripts/extract-universe-sdk.groovy extractor recipe.)
+
+The ingest is tolerant of the common RWS JSON shape variants (nested
+outline/items, class/objects, or a flat objects[] array) and of the SDK/IDT XML
+tag/attribute variants.
 
 Mapping: physical tables → warehouse-table elements; dimensions/details →
 columns (business names preserved); measures → metrics (Sum/Count/Avg/...);
@@ -1207,7 +1216,7 @@ output at the new physical names. Unmatched map keys are surfaced as warnings.
 The output JSON can be POSTed to the Sigma API (POST /v2/dataModels/spec) to
 create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     {
-      universe_json: z.string().describe('BusinessObjects universe JSON (RWS /sl/v1/universes/{id} format)'),
+      universe_json: z.string().describe('BusinessObjects universe — RWS JSON (/sl/v1/universes/{id} format) OR a Semantic-Layer-SDK / IDT XML export (data foundation + business layer). Auto-detected by a leading "<".'),
       connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
       database: z.string().describe('Override database name; pass empty string to omit'),
       schema: z.string().describe('Override schema name; pass empty string to omit'),
@@ -1216,8 +1225,9 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
     },
     async ({ universe_json, connection_id, database, schema, table_map, column_map }) => {
       try {
-        const parsed = JSON.parse(universe_json);
-        const result = convertBobjToSigma(parsed, {
+        // Pass the raw string straight through — convertBobjToSigma auto-detects
+        // XML (leading "<") vs RWS JSON and routes to the right ingest.
+        const result = convertBobjToSigma(universe_json, {
           connectionId: connection_id || undefined,
           database: database || undefined,
           schema: schema || undefined,
