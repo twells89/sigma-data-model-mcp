@@ -1,0 +1,13 @@
+{
+  "description": "Parameter-driven dimensions must resolve to the parameter DEFAULT instead of dropping/erroring. order_fact has (a) a Liquid {% if metric_basis._parameter_value == 'scaled' %} field-picker dimension `selected_metric` (default 'scaled' → NET_REVENUE / 1000.0) and (b) a ${revenue_column} parameter-substitution dimension `dynamic_revenue_col` (default 'NET_REVENUE'). Both previously dropped/emitted error-typed columns; now they convert to concrete, queryable columns. Regression for the 2026-06-18 looker postmortem Liquid/parameter fix.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
