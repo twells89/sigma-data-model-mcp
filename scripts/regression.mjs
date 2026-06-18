@@ -245,12 +245,15 @@ async function runFixture(fx, converters) {
     })));
     arg = fileBased.includes(fx.fmt) ? parts : parts.map(p => p.content).join('\n');
   } else {
-    const xml = await readFile(fx.inputFile, 'utf-8');
+    const raw = await readFile(fx.inputFile, 'utf-8');
+    // jsonBased formats take a parsed object — but a non-.json input (e.g. a bobj
+    // SL-SDK .xml fixture) is passed as a raw string for the converter to detect.
+    const isJsonFile = fx.inputFile.endsWith('.json');
     arg = fileBased.includes(fx.fmt)
-      ? [{ name: basename(fx.inputFile), content: xml }]
+      ? [{ name: basename(fx.inputFile), content: raw }]
       : jsonBased.includes(fx.fmt)
-        ? JSON.parse(xml)
-        : xml;
+        ? (isJsonFile ? JSON.parse(raw) : raw)
+        : raw;
   }
   let result;
   try {

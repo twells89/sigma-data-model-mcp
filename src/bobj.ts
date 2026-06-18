@@ -64,14 +64,32 @@ export interface BobjConvertOptions {
   columnMap?: Record<string, string>;
 }
 
-// ── Public entry point: RWS JSON → Sigma ─────────────────────────────────────
-
+// ── Public entry point: RWS JSON *or* SL-SDK XML → Sigma ─────────────────────
+//
+// `input` may be:
+//   • a parsed RWS universe object (the original Phase-1 path), or
+//   • a raw string — auto-detected: a leading `<` routes to the Semantic-Layer
+//     export ingest (`ingestBobjSdkXml`, the data-foundation + business-layer
+//     XML that carries the physical columns and object SELECTs the RWS REST
+//     endpoint does NOT expose); anything else is parsed as RWS JSON.
+// Both paths normalize to the same `BobjUniverse` IR, so `convertBobjIR` is the
+// single shared core regardless of how the universe was extracted.
 export function convertBobjToSigma(
   input: any,
   options: BobjConvertOptions = {},
 ): ConversionResult {
-  const uni = normalizeBobjUniverse(input);
+  const uni = parseBobjInput(input);
   return convertBobjIR(uni, options);
+}
+
+/** Route any accepted input shape to the `BobjUniverse` IR. */
+export function parseBobjInput(input: any): BobjUniverse {
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (s.startsWith('<')) return ingestBobjSdkXml(s);
+    return normalizeBobjUniverse(JSON.parse(s));
+  }
+  return normalizeBobjUniverse(input);
 }
 
 // ── Target-layer remap (old universe names → restructured / platinum names) ──
@@ -455,11 +473,220 @@ export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {
   };
 }
 
-// ── Phase 2 stub: SL-SDK XML → IR (feeds the same convertBobjIR core) ────────
+// ── SL-SDK / IDT export ingest: XML → IR (feeds the same convertBobjIR core) ──
 //
-// export function ingestBobjSdkXml(xml: string): BobjUniverse { ... }
-// Will parse <classes>/<tables>/<joins cardinality=...>/<contexts>/<derivedTables>
-// into the BobjUniverse IR above, then callers run convertBobjIR().
+// The RWS REST endpoint (GET /sl/v1/universes/{id}) returns only the business
+// OUTLINE — object names, datatypes, folders — NOT the relational bindings
+// (each object's SELECT/WHERE) nor the data foundation (physical tables,
+// columns, joins). To migrate the actual warehouse columns and calculations you
+// need a Semantic Layer SDK / Information Design Tool export of the data
+// foundation + business layer. This ingest parses that XML into the SAME
+// `BobjUniverse` IR `normalizeBobjUniverse` produces, so `convertBobjIR` is
+// unchanged.
+//
+// It is deliberately SHAPE-TOLERANT (SAP publishes no schema for the .dfx/.blx
+// XML, and SDK extractors vary): tables/joins are read from a <dataFoundation>
+// subtree if present (else the whole doc), business objects + predefined filters
+// from a <businessLayer> subtree (else the whole doc). Tag and attribute names
+// are matched case-insensitively across the common variants.
+
+interface XmlNode { tag: string; attrs: Record<string, string>; children: XmlNode[]; text: string; }
+
+export function ingestBobjSdkXml(xml: string): BobjUniverse {
+  const doc = parseXml(xml);
+  const uni = findFirst(doc, ['universe', 'unx', 'businessuniverse']) || doc;
+  const name =
+    uni.attrs.name || textOf(findFirst(uni, ['name', 'universename'])) || 'BusinessObjects Universe';
+
+  const dfScope = findFirst(uni, ['datafoundation', 'data-foundation', 'df']) || uni;
+  const blScope = findFirst(uni, ['businesslayer', 'business-layer', 'bl']) || uni;
+
+  // Data-foundation tables (catalog/schema preserved when present).
+  const tableMap = new Map<string, BobjTable>();
+  for (const t of findAll(dfScope, n => n.tag === 'table')) {
+    const raw = t.attrs.name || t.attrs.tablename || textOf(findFirst(t, ['name']));
+    if (!raw) continue;
+    const key = tableKeyOf(raw);
+    if (!tableMap.has(key)) {
+      tableMap.set(key, {
+        name: key,
+        database: t.attrs.catalog || t.attrs.database || undefined,
+        schema: t.attrs.schema || t.attrs.owner || undefined,
+      });
+    }
+  }
+
+  // Joins (+ cardinality).
+  const joins: BobjJoin[] = [];
+  for (const j of findAll(dfScope, n => n.tag === 'join')) {
+    const expression =
+      textOf(findFirst(j, ['expression', 'statement', 'sql', 'definition'])) ||
+      j.attrs.expression || j.attrs.statement || textOf(j) || undefined;
+    joins.push({
+      left: j.attrs.left || j.attrs.lefttable || j.attrs.table1 || undefined,
+      right: j.attrs.right || j.attrs.righttable || j.attrs.table2 || undefined,
+      expression,
+      cardinality: j.attrs.cardinality || textOf(findFirst(j, ['cardinality'])) || undefined,
+    });
+  }
+
+  // Business-layer objects (recursive, tracking the enclosing folder/class name).
+  const objects: BobjObject[] = [];
+  walkBlNodes(blScope.children, objects, undefined);
+
+  // Predefined filters / conditions (a WHERE, no SELECT).
+  const filters: BobjFilter[] = [];
+  for (const f of findAll(blScope, n => /^(filter|condition|predefinedfilter)$/.test(n.tag))) {
+    const where =
+      textOf(findFirst(f, ['where', 'whereclause', 'expression', 'sql', 'definition'])) ||
+      f.attrs.where || undefined;
+    if (!where && !f.attrs.name) continue;
+    filters.push({ name: f.attrs.name || textOf(findFirst(f, ['name'])) || 'Filter', where });
+  }
+
+  // Backfill any table referenced by an object SELECT but absent from the data
+  // foundation (lenient exports may omit it).
+  for (const o of objects) {
+    for (const { table } of parseTableColTokens(o.select)) {
+      const key = tableKeyOf(table);
+      if (!tableMap.has(key)) tableMap.set(key, { name: key });
+    }
+  }
+
+  return { name, objects, tables: [...tableMap.values()], joins, filters };
+}
+
+/** Walk a business-layer node list, emitting one BobjObject per leaf object. */
+function walkBlNodes(nodes: XmlNode[], out: BobjObject[], parentClass?: string): void {
+  for (const node of nodes) {
+    if (/^(folder|class|businessfolder|subclass)$/.test(node.tag)) {
+      walkBlNodes(node.children, out, node.attrs.name || parentClass);
+      continue;
+    }
+    const binding = findFirst(node, ['relationalbinding', 'binding']);
+    const selectNode =
+      (binding && findFirst(binding, ['select', 'selectclause', 'expression'])) ||
+      findFirst(node, ['select', 'selectclause']);
+    const select = textOf(selectNode) || node.attrs.select || node.attrs.selectclause || '';
+    const tagIsObj = /^(item|object|businessobject|dimension|measure|attribute|detail)$/.test(node.tag);
+
+    if (select || (tagIsObj && node.attrs.name)) {
+      let q = (node.attrs.qualification || node.attrs.type || node.attrs.kind || '').toLowerCase();
+      if (!q && /^(dimension|measure|attribute|detail)$/.test(node.tag)) q = node.tag;
+      let kind: BobjObject['kind'] = 'dimension';
+      if (/measure/.test(q)) kind = 'measure';
+      else if (/detail|attribute/.test(q)) kind = 'detail';
+      out.push({
+        name: node.attrs.name || node.attrs.objectname || textOf(findFirst(node, ['name'])) || 'Object',
+        className: parentClass,
+        kind,
+        dataType: node.attrs.datatype || undefined,
+        select,
+        aggregation:
+          node.attrs.aggregation || node.attrs.aggregationfunction ||
+          node.attrs.projectionfunction || node.attrs.function || undefined,
+        description:
+          node.attrs.description || node.attrs.help ||
+          textOf(findFirst(node, ['description', 'help'])) || undefined,
+      });
+      continue; // don't descend into a leaf object
+    }
+    if (node.children.length) walkBlNodes(node.children, out, parentClass);
+  }
+}
+
+// ── Minimal dependency-free XML parser ───────────────────────────────────────
+// Tolerant of declarations, comments, CDATA, self-closing tags, and `>` inside
+// quoted attribute values. Tag/attribute names are lowercased; values keep case
+// and are entity-decoded. Shared verbatim by the skill + browser mirrors.
+
+function parseXml(xml: string): XmlNode {
+  const s = xml.replace(/^﻿/, '');
+  const root: XmlNode = { tag: '#root', attrs: {}, children: [], text: '' };
+  const stack: XmlNode[] = [root];
+  const top = () => stack[stack.length - 1];
+  const n = s.length;
+  let i = 0;
+  while (i < n) {
+    const lt = s.indexOf('<', i);
+    if (lt < 0) { addText(top(), s.slice(i)); break; }
+    if (lt > i) addText(top(), s.slice(i, lt));
+    if (s.startsWith('<!--', lt)) { const e = s.indexOf('-->', lt + 4); i = e < 0 ? n : e + 3; continue; }
+    if (s.startsWith('<![CDATA[', lt)) {
+      const e = s.indexOf(']]>', lt + 9);
+      top().text += s.slice(lt + 9, e < 0 ? n : e);   // raw, no entity decode
+      i = e < 0 ? n : e + 3; continue;
+    }
+    if (s.startsWith('<?', lt)) { const e = s.indexOf('?>', lt + 2); i = e < 0 ? n : e + 2; continue; }
+    if (s.startsWith('<!', lt)) { const e = s.indexOf('>', lt + 2); i = e < 0 ? n : e + 1; continue; }
+    const gt = findTagEnd(s, lt + 1);
+    if (gt < 0) break;
+    let raw = s.slice(lt + 1, gt).trim();
+    if (raw.startsWith('/')) { if (stack.length > 1) stack.pop(); i = gt + 1; continue; }
+    const selfClose = raw.endsWith('/');
+    if (selfClose) raw = raw.slice(0, -1).trim();
+    const node = parseTag(raw);
+    top().children.push(node);
+    if (!selfClose) stack.push(node);
+    i = gt + 1;
+  }
+  return root;
+}
+
+/** Index of the `>` that closes a tag opened at `from`, skipping quoted attrs. */
+function findTagEnd(s: string, from: number): number {
+  let q = '';
+  for (let j = from; j < s.length; j++) {
+    const c = s[j];
+    if (q) { if (c === q) q = ''; }
+    else if (c === '"' || c === "'") q = c;
+    else if (c === '>') return j;
+  }
+  return -1;
+}
+
+function parseTag(raw: string): XmlNode {
+  const m = raw.match(/^([^\s/>]+)\s*([\s\S]*)$/);
+  const tag = (m ? m[1] : raw).toLowerCase();
+  const attrs: Record<string, string> = {};
+  const rest = m ? m[2] : '';
+  const re = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let a: RegExpExecArray | null;
+  while ((a = re.exec(rest))) attrs[a[1].toLowerCase()] = decodeEntities(a[2] !== undefined ? a[2] : a[3]);
+  return { tag, attrs, children: [], text: '' };
+}
+
+function addText(node: XmlNode, chunk: string): void {
+  const t = decodeEntities(chunk);
+  if (t.trim()) node.text += t;
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&amp;/g, '&');
+}
+
+/** First descendant (breadth-first within each level) whose tag is in `tags`. */
+function findFirst(node: XmlNode, tags: string[]): XmlNode | null {
+  for (const c of node.children) if (tags.includes(c.tag)) return c;
+  for (const c of node.children) { const r = findFirst(c, tags); if (r) return r; }
+  return null;
+}
+
+/** All descendants matching `pred` (does not descend into a match). */
+function findAll(node: XmlNode, pred: (n: XmlNode) => boolean, out: XmlNode[] = []): XmlNode[] {
+  for (const c of node.children) {
+    if (pred(c)) out.push(c);
+    else findAll(c, pred, out);
+  }
+  return out;
+}
+
+function textOf(node: XmlNode | null): string { return node ? (node.text || '').trim() : ''; }
 
 // ── Derived elements (name-aware variant of buildDerivedElements) ────────────
 
