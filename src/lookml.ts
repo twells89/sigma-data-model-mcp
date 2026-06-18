@@ -654,6 +654,82 @@ function resolveNdtToSql(
   return { sql, resolved: true };
 }
 
+// ── Parameter-driven dimension resolution ──────────────────────────────────
+// LookML dimensions can switch their SQL on a `parameter` via Liquid
+// ({% if param._parameter_value == 'x' %}) or direct ${param} substitution.
+// These can't be evaluated statically AT QUERY TIME (the value is user-chosen),
+// but Looker's UNFILTERED default state renders the parameter's DEFAULT — so the
+// faithful static conversion resolves to that default branch/value instead of
+// dropping the field (which previously emitted a broken, error-typed column).
+// Dynamic switching itself still needs a Sigma parameter control (handoff
+// warning emitted by the caller).
+
+// Resolve a single (non-nested) Liquid {% if %}/{% elsif %}/{% else %}/{% endif %}
+// to the branch selected by the controlling parameter's default value.
+function lookResolveLiquidIf(sql: string, paramDefaults: Map<string, string>):
+    { sql: string; resolved: boolean } {
+  if (!/\{%-?\s*if\b/i.test(sql)) return { sql, resolved: false };
+  // Refuse nested ifs — pick the safe path (leave unresolved) rather than guess.
+  const ifCount = (sql.match(/\{%-?\s*if\b/gi) || []).length;
+  if (ifCount !== 1) return { sql, resolved: false };
+  const m = sql.match(/\{%-?\s*if\b([\s\S]*?)\{%-?\s*endif\s*-?%\}/i);
+  if (!m) return { sql, resolved: false };
+  const before = sql.slice(0, m.index);
+  const after = sql.slice((m.index || 0) + m[0].length);
+  // body = everything between `{% if` and `{% endif %}`; re-prepend the `if`
+  // condition delimiter we consumed so the split below is uniform.
+  const body = '{% if' + m[1];
+  // Split into branch markers: {% if COND %} | {% elsif COND %} | {% else %}
+  const parts = body.split(/\{%-?\s*(?:els?if|elsif|if|else)\b/i);
+  // parts[0] is '' (before the first marker); recover each marker's keyword+cond
+  const markers = body.match(/\{%-?\s*(elsif|else if|else|if)\b([^%]*?)-?%\}/gi) || [];
+  const branches: { cond: string | null; text: string }[] = [];
+  let rest = body;
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    const start = rest.indexOf(marker);
+    const bodyStart = start + marker.length;
+    const nextMarker = markers[i + 1];
+    const bodyEnd = nextMarker ? rest.indexOf(nextMarker, bodyStart) : rest.length;
+    const text = rest.slice(bodyStart, bodyEnd).trim();
+    const isElse = /\{%-?\s*else\s*-?%\}/i.test(marker);
+    const cond = isElse ? null
+      : (marker.replace(/\{%-?\s*(elsif|else if|if)\b/i, '').replace(/-?%\}/i, '').trim());
+    branches.push({ cond, text });
+  }
+  const evalCond = (cond: string): boolean => {
+    // Supported: <param>[._parameter_value] (==|!=) '<val>'|"<val>"
+    const cm = cond.match(/([A-Za-z_][A-Za-z0-9_.]*?)(?:\._parameter_value)?\s*(==|!=)\s*['"]?([^'"]*)['"]?\s*$/);
+    if (!cm) return false;
+    const pname = cm[1].split('.').pop()!.toLowerCase();
+    const op = cm[2];
+    const want = cm[3].trim();
+    const dv = paramDefaults.get(pname);
+    if (dv === undefined) return false;
+    return op === '==' ? dv === want : dv !== want;
+  };
+  let chosen = branches.find(b => b.cond !== null && evalCond(b.cond));
+  if (!chosen) chosen = branches.find(b => b.cond === null);  // else
+  if (!chosen) chosen = branches[0];                           // first if-body
+  if (!chosen) return { sql, resolved: false };
+  const out = (before + ' ' + chosen.text + ' ' + after).replace(/\s+/g, ' ').trim();
+  if (/\{%/.test(out)) return { sql, resolved: false };        // leftover Liquid
+  return { sql: out, resolved: true };
+}
+
+// Replace ${param} (only names that are KNOWN parameters) with the parameter's
+// default value. Sibling-dimension ${field} refs are untouched (not in the map).
+function lookResolveParamSubst(sql: string, paramDefaults: Map<string, string>):
+    { sql: string; resolved: boolean } {
+  let changed = false;
+  const out = sql.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (full, name: string) => {
+    const dv = paramDefaults.get(name.toLowerCase());
+    if (dv !== undefined) { changed = true; return dv; }
+    return full;
+  });
+  return { sql: out, resolved: changed };
+}
+
 function lookConvertView(
   viewName: string,
   view: any,
@@ -795,7 +871,7 @@ function lookConvertView(
   // Detect Liquid templating — can't be statically converted
   const viewSqls = JSON.stringify(view);
   if (/\{%-?\s*(if|unless|for|assign|capture)\b/i.test(viewSqls)) {
-    warnings.push(`⚠ View "${viewName}": contains Liquid templating ({% if %} blocks). Dimensions using Liquid conditionals will be skipped — review and add manually in Sigma.`);
+    warnings.push(`ℹ View "${viewName}": contains Liquid templating ({% if %} blocks). Parameter-driven dimensions are resolved to their DEFAULT branch (see per-dimension 🔶 notes); any unresolved Liquid is skipped — review in Sigma.`);
   }
 
   // Build per-view maps for same-view field ref expansion in computed dimensions.
@@ -879,6 +955,18 @@ function lookConvertView(
     });
   }
 
+  // Parameter default-value map for static resolution of parameter-driven
+  // dimensions (Liquid {% if %} field-pickers / ${param} substitution).
+  const paramDefaults = new Map<string, string>();
+  {
+    const params = view.parameter ? (Array.isArray(view.parameter) ? view.parameter : [view.parameter]) : [];
+    for (const p of params) {
+      if (p && p._name && p.default_value != null && p.default_value !== '') {
+        paramDefaults.set(p._name.toLowerCase(), String(p.default_value));
+      }
+    }
+  }
+
   // Dimensions
   const dims = view.dimension ? (Array.isArray(view.dimension) ? view.dimension : [view.dimension]) : [];
   for (const d of dims) {
@@ -886,6 +974,25 @@ function lookConvertView(
     const colName = d._name.toUpperCase();
     // LookML number format on the dimension (value_format_name / value_format).
     const dFormat = lookmlFieldFormat(d, warnings);
+
+    // Statically resolve parameter-driven SQL to the parameter DEFAULT (Looker's
+    // unfiltered default state) so the field becomes a real, queryable column
+    // instead of a dropped/error column. Dynamic switching needs a Sigma
+    // parameter control — emit a 🔶 action-required handoff.
+    if (d.sql && /\{%-?\s*if\b/i.test(d.sql)) {
+      const liq = lookResolveLiquidIf(d.sql, paramDefaults);
+      if (liq.resolved) {
+        d.sql = liq.sql;
+        warnings.push(`🔶 "${d._name}": Liquid {% if %} field-picker resolved to the parameter DEFAULT branch (→ ${liq.sql.replace(/\s+/g, ' ').trim().slice(0, 60)}). To reproduce the dynamic dropdown, add a Sigma parameter control and a Switch()/If() over its value.`);
+      }
+    }
+    if (d.sql && !/\$\{TABLE\}/i.test(d.sql)) {
+      const sub = lookResolveParamSubst(d.sql, paramDefaults);
+      if (sub.resolved) {
+        d.sql = sub.sql;
+        warnings.push(`🔶 "${d._name}": LookML parameter \${...} substituted with its DEFAULT value (→ ${sub.sql.replace(/\s+/g, ' ').trim().slice(0, 60)}). To reproduce the dynamic behavior, add a Sigma parameter control.`);
+      }
+    }
 
     // ── legacy `case: { when: {sql,label}... else }` → nested If() ──
     if (d.case && typeof d.case === 'object') {
