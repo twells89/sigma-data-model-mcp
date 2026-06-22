@@ -443,7 +443,11 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     for (const rel of srcEl.relationships) {
       if (!rel.name) continue;
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
-      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      // Denormalize both warehouse-table AND Custom SQL (derived_table / PDT)
+      // relationship targets — a LookML explore that joins a derived_table view
+      // must surface that view's columns on the denorm element, or workbook tiles
+      // referencing the join measures fail to resolve.
+      if (!tgtEl || (tgtEl.source?.kind !== 'warehouse-table' && tgtEl.source?.kind !== 'sql')) continue;
       // Don't denormalize the relationship's OWN key column across the join — the base
       // element already carries that value, and the cross-element passthrough of a join
       // key compiles to type "error" in Sigma (verified via readback). Skip it.
@@ -451,21 +455,24 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       for (const col of (tgtEl.columns || [])) {
         if (tgtKeyIds.has(col.id)) continue;
         if (!col.formula || col.formula.startsWith('/*')) continue;
-        let dispName: string;
-        const fm = col.formula.match(/^\[([^\]]+)\]$/);
-        if (fm) {
-          const inner = fm[1];
-          // The display name is everything after the FIRST slash (the table/element
-          // prefix). Use indexOf, not lastIndexOf — a display name may itself contain a
-          // slash (e.g. Tableau caption "Product Key/Name").
-          const s = inner.indexOf('/');
-          dispName = s >= 0 ? inner.slice(s + 1) : inner;
-        } else if ((col as any).name) {
-          // CALC column on the relationship target — referenceable by name.
+        let dispName: string | undefined;
+        // Prefer an explicit `name` (Custom SQL columns and calc columns carry one)
+        // so the cross-element ref uses the friendly display the workbook expects;
+        // fall back to the formula's table-qualified tail for plain warehouse cols.
+        if ((col as any).name) {
           dispName = String((col as any).name);
         } else {
-          continue;
+          const fm = col.formula.match(/^\[([^\]]+)\]$/);
+          if (fm) {
+            const inner = fm[1];
+            // The display name is everything after the FIRST slash (the table/element
+            // prefix). Use indexOf, not lastIndexOf — a display name may itself contain a
+            // slash (e.g. Tableau caption "Product Key/Name").
+            const s = inner.indexOf('/');
+            dispName = s >= 0 ? inner.slice(s + 1) : inner;
+          }
         }
+        if (!dispName) continue;
         // A display name containing a "/" cannot be referenced via Sigma's
         // slash-delimited bracket syntax ([Base/Rel/Field] would over-segment). Such a
         // column stays accessible on its own dimension element; just don't surface it as
