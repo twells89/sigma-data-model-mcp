@@ -1015,6 +1015,40 @@ function lookConvertView(
       continue;
     }
 
+    // ── type: tier → nested If() bucketing column ──────────────────────────
+    // A LookML tier buckets a numeric column by boundaries. Without this it would
+    // fall through to the simple-physical path and DEDUP into its underlying
+    // column (same ${TABLE}.col), emitting no distinct bucket column → tiles that
+    // group by the tier 400 with "Dependency not found". Labels match Looker's
+    // `style: integer` format: "<lo> to <hi-1>", top "<last> or Above", and
+    // "Below <first>" (the styles Looker renders for integer tiers).
+    if ((d.type || '').toLowerCase() === 'tier' && Array.isArray(d.tiers) && d.tiers.length) {
+      const tiers: number[] = d.tiers.map((t: any) => Number(t)).filter((n: number) => !Number.isNaN(n));
+      if (tiers.length) {
+        const physCol = (lookStripSql(d.sql) || colName).split('.').pop()!.replace(/"/g, '').toUpperCase();
+        // source-qualified for Custom SQL (a bare [Col] sibling ref would
+        // fuzzy-match the column's own name → circular reference)
+        const ref = `[${tableName}/${colLabel(physCol)}]`;
+        const allInt = tiers.every((t) => Number.isInteger(t));
+        const lbl = (lo: number, hi: number) => allInt ? `${lo} to ${hi - 1}` : `${lo} to ${hi}`;
+        let formula = `"${tiers[tiers.length - 1]} or Above"`;
+        for (let i = tiers.length - 2; i >= 0; i--) {
+          formula = `If(${ref} < ${tiers[i + 1]}, "${lbl(tiers[i], tiers[i + 1])}", ${formula})`;
+        }
+        formula = `If(${ref} < ${tiers[0]}, "Below ${tiers[0]}", ${formula})`;
+        const tierColId = sigmaShortId();
+        colIdMap[colName] = tierColId;
+        element.columns.push({ id: tierColId, formula, name: d.label || sigmaDisplayName(d._name) });
+        element.order.push(tierColId);
+        const style = (d.style || 'classic').toLowerCase();
+        if (style !== 'integer')
+          warnings.push(`ℹ "${d._name}" (tier, style: ${style}) → If() buckets emitted with integer-style labels ("lo to hi-1"); verify the labels match Looker's ${style} style and adjust if needed.`);
+        else
+          warnings.push(`✅ "${d._name}" (tier) → ${formula.slice(0, 70)}…`);
+        continue;
+      }
+    }
+
     // Detect LookML parameter substitution — can't be resolved statically
     if (/\$\{[^.}]+\}/.test(d.sql || '') && !/\$\{TABLE\}/i.test(d.sql || '')) {
       warnings.push(`⚠ "${d._name}": uses LookML parameter substitution — skipped. Add this dimension manually after configuring parameters in Sigma.`);
@@ -1101,7 +1135,16 @@ function lookConvertView(
     const colId = makeColId(physicalCol);
     colIdMap[colName] = colId;
     colIdMap[physicalCol] = colId;
-    element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]`, ...(dFormat ? { format: dFormat } : {}) });
+    if (isCustomSql) {
+      // Custom SQL columns: SOURCE-qualified [Custom SQL/COL] ref PLUS an explicit
+      // `name`. The source-qualified form (not a bare [COL]) is required — a bare
+      // sibling ref fuzzy-matches the column's own display name → "circular column
+      // reference" (verified live). The `name` is the fix for downstream refs;
+      // without it the column had no display identity (the original bug).
+      element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]`, name: d.label || sigmaDisplayName(d._name), ...(dFormat ? { format: dFormat } : {}) });
+    } else {
+      element.columns.push({ id: colId, formula: `[${tableName}/${colLabel(physicalCol)}]`, ...(dFormat ? { format: dFormat } : {}) });
+    }
     element.order.push(colId);
   }
 
@@ -2054,17 +2097,26 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     const viewCols: Array<{ id: string; formula: string }> = [];
     const viewOrder: string[] = [];
 
-    // Own columns from the fact element — physical warehouse refs only.
-    // Computed/named columns use bare [Col] refs in their formulas that won't
-    // resolve as cross-element refs in the derived element context.
+    // Own columns from the fact element.
     for (const col of srcEl.columns ?? []) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
-      if (col.name) continue;
+      const cId = sigmaShortId();
+      if (col.name) {
+        // Named calc column (CASE / tier / concat / yesno etc.): its own formula
+        // uses bare [Col] refs that don't resolve in the derived-element context,
+        // so reference the base element's column BY NAME instead. (Matches the
+        // shared sigma-ids.ts buildDerivedElements — skipping these used to drop
+        // calc dimensions like a concat "Customer Name" from the denorm, 400ing
+        // any tile that referenced them.) A "/" in the name is unreferenceable.
+        if (String(col.name).includes('/')) continue;
+        viewCols.push({ id: cId, formula: `[${baseName}/${col.name}]` });
+        viewOrder.push(cId);
+        continue;
+      }
       // Rewrite the [TABLE_TAIL/Col] prefix to the base element's resolvable
       // name (see baseName above) — verbatim copies break once the base
       // element is named.
       const fm = col.formula.match(/^\[([^\/\]]+)\/([^\]]+)\]$/);
-      const cId = sigmaShortId();
       viewCols.push({ id: cId, formula: fm ? `[${baseName}/${fm[2]}]` : col.formula });
       viewOrder.push(cId);
     }
@@ -2075,7 +2127,11 @@ function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     for (const rel of srcEl.relationships ?? []) {
       if (!rel.name) continue;
       const tgtEl = elements.find(e => e.id === rel.targetElementId);
-      if (!tgtEl || tgtEl.source?.kind !== 'warehouse-table') continue;
+      // Denormalize warehouse-table AND Custom SQL (derived_table / PDT) targets —
+      // a LookML explore that joins a derived_table view must surface that view's
+      // (now-named) columns on the explore denorm element, or workbook tiles that
+      // reference the join measures fail with "Dependency not found" on POST.
+      if (!tgtEl || (tgtEl.source?.kind !== 'warehouse-table' && tgtEl.source?.kind !== 'sql')) continue;
 
       // Don't denormalize the relationship's OWN key column across the join — the base
       // element already carries that value, and the cross-element passthrough of a join

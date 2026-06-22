@@ -44,6 +44,7 @@ export function lookIsComplexSql(sql: string): boolean {
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(cleaned)) return true;
   if (/^CASE\b/i.test(cleaned)) return true;
   if (/\bIN\s*\(/i.test(cleaned)) return true;  // SQL IN operator — needs In() formula
+  if (cleaned.includes('||')) return true;      // SQL string concat — needs Concat()
   if (/[=<>!+\-*\/%]/.test(cleaned.replace(/'[^']*'/g, ''))) return true;
   return false;
 }
@@ -227,6 +228,21 @@ export function lookSqlToSigmaRules(sql: string): string | null {
   // Pattern 5: simple arithmetic on column refs
   if (/^[A-Z_][A-Z0-9_]*\s*[+\-*\/]/.test(expr) || /NULLIF/i.test(expr)) {
     return lookConvertMathExpr(expr);
+  }
+
+  // Pattern 6: SQL string concatenation (a || ' ' || b) → Concat(Text([A]), " ", Text([B]))
+  // Column refs are wrapped in Text(): SQL || coerces operands to text implicitly,
+  // but Sigma Concat requires string args (a numeric column → "Invalid arg type").
+  // Text() is a no-op on text columns, so wrapping every ref is always safe.
+  if (expr.includes('||')) {
+    const parts = expr.split('||').map(p => {
+      p = p.trim();
+      if (/^'[^']*'$/.test(p)) return `"${p.slice(1, -1)}"`;            // 'x'  -> "x" (literal)
+      if (/^\[[^\]]+\]$/.test(p)) return `Text(${p})`;                  // [Display] ref -> Text([Display])
+      if (/^[A-Z_][A-Z0-9_]*$/i.test(p)) return `Text(${lookColRef(p)})`; // bare column -> Text([Display])
+      return null;                                                     // a part we can't safely map
+    });
+    if (parts.length > 1 && parts.every(p => p !== null)) return `Concat(${parts.join(', ')})`;
   }
 
   return null;
