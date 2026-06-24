@@ -37,6 +37,15 @@ const tdsXmlParser = new XMLParser({
   attributeNamePrefix: '@_',
   isArray: (name) => ['datasource', 'connection', 'named-connection', 'relation', 'column', 'metadata-record'].includes(name),
   trimValues: true,
+  // Trusted first-party input can be large and entity-dense; lift fast-xml-
+  // parser's default 1000 entity-expansion cap so big .tds/.tfl files parse
+  // instead of throwing "Entity expansion limit exceeded" (not adversarial).
+  processEntities: {
+    enabled: true,
+    maxTotalExpansions: 50_000_000,
+    maxEntityCount: 5_000_000,
+    maxExpandedLength: 500_000_000,
+  },
 });
 
 function tdsAttr(node: any, key: string): string {

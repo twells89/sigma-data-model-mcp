@@ -25,6 +25,18 @@ const xmlParser = new XMLParser({
   isArray: (name) => ['datasource', 'relation', 'column', 'member', 'clause', 'expression',
     'metadata-record', 'relationship', 'object', 'worksheet', 'filter', 'rows', 'cols'].includes(name),
   trimValues: true,
+  // fast-xml-parser caps total entity expansions at 1000 by default (a
+  // billion-laughs DoS guard). Real Tableau .twb files are large, trusted,
+  // first-party input dense with predefined entities (&quot; &amp; &gt; in
+  // formulas/captions) — a 5MB workbook hit 1018 and failed to parse at all,
+  // blocking the entire data-model build. These workbooks are not adversarial;
+  // raise the limits well past any real file so big (and bigger) ones parse.
+  processEntities: {
+    enabled: true,
+    maxTotalExpansions: 50_000_000,
+    maxEntityCount: 5_000_000,
+    maxExpandedLength: 500_000_000,
+  },
 });
 
 function asArray(val: any): any[] {

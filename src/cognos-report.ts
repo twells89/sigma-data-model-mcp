@@ -35,6 +35,15 @@ const xmlParser = new XMLParser({
     'dataItemValue', 'dataItemLabel', 'listColumn', 'reportPage',
     'crosstab', 'crosstabNode', 'crosstabNodeMember',
     'vizControl', 'vcDataSet', 'vcSlotData', 'vcSlotDsColumn', 'reportDataStore'].includes(n),
+  // Trusted first-party input can be large and entity-dense; lift fast-xml-
+  // parser's default 1000 entity-expansion cap so big reports parse instead of
+  // throwing "Entity expansion limit exceeded" (not adversarial input).
+  processEntities: {
+    enabled: true,
+    maxTotalExpansions: 50_000_000,
+    maxEntityCount: 5_000_000,
+    maxExpandedLength: 500_000_000,
+  },
 });
 const arr = (v: any): any[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
 const txt = (v: any): string => (v == null ? '' : typeof v === 'object' ? (v['#text'] ?? '') : String(v));
