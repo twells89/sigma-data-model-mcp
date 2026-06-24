@@ -48,6 +48,25 @@ function attr(node: any, key: string): string {
   return (node && node[`@_${key}`]) || '';
 }
 
+/** Resolve a connection's <relation>(s), tolerating the modern Tableau
+ *  object-model format. Tableau 2021.1+ ("Object Model / EncapsulateLegacy")
+ *  no longer emits a plain <relation> under <connection>; it emits a
+ *  feature-flag-namespaced element whose literal tag is e.g.
+ *  `_.fcp.ObjectModelEncapsulateLegacy.true...relation` (+ a `.false...` legacy
+ *  twin). fast-xml-parser keys it by that full tag, so `connection.relation` is
+ *  undefined and the datasource silently yields 0 tables/columns — the empty-DM
+ *  bug on modern .twb files. Prefer the `.true` (encapsulated object-model)
+ *  variant, which carries the full collection/join tree; fall back to any
+ *  `...relation` key, then to a plain <relation>. */
+function connRelations(conn: any): any[] {
+  if (!conn) return [];
+  if (conn.relation) return asArray(conn.relation);
+  const nsKeys = Object.keys(conn).filter((k) => k.endsWith('...relation'));
+  if (nsKeys.length === 0) return [];
+  const pick = nsKeys.find((k) => k.includes('.true...')) || nsKeys[0];
+  return asArray(conn[pick]);
+}
+
 // ── LOD Expression Parser ────────────────────────────────────────────────────
 
 interface LODResult {
@@ -686,7 +705,7 @@ function blendColumns(dsEntry: any): BlendCol[] {
     push(remote, isMeasure);
   }
   if (out.length === 0) {
-    const rel = asArray(conn?.relation || [])[0];
+    const rel = connRelations(conn)[0];
     for (const col of asArray(rel?.columns?.column || [])) {
       const dt = (attr(col, 'datatype') || '').toLowerCase();
       push(attr(col, 'name'), ['integer', 'real'].includes(dt));
@@ -722,7 +741,7 @@ function tryBuildBlendModel(
   const primaryId = attr(blendRels[0], 'source');
   const primary = dsById[primaryId];
   if (!primary) return null;
-  const primaryRel = asArray(primary.ds?.connection?.relation || [])[0];
+  const primaryRel = connRelations(primary.ds?.connection)[0];
   if (!primaryRel) return null;
 
   // All secondaries linked to this primary, with their link column pairs.
@@ -731,7 +750,7 @@ function tryBuildBlendModel(
     if (attr(br, 'source') !== primaryId) continue;
     const secId = attr(br, 'target');
     const sec = dsById[secId];
-    if (!sec || !asArray(sec.ds?.connection?.relation || [])[0]) {
+    if (!sec || !connRelations(sec.ds?.connection)[0]) {
       warnings.push(`⚠ Blend secondary '${secId}' has no warehouse table — skipped (publish/repoint it to a warehouse to include)`);
       continue;
     }
@@ -771,7 +790,7 @@ function tryBuildBlendModel(
   const secMeasureDisplay: Record<string, string> = {};   // secWh → max-agg col display
 
   for (const link of links) {
-    const sPath = extractPath(asArray(link.sec.ds.connection.relation)[0], dbOverride, schOverride);
+    const sPath = extractPath(connRelations(link.sec.ds.connection)[0], dbOverride, schOverride);
     const sTable = sPath[sPath.length - 1] || 'SECONDARY';
     const sCols = blendColumns(link.sec);
     const sLinkWh = new Set(link.pairs.map(p => p.s));
@@ -1112,7 +1131,7 @@ export function convertTableauToSigma(
   // a <relation>. These have no physical counterpart in the warehouse table (the parse
   // is a Tableau transform), so emitting them as base columns invents phantoms.
   const derivedRelColGuids = new Set<string>();
-  for (const rel of asArray((ds.connection as any)?.relation || [])) {
+  for (const rel of connRelations(ds.connection)) {
     const scanRel = (r: any) => {
       for (const col of asArray(r?.columns?.column || [])) {
         const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
@@ -1132,7 +1151,7 @@ export function convertTableauToSigma(
       (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; });
 
   // ── Build elements from relation structure ──────────────────────────────
-  const rootRelation = ds.connection ? asArray(ds.connection.relation || [])[0] : null;
+  const rootRelation = ds.connection ? (connRelations(ds.connection)[0] || null) : null;
 
   if (rootRelation) {
     const relType = attr(rootRelation, 'type') || 'table';
@@ -1323,9 +1342,19 @@ export function convertTableauToSigma(
             }
           }
 
-          const el: any = { id: sigmaShortId(), kind: 'table',
-            source: { connectionId: connId, kind: 'warehouse-table', path },
-            columns, order };
+          // A `type='text'` child is a Custom SQL relation: its SQL lives in the
+          // element's #text. Emit a kind:'sql' element with that statement rather
+          // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
+          // is not a real table, so a warehouse-table path would fail at migration).
+          const isCustomSql = attr(rel, 'type') === 'text';
+          const sqlText = isCustomSql ? String(rel['#text'] ?? '').trim() : '';
+          const source = (isCustomSql && sqlText)
+            ? { connectionId: connId, kind: 'sql', statement: sqlText }
+            : { connectionId: connId, kind: 'warehouse-table', path };
+          if (isCustomSql && !sqlText) {
+            warnings.push(`⚠ Custom SQL relation "${fullName}" has no inline SQL text — emitted as a table path "${path.join('.')}"; verify or replace with the query.`);
+          }
+          const el: any = { id: sigmaShortId(), kind: 'table', source, columns, order };
           elementMap[fullName] = { element: el, colIdMap, cleanName, objId: matchingObjId || null };
           elements.push(el);
         }
