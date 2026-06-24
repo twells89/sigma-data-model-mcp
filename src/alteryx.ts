@@ -30,6 +30,15 @@ export function convertAlteryxToSigma(
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     isArray: (name) => ['Node', 'Connection', 'Field', 'JoinInfo', 'SummarizeField', 'SelectField', 'FormulaField'].includes(name),
+    // Trusted first-party input can be large and entity-dense; lift fast-xml-
+    // parser's default 1000 entity-expansion cap so big workflows parse instead
+    // of throwing "Entity expansion limit exceeded" (not adversarial input).
+    processEntities: {
+      enabled: true,
+      maxTotalExpansions: 50_000_000,
+      maxEntityCount: 5_000_000,
+      maxExpandedLength: 500_000_000,
+    },
   });
   const doc = parser.parse(xmlText);
   const root = doc.AlteryxDocument;
