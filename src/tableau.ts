@@ -2469,6 +2469,22 @@ export function convertTableauToSigma(
         // PERCENTILE/CORR/COVAR, PREVIOUS_VALUE, SIZE) are flagged loudly here.
         if (_reportChartWindowPattern(caption, formula, 'no DM-safe SQL OVER lowering for this pattern')) continue;
 
+        // Parameter-driven calc: a formula that references a Tableau parameter
+        // ([Parameters].[X]) resolves to a Sigma workbook CONTROL, not a data-model
+        // column. Emitting it as a DM column/metric produces an unresolvable
+        // [Parameters] reference ("not a sibling column" / "Invalid formula"). These
+        // must be built in the workbook layer as a control-driven Switch over
+        // [ctl-param-…], so report them in workbookPatterns and skip the DM emit.
+        if (/\[Parameters?\]\s*\.\s*\[/i.test(formula)) {
+          workbookPatterns.push({
+            kind: 'unsupported', name: caption, source: formula.trim(),
+            requires: 'WORKBOOK element — build as a control-driven Switch over the parameter ([ctl-param-…]); NOT a DM column/metric',
+            note: 'Formula references a Tableau parameter; parameters become Sigma workbook controls, so this calc cannot live in the data model (params do not resolve there). Build it in the workbook layer as Switch([ctl-param-…], …).',
+          });
+          warnings.push(`ℹ "${caption}" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).`);
+          continue;
+        }
+
         // Regular calculated field
         const sigmaFormula = tableauFormulaToSigma(formula, warnings);
         if (!sigmaFormula || sigmaFormula.startsWith('/*')) continue;
