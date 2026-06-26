@@ -54,19 +54,50 @@ async function sigmaToken() {
   return _token;
 }
 
-async function sigmaPost(spec, name) {
-  const token = await sigmaToken();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Some POST failures are transient and independent of the spec: 5xx/429, network
+// blips, and — for a structurally valid spec — "dependency not found" / schema
+// errors caused by the shared connection's column index being momentarily
+// inconsistent under concurrent runs. Proven empirically: a BYTE-IDENTICAL spec
+// passes on one run and fails on another. Retry those with backoff so the corpus
+// gate reflects converter correctness, not Sigma-side eventual consistency. A
+// genuine spec error fails all attempts and still surfaces.
+function isTransientPostError(status, body) {
+  if (status >= 500 || status === 429) return true;
+  return status === 400 && /dependency not found|schema error|could not resolve/i.test(body || '');
+}
+
+async function sigmaPost(spec, name, attempts = 3) {
   const body = { ...spec, name, folderId: TEST_FOLDER_ID };
-  const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/spec`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await resp.text();
-  if (!resp.ok) return { success: false, status: resp.status, error: txt };
-  let j;
-  try { j = JSON.parse(txt); } catch { return { success: false, error: 'non-JSON response: ' + txt.slice(0, 200) }; }
-  return { success: true, dataModelId: j.dataModelId };
+  let last = { success: false, error: 'no attempt made' };
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const token = await sigmaToken();
+      const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/spec`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const txt = await resp.text();
+      if (resp.ok) {
+        try { return { success: true, dataModelId: JSON.parse(txt).dataModelId }; }
+        catch { return { success: false, error: 'non-JSON response: ' + txt.slice(0, 200) }; }
+      }
+      last = { success: false, status: resp.status, error: txt };
+      if (i < attempts && isTransientPostError(resp.status, txt)) {
+        console.warn(`  POST attempt ${i}/${attempts} transient (${resp.status}); retrying…`);
+        await sleep(2000 * i);
+        continue;
+      }
+      return last;
+    } catch (e) {
+      last = { success: false, error: `network: ${e.message}` };
+      if (i < attempts) { await sleep(2000 * i); continue; }
+      return last;
+    }
+  }
+  return last;
 }
 
 async function sigmaGetColumns(dataModelId) {
