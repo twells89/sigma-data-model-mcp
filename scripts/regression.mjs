@@ -56,16 +56,14 @@ async function sigmaToken() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Some POST failures are transient and independent of the spec: 5xx/429, network
-// blips, and — for a structurally valid spec — "dependency not found" / schema
-// errors caused by the shared connection's column index being momentarily
-// inconsistent under concurrent runs. Proven empirically: a BYTE-IDENTICAL spec
-// passes on one run and fails on another. Retry those with backoff so the corpus
-// gate reflects converter correctness, not Sigma-side eventual consistency. A
-// genuine spec error fails all attempts and still surfaces.
-function isTransientPostError(status, body) {
-  if (status >= 500 || status === 429) return true;
-  return status === 400 && /dependency not found|schema error|could not resolve/i.test(body || '');
+// Retry only genuinely transient, spec-independent failures: 5xx, 429, and
+// network blips. Deliberately do NOT retry 400 "schema error / dependency not
+// found" — those are deterministic spec problems (a real converter regression
+// produced exactly that), and retrying them would MASK regressions while just
+// burning time. A transient infra blip recovers; a bad spec fails every attempt
+// and must surface.
+function isTransientPostError(status /* , body */) {
+  return status >= 500 || status === 429;
 }
 
 async function sigmaPost(spec, name, attempts = 3) {
