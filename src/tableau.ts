@@ -1320,6 +1320,14 @@ export function convertTableauToSigma(
             (nsChild(mr, 'object-id') as string) || '')).trim());
           const parentRaw = stripBrackets(((mr['parent-name'] as string) || '').trim());
           if (!uuid || !cap) continue;
+          // Skip a record whose only available name is a raw Tableau GUID (no
+          // caption/alias/local-name resolved to anything else). Such a "column"
+          // is an internal field id, not a real warehouse column — emitting it
+          // yields a `[TABLE/<guid>]` ref that can't resolve ("dependency not
+          // found" at POST). The pre-encapsulation path skipped these implicitly
+          // by requiring an object-id; relaxing that for the encapsulated variant
+          // let them leak in, so filter them explicitly.
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cap)) continue;
           const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
           if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
           if (parentRaw) (metaByParent[parentRaw] ||= []).push(entry);
