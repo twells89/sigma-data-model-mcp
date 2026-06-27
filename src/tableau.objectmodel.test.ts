@@ -70,6 +70,16 @@ describe('modern object-model (FCP-namespaced) datasource', () => {
       e.source?.kind === 'warehouse-table' &&
       (e.source.path || []).some((p: string) => /CUSTOM SQL QUERY/i.test(p)));
     assert.equal(fakePath, undefined, 'no fake warehouse-table path for a Custom SQL relation');
+    // Bug #1 (epic n4pi): a kind:sql element's OWN columns must use the literal
+    // `Custom SQL` source-alias prefix (data-model-spec rule 3) — NOT the Tableau
+    // relation name ("Custom SQL Query1"). The relation-name prefix compiles every
+    // column to type=error at POST and was the root cause of blank DDMX dashboards.
+    for (const c of (sqlEl.columns || [])) {
+      assert.match(c.formula, /^\[Custom SQL\//,
+        `kind:sql column formula must be [Custom SQL/...], got ${c.formula}`);
+      assert.doesNotMatch(c.formula, /CUSTOM SQL QUERY/i,
+        `column formula must not use the Tableau relation name as prefix: ${c.formula}`);
+    }
   });
 });
 
