@@ -253,3 +253,59 @@ describe('tableau converter: chart-context window calcs → workbookPatterns, ne
     assert.ok(r.warnings.some((w: string) => w.includes('workbookPatterns')));
   });
 });
+
+// ── y9rd.11: aggregate-derived dimension (bucket an aggregate metric) ────────
+// A calc whose output is a TEXT bucket / boolean flag but whose input is an
+// aggregate ratio (Margin Pct = Sum(GP)/Sum(GR)) is a grouping DIMENSION, not a
+// measure. It cannot be a DM row-level column (references an aggregate) NOR a
+// metric (a metric cannot be a chart grouping dimension → viz-pruned). It must
+// be reported as a chart-context workbookPattern for the build layer.
+const TWB_AGGDIM = `<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Margin' inline='true' name='federated.margin' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0' />
+        </named-connections>
+        <relation connection='snowflake.0' name='ORDER_FACT' table='[TJ].[PUBLIC].[ORDER_FACT]' type='table'>
+          <columns>
+            <column datatype='real' name='GROSS_PROFIT' ordinal='1' />
+            <column datatype='real' name='GROSS_REVENUE' ordinal='2' />
+          </columns>
+        </relation>
+      </connection>
+      <column caption='Margin Pct' datatype='real' name='[Calc_MarginPct]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([GROSS_PROFIT]) / SUM([GROSS_REVENUE])' />
+      </column>
+      <column caption='High Margin Flag' datatype='string' name='[Calc_HighMargin]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='IF [Margin Pct] &gt; 0.3 THEN "High" ELSE "Low" END' />
+      </column>
+    </datasource>
+  </datasources>
+</workbook>`;
+
+describe('tableau converter (y9rd.11): aggregate-derived dimension → workbookPattern, never metric/column', () => {
+  const r: any = convertTableauToSigma(TWB_AGGDIM, { connectionId: 'conn-1', database: 'TJ', schema: 'PUBLIC' });
+  const allCols = r.model.pages.flatMap((p: any) => p.elements).flatMap((e: any) => e.columns || []);
+  const allMetrics = r.model.pages.flatMap((p: any) => p.elements).flatMap((e: any) => e.metrics || []);
+  const byName = Object.fromEntries((r.workbookPatterns || []).map((p: any) => [p.name, p]));
+
+  test('Margin Pct (numeric aggregate ratio) is NOT misrouted to a dimension pattern', () => {
+    assert.ok(!byName['Margin Pct'],
+      'a numeric aggregate ratio must stay a measure, never an aggregate-dimension pattern');
+  });
+
+  test('High Margin Flag is NOT a DM column or metric (would viz-prune)', () => {
+    assert.ok(!allCols.some((c: any) => c.name === 'High Margin Flag'),
+      'aggregate-derived dimension must not be a DM row-level column');
+    assert.ok(!allMetrics.some((m: any) => m.name === 'High Margin Flag'),
+      'aggregate-derived dimension must not be promoted to a metric');
+  });
+
+  test('High Margin Flag is reported as an aggregate-dimension workbookPattern', () => {
+    assert.equal(byName['High Margin Flag']?.kind, 'aggregate-dimension');
+    assert.match(byName['High Margin Flag']?.requires || '', /GROUPED workbook element/);
+    assert.match(byName['High Margin Flag']?.note || '', /Margin Pct/);
+  });
+});

@@ -330,7 +330,7 @@ export interface SecurityRule {
  */
 export interface WorkbookPattern {
   kind: 'rank' | 'lag' | 'lead' | 'cumulative' | 'moving' | 'percent-of-total'
-      | 'index' | 'window' | 'first-sorted-value' | 'unsupported';
+      | 'index' | 'window' | 'first-sorted-value' | 'aggregate-dimension' | 'unsupported';
   name: string;            // source measure/dimension title
   source: string;          // original source-tool expression
   formula?: string;        // ready-to-use Sigma formula (grouped-element context)
