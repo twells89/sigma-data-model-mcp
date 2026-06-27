@@ -1,0 +1,14 @@
+{
+  "description": "beads-sigma-y9rd.7 regression: a NATIVE data-blend workbook (<datasource-relationships>) whose PRIMARY datasource also carries chart-context calcs (RUNNING_SUM + percent-of-total via TOTAL()). The blend path used to early-return before the single-DS calc/pattern processor, so param-switch/window/LOD/percent-of-total patterns were silently lost (0 workbookPatterns). The fix re-runs the single-DS path on a blend-stripped copy and merges the recovered patterns. Reuses CSA.TJ.BLEND_SALES + CSA.TJ.BLEND_TARGETS (same tables as the data_blend fixture).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 5,
+    "minRelationships": 1,
+    "minWorkbookPatterns": 2,
+    "noErrorColumns": true
+  }
+}
