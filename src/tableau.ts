@@ -1624,7 +1624,12 @@ export function convertTableauToSigma(
             const id    = sigmaInodeId(idKey);
             if (localType) colTypeById[id] = localType;
             // exact SQL-output name for blend-collapse; fall back to the caption.
-            colSqlNameById[id] = remoteAlias || caption;
+            // Strip Tableau's disambiguation suffix (" (RelationName)") — that suffix
+            // is a display-layer artifact and does NOT appear in the Custom SQL output.
+            // Without this, a secondary CTE sub-select would reference a column as
+            // "REGION (Goals)" which doesn't exist in `select REGION from ...`.
+            const rawSqlName = (remoteAlias || caption).replace(/\s*\([^)]*\)\s*$/, '').trim();
+            colSqlNameById[id] = rawSqlName || cleanCaption;
             columns.push({ id, formula: `[${colPrefix}/${cleanCaption}]`, name: cleanCaption });
             order.push(id);
             colIdMap[idKey] = id;
@@ -1837,6 +1842,91 @@ export function convertTableauToSigma(
     }
 
     const factTableName = (factEl.source?.path?.[factEl.source.path.length - 1]) || 'FACT';
+
+    // For LOD/Top-N/window helpers that need to SELECT from the base, use a
+    // subquery when factEl is a kind:'sql' (object-model / collapsed-blend)
+    // element — it has no physical warehouse path, so `FROM FACT` would fail
+    // at DM POST with "Object FACT does not exist or not authorized."
+    // For warehouse-table elements the 3-part qualified path is used directly.
+    //
+    // Returns { fromClause, ctePrefix } where:
+    //   ctePrefix — zero or more "cte1 AS (...),\ncte2 AS (...),\n" lines (NO
+    //               leading WITH keyword) to prepend inside an outer WITH chain.
+    //               Empty string for a plain table path or plain-SELECT base.
+    //   fromClause — the token(s) to place after FROM in the outer SELECT.
+    //
+    // When the factEl is a collapsed-blend element whose statement already starts
+    // with WITH, we promote all its CTEs to the top level and reference a new
+    // wrapper CTE (__lod_base) that holds the collapsed SELECT. This avoids
+    // nesting a WITH-containing subquery inside a FROM clause. Callers that add
+    // their own CTEs (TopN/window helpers) prepend `WITH ` before ctePrefix;
+    // LOD helpers (plain SELECT) prepend `WITH ` + ctePrefix (minus trailing comma).
+    function _baseFromExpr(): { fromClause: string; ctePrefix: string } {
+      const fe = factEl as any;
+      if (fe?.source?.kind === 'sql' && fe.source.statement) {
+        const stmt: string = fe.source.statement;
+        // Find where the outermost SELECT starts (after all CTEs). Strategy: scan
+        // for "WITH" at the top, then find the last standalone SELECT not inside
+        // a balanced-paren CTE body. We do this by scanning paren depth.
+        const upperStmt = stmt.trimStart();
+        if (/^WITH\s/i.test(upperStmt)) {
+          // Walk through the statement tracking parenthesis depth to find the
+          // final top-level SELECT (the one that is NOT inside any CTE body).
+          let depth = 0;
+          let lastTopSelectIdx = -1;
+          for (let i = 0; i < stmt.length; i++) {
+            const ch = stmt[i];
+            if (ch === '(') { depth++; continue; }
+            if (ch === ')') { depth--; continue; }
+            if (depth === 0 && /^SELECT\b/i.test(stmt.slice(i))) {
+              lastTopSelectIdx = i;
+            }
+          }
+          if (lastTopSelectIdx > 0) {
+            // ctePart: everything before the final top-level SELECT (including "WITH ")
+            // We strip the leading "WITH " since callers will add their own "WITH ".
+            const ctePart = stmt.slice(0, lastTopSelectIdx)
+              .replace(/^\s*WITH\s+/i, '')   // drop leading WITH keyword
+              .replace(/,?\s*$/, '');         // drop trailing comma
+            const selectPart = stmt.slice(lastTopSelectIdx);
+            return {
+              ctePrefix: `${ctePart},\n__lod_base AS (\n${selectPart}\n),\n`,
+              fromClause: '__lod_base',
+            };
+          }
+        }
+        // Plain SELECT (no CTEs) or fallback — wrap as a subquery.
+        return { fromClause: `(\n${stmt}\n) __base`, ctePrefix: '' };
+      }
+      const fqPath = (fe?.source?.path && fe.source.path.length >= 2)
+        ? fe.source.path.join('.')
+        : factTableName;
+      return { fromClause: fqPath, ctePrefix: '' };
+    }
+
+    // When factEl is a collapsed-blend kind:'sql' element, its columns carry
+    // display names (e.g. "Region", "Net Revenue") as SQL-output aliases. LOD /
+    // Top-N / window helper SQL that selects from the __lod_base CTE must use
+    // these quoted aliases, not bare uppercase identifiers (REGION, NET_REVENUE),
+    // because Snowflake treats the quoted aliases case-sensitively.
+    // Build a lookup: PHYSICAL_UPPER → '"Display Name"' once, shared by all helpers.
+    const physToQuotedAlias: Record<string, string> = {};
+    if ((factEl as any)?.source?.kind === 'sql') {
+      for (const col of ((factEl as any)?.columns || [])) {
+        const dn: string = (col.name as string) || '';
+        if (!dn) continue;
+        const physUpper = dn.replace(/\s+/g, '_').toUpperCase();
+        physToQuotedAlias[physUpper] = `"${dn}"`;
+        physToQuotedAlias[dn.toUpperCase()] = `"${dn}"`;
+      }
+    }
+    // Rewrite bare uppercase SQL tokens in an expression to quoted display aliases
+    // when selecting from __lod_base (only used when factEl is kind:'sql').
+    const resolveBaseToken = (token: string): string =>
+      physToQuotedAlias[token] || physToQuotedAlias[token.toUpperCase()] || token;
+    const rewriteBaseExpr = (expr: string): string =>
+      expr.replace(/\b([A-Z][A-Z0-9_]*)\b/g, (_m: string, tok: string) => resolveBaseToken(tok));
+
     const lodChildElements: any[] = [];
 
     // ── LOD: build worksheet view-dim index and helper-element registry ───
@@ -1845,6 +1935,7 @@ export function convertTableauToSigma(
     const lodHelpers: Record<string, {
       element: any;
       groupDimNames: string[];        // ordered upper-case dim names (matches SELECT order)
+      groupDimDisplayNames: string[]; // display-name variant (e.g. "Region") for quoted CTE refs
       groupDimColIds: string[];       // helper column ids for the dim columns
       aggsByExpr: Record<string, { alias: string; aggFunc: string; aggExpr: string; calcId: string; caption: string }>;
       relationshipName: string;
@@ -1906,6 +1997,7 @@ export function convertTableauToSigma(
       lodHelpers[signatureKey] = {
         element: helperEl,
         groupDimNames: effectiveDims.slice(),
+        groupDimDisplayNames: dimResolved.map(d => d.displayName),
         groupDimColIds,
         aggsByExpr: {},
         relationshipName: relNameSuggestion,
@@ -1957,24 +2049,34 @@ export function convertTableauToSigma(
     }
 
     function _finalizeHelpers(): void {
-      const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
+      const { fromClause, ctePrefix } = _baseFromExpr();
+      const useBase = fromClause === '__lod_base';
       for (const sigKey of Object.keys(lodHelpers)) {
         const rec = lodHelpers[sigKey];
-        const dimList = rec.groupDimNames.join(', ');
+        // Use quoted display aliases when selecting from __lod_base; bare physical names otherwise.
+        const dimList = useBase
+          ? rec.groupDimDisplayNames.map(dn =>
+              physToQuotedAlias[dn.replace(/\s+/g, '_').toUpperCase()] || `"${dn}"`).join(', ')
+          : rec.groupDimNames.join(', ');
         const aggParts: string[] = [];
         for (const k of Object.keys(rec.aggsByExpr)) {
           const a = rec.aggsByExpr[k];
+          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : a.aggExpr;
           let sqlAggFunc = a.aggFunc;
-          if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + a.aggExpr + ')';
-          else sqlAggFunc = `${sqlAggFunc}(${a.aggExpr})`;
+          if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + safeExpr + ')';
+          else sqlAggFunc = `${sqlAggFunc}(${safeExpr})`;
           aggParts.push(`${sqlAggFunc} AS ${a.alias}`);
         }
         const groupByIdx = rec.groupDimNames.map((_d, i) => i + 1).join(', ');
+        // When CTEs were extracted (ctePrefix non-empty), emit:
+        //   WITH <promotedCtes>,\n__lod_base AS (...)\nSELECT ...
+        // ctePrefix ends with ",\n" for chaining; drop the trailing comma for the
+        // final CTE before the standalone SELECT.
+        const withPrefix = ctePrefix
+          ? `WITH ${ctePrefix.replace(/,\s*$/, '\n')}`
+          : '';
         rec.element.source.statement =
-          `SELECT ${dimList}, ${aggParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+          `${withPrefix}SELECT ${dimList}, ${aggParts.join(', ')} FROM ${fromClause} GROUP BY ${groupByIdx}`;
       }
     }
 
@@ -2099,27 +2201,33 @@ export function convertTableauToSigma(
 
       // Build the WITH agg / ranked / SELECT statement
       const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
-      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)];
+      const { fromClause: topNFrom, ctePrefix: topNCtePrefix } = _baseFromExpr();
+      const topNUseBase = topNFrom === '__lod_base';
+      // Resolve column references to quoted display aliases when selecting from __lod_base.
+      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)]
+        .map(c => topNUseBase ? (physToQuotedAlias[c] || c) : c);
       const groupByIdx = groupCols.map((_g, i) => i + 1).join(', ');
       let aggSql = top.byAggFunc;
-      if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${top.byField})`;
-      else aggSql = `${aggSql}(${top.byField})`;
+      const safeByField = topNUseBase ? rewriteBaseExpr(top.byField) : top.byField;
+      if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${safeByField})`;
+      else aggSql = `${aggSql}(${safeByField})`;
       const partBy = top.partitionBy.length > 0
         ? `PARTITION BY ${top.partitionBy.join(', ')} `
         : '';
       const overClause = `RANK() OVER (${partBy}ORDER BY s ${dirSql})`;
       const innerSelect =
-        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${topNFrom} GROUP BY ${groupByIdx}`;
       const rankedSelect =
         `SELECT ${groupCols.join(', ')}, s, ${overClause} AS RNK FROM agg`;
       const outerCols = emitIsTopNInSql
         ? `${groupCols.join(', ')}, s AS TOTAL, RNK, (RNK <= ${nLiteral}) AS IS_TOP_N`
         : `${groupCols.join(', ')}, s AS TOTAL, RNK`;
       const outerSelect = `SELECT ${outerCols} FROM ranked`;
-      const statement = `WITH agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`;
+      // If ctePrefix is non-empty, start a WITH chain with the promoted CTEs and
+      // append agg/ranked. Otherwise use a standalone WITH.
+      const statement = topNCtePrefix
+        ? `WITH ${topNCtePrefix}agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`
+        : `WITH agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`;
 
       const helperEl: any = {
         id: helperId,
@@ -2386,36 +2494,38 @@ export function convertTableauToSigma(
     }
 
     function _finalizeWindowHelpers(): void {
-      const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
+      const { fromClause: winFrom, ctePrefix: winCtePrefix } = _baseFromExpr();
+      const winUseBase = winFrom === '__lod_base';
       for (const key of Object.keys(windowHelpers)) {
         const rec = windowHelpers[key];
         const selectParts: string[] = [];
-        // Partition dims (passed through bare)
-        for (const d of rec.partitionDimNames) selectParts.push(d);
+        // Partition dims (bare physical names, or quoted display aliases when from __lod_base)
+        for (const d of rec.partitionDimNames) {
+          selectParts.push(winUseBase ? (physToQuotedAlias[d] || d) : d);
+        }
         // Order dim (with optional DATE_TRUNC)
         if (rec.orderDimRaw && rec.orderDimAlias) {
+          const rawRef = winUseBase ? rewriteBaseExpr(rec.orderDimRaw) : rec.orderDimRaw;
           if (rec.orderDimDateTrunc) {
-            selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rec.orderDimRaw}) AS ${rec.orderDimAlias}`);
+            selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rawRef}) AS ${rec.orderDimAlias}`);
           } else {
-            selectParts.push(`${rec.orderDimRaw} AS ${rec.orderDimAlias}`);
+            selectParts.push(`${rawRef} AS ${rec.orderDimAlias}`);
           }
         }
         // Inner aggregates (e.g. SUM(SALES) AS SALES)
         for (const k of Object.keys(rec.innerAggs)) {
           const [aggFunc, exprSql] = k.split('::');
+          const safeExpr = winUseBase ? rewriteBaseExpr(exprSql) : exprSql;
           const a = rec.innerAggs[k];
           let sqlFn = aggFunc;
-          if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${exprSql})`;
-          else sqlFn = `${sqlFn}(${exprSql})`;
+          if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${safeExpr})`;
+          else sqlFn = `${sqlFn}(${safeExpr})`;
           selectParts.push(`${sqlFn} AS ${a.alias}`);
         }
         // Pre-aggregate happens in an inner subquery so OVER clauses see clean aliases.
         const groupByCount = rec.partitionDimNames.length + (rec.orderDimRaw ? 1 : 0);
         const groupByIdx = Array.from({ length: groupByCount }, (_, i) => i + 1).join(', ');
-        const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+        const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${winFrom} GROUP BY ${groupByIdx}`;
 
         // Outer SELECT: pass through everything from the inner CTE plus the OVER aliases.
         const innerProjection: string[] = [
@@ -2424,8 +2534,10 @@ export function convertTableauToSigma(
           ...Object.values(rec.innerAggs).map((v: any) => v.alias),
         ];
         const outerProjection = innerProjection.concat(rec.windowOverParts);
-        rec.element.source.statement =
-          `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
+        // If ctePrefix is non-empty, start a WITH chain with promoted CTEs.
+        rec.element.source.statement = winCtePrefix
+          ? `WITH ${winCtePrefix}base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`
+          : `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
       }
     }
 

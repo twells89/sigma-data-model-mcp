@@ -293,6 +293,105 @@ describe('multi-source blend → one wide JOIN element', () => {
   });
 });
 
+// ── Bug #2: shared column name across collapsed objects ────────────────────────
+// When two collapsed objects expose the same column name (e.g. REGION in both
+// Actuals and Goals), Tableau assigns a " (Goals)" disambiguation suffix in the
+// metadata-record's remote-alias. The secondary CTE sub-select must reference the
+// raw SQL column name (REGION), not the Tableau-display name ("REGION (Goals)"),
+// otherwise Snowflake raises "invalid identifier 'REGION (Goals)'".
+// The outer SELECT must still uniquify the output alias (REGION_2) so every
+// referenced identifier is defined.
+{
+  const MR2 = (remote: string, parent: string, objId: string, type = 'string', remoteAlias?: string) => `
+    <metadata-record class='column'>
+      <remote-name>${remote}</remote-name>
+      <local-name>[${remote}]</local-name>
+      <parent-name>[${parent}]</parent-name>
+      <local-type>${type}</local-type>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[${objId}]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+      <remote-alias>${remoteAlias ?? remote}</remote-alias>
+    </metadata-record>`;
+
+  // Two objects both expose a REGION column; Tableau disambiguates the Goals one
+  // as "REGION (Goals)" in the remote-alias.
+  const sharedColTwb = `<?xml version='1.0' encoding='utf-8'?>
+<workbook>
+  <datasources>
+    <datasource caption='DS' name='federated.shared'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection name='snow'><connection class='snowflake' dbname='DB' schema='SC'/></named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+          <relation connection='snow' name='Actuals' type='text'>select REGION, SALES from FACT_TBL</relation>
+          <relation connection='snow' name='Goals'   type='text'>select REGION, GOAL  from GOALS_TBL</relation>
+          <relation connection='snow' name='Targets' type='text'>select REGION, TARGET from TARGET_TBL</relation>
+        </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+        <metadata-records>
+          ${MR2('REGION', 'Actuals', 'ACT_OBJ', 'string', 'REGION')}
+          ${MR2('SALES',  'Actuals', 'ACT_OBJ', 'real',   'SALES')}
+          ${MR2('REGION', 'Goals',   'GOALS_OBJ', 'string', 'REGION (Goals)')}
+          ${MR2('GOAL',   'Goals',   'GOALS_OBJ', 'real',   'GOAL')}
+          ${MR2('REGION', 'Targets', 'TGT_OBJ',  'string', 'REGION (Targets)')}
+          ${MR2('TARGET', 'Targets', 'TGT_OBJ',  'real',   'TARGET')}
+        </metadata-records>
+      </connection>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+        <objects>
+          <object caption='Actuals' id='ACT_OBJ'><properties/></object>
+          <object caption='Goals'   id='GOALS_OBJ'><properties/></object>
+          <object caption='Targets' id='TGT_OBJ'><properties/></object>
+        </objects>
+        <relationships>
+          <relationship>
+            <first-end-point object-id='ACT_OBJ'/>
+            <second-end-point object-id='GOALS_OBJ'/>
+            <expression op='='><expression op='[REGION]'/><expression op='[REGION]'/></expression>
+          </relationship>
+          <relationship>
+            <first-end-point object-id='ACT_OBJ'/>
+            <second-end-point object-id='TGT_OBJ'/>
+            <expression op='='><expression op='[REGION]'/><expression op='[REGION]'/></expression>
+          </relationship>
+        </relationships>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+    </datasource>
+  </datasources>
+</workbook>`;
+
+  describe('Bug #2: shared column name → disambiguation suffix stripped from CTE sub-select', () => {
+    const out2: any = convertTableauToSigma(sharedColTwb, {
+      connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0,
+    });
+    const sqlEls2 = (out2.model?.pages?.[0]?.elements || []).filter((e: any) => e.source?.kind === 'sql');
+
+    test('collapses to a single element', () => {
+      assert.equal(sqlEls2.length, 1, 'one merged element');
+    });
+
+    test('secondary CTE sub-selects use raw column name without disambiguation suffix', () => {
+      const s = sqlEls2[0]?.source?.statement ?? '';
+      // "REGION (Goals)" must NOT appear in a FROM (sub-select) context — that
+      // would mean we're selecting an unknown column from the source SQL.
+      // We assert it does not appear at all in the sub-selects (only bare REGION).
+      assert.doesNotMatch(s, /"REGION \(Goals\)"/,
+        '"REGION (Goals)" identifier must not appear — source SQL only exports REGION');
+      assert.doesNotMatch(s, /"REGION \(Targets\)"/,
+        '"REGION (Targets)" identifier must not appear');
+    });
+
+    test('every emitted column resolves to a SELECT output alias (no error columns)', () => {
+      const s = sqlEls2[0]?.source?.statement ?? '';
+      const aliases = new Set([...s.matchAll(/AS "([^"]+)"/g)].map((m: any) => m[1]));
+      for (const c of (sqlEls2[0]?.columns || [])) {
+        const m = c.formula.match(/^\[Custom SQL\/(.+)\]$/);
+        assert.ok(m, `blend column uses [Custom SQL/...]: ${c.formula}`);
+        assert.ok(aliases.has(m[1]), `column alias "${m[1]}" exists in the SELECT output`);
+      }
+    });
+  });
+}
+
 // ── n4pi.4: Tableau calc-field translation (formula-level helpers) ───────────
 describe('calc translation helpers (n4pi.4)', () => {
   test('decodeXmlEntities decodes numeric refs fxp leaves literal', () => {
