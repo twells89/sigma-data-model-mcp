@@ -1,0 +1,821 @@
+{
+  "workbookId": "8d0a5d07-e21e-4059-aa16-e79cb00aa1e0",
+  "pages": [
+    {
+      "id": "page-data",
+      "name": "Data",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "master",
+          "kind": "table",
+          "name": "Master",
+          "columnLabels": [
+            "ACCOUNT_NAME",
+            "ACTIVATION_BONUS_AMOUNT",
+            "ACTIVATION_GOAL",
+            "AHC_GOAL",
+            "BASED",
+            "BUSINESS_ACCOUNT_ID",
+            "BUSINESS_ID",
+            "BUSINESS_NAME",
+            "CLEAN_COUNTRY",
+            "CLOSE_PHASING",
+            "CLOSES",
+            "COUNTRY",
+            "COUNTRY_2",
+            "COUNTRY_3",
+            "COUNTRY_4",
+            "CW_COUNTRY",
+            "CW_OWNER_ROLE_OFFICIAL_TITLE",
+            "CW_WEEK",
+            "CW_WEEK_2",
+            "DASHPASS_COMMISSION",
+            "DAYS_OFF",
+            "DECK_RANK",
+            "FULL_NAME",
+            "HC",
+            "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+            "INCREMENTAL_SIGN_TAM",
+            "INITIATIVE",
+            "INITIATIVE_2",
+            "INITIATIVE_3",
+            "INITIATIVE_GOAL",
+            "INITIATIVE_GOAL_2",
+            "INITIATIVE_GOAL_3",
+            "IS_ADS",
+            "IS_ADS_PROMOS",
+            "IS_ALCOHOL",
+            "IS_DASHPASS",
+            "IS_GNC",
+            "IS_PICKUP",
+            "IS_PROMO",
+            "IS_STOREFRONT",
+            "IS_TRIAL",
+            "LAST_ETL_RUN",
+            "LEAD_ID",
+            "LEAD_LIST_CUSTOMIZED",
+            "MANAGER_NAME",
+            "MARKET_MAKER",
+            "MERCHANT_ACTIVATION_DATE",
+            "MERCHANT_CLOSE_DATE",
+            "MX_ONBOARDING_LINK_SENT_DATE",
+            "NARR",
+            "NARR_2",
+            "NTAM",
+            "OPP_TYPE",
+            "OPPORTUNITY_ID",
+            "OPPORTUNITY_NAME",
+            "ORG",
+            "OWNER_ORG_FOCUS",
+            "OWNER_ROLE_OFFICIAL_TITLE",
+            "OWNER_ROLE_OFFICIAL_TITLE_2",
+            "OWNER_TEAM",
+            "PACKAGE_SOLD",
+            "PRIMARY_VERTICAL",
+            "PRODUCT",
+            "PRODUCT_GOAL",
+            "PRODUCT_LIST",
+            "PROVISIONING_STATUS",
+            "QTR",
+            "QTR_2",
+            "QTR_3",
+            "QTR_YR",
+            "QTR_YR_2",
+            "QTR_YR_3",
+            "QTR_YR_PG",
+            "QTR_YR_SP",
+            "QTR_YR_SP_2",
+            "QTR_YR_SP_3",
+            "QUARTER_YEAR",
+            "READINESS_CHECK_COMPLETE_DATE",
+            "REGION",
+            "REP_COUNTRY",
+            "REP_RANK",
+            "REP_ROLE",
+            "REP_SEGMENT",
+            "ROLE",
+            "ROLE_2",
+            "ROLE_ACTIVATIONS",
+            "ROLE_SP",
+            "ROLE_SP_2",
+            "ROLE_SP_3",
+            "SALES_MANAGER",
+            "SALES_OWNER",
+            "SALES_OWNER_2",
+            "SALES_OWNER_ID",
+            "SDR_COUNTRY",
+            "SDR_ID",
+            "SDR_MANAGER_ID",
+            "SDR_MANAGER_NAME",
+            "SDR_OWNER",
+            "SDR_ROLE",
+            "SFDC_COMMISSION",
+            "SFDC_SOURCE",
+            "STARTING_POINT",
+            "STARTING_POINT_ID",
+            "STORE_ACCOUNT_ID",
+            "STORE_ID",
+            "STORE_NAME",
+            "SUBMARKET",
+            "SUBMARKET_ID",
+            "TARGET",
+            "TEAM",
+            "TIER",
+            "TOP_MX",
+            "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+            "TRIAL_PERIOD",
+            "USER_ID",
+            "WEEK_GOAL",
+            "WEEK_GOAL_ACTIVATIONS",
+            "WEEK_GOAL_SP",
+            "WEEK_GOAL_SP_2",
+            "WEEK_GOAL_SP_3",
+            "WEEK_OF",
+            "WEEK_OF_2",
+            "WEEK_OF_3",
+            "WORK_ORDER_ID",
+            "WORK_ORDER_NUMBER",
+            "WORKING_DAYS",
+            "YR",
+            "YR_2",
+            "YR_3"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-activations",
+      "name": "Activations",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-activations",
+          "kind": "text",
+          "name": null
+        }
+      ]
+    },
+    {
+      "id": "page-activations-details",
+      "name": "Activations Details",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-activations-details",
+          "kind": "text",
+          "name": null
+        }
+      ]
+    },
+    {
+      "id": "page-active-hc-deep-dive",
+      "name": "Active HC Deep Dive",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-active-hc-deep-dive",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-avg-days-off-by-team",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "ROLE",
+            "TEAM",
+            "sum([Days Off])/sum([HC])",
+            "sum([Days Off])/sum([HC]) (1)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-cw-deep-dive",
+      "name": "CW Deep Dive",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-cw-deep-dive",
+          "kind": "text",
+          "name": null
+        }
+      ]
+    },
+    {
+      "id": "page-canada-only-view",
+      "name": "Canada Only View",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-canada-only-view",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-param-deck-rank-signs-vs-param-canada-only-view",
+          "kind": "control",
+          "name": "Deck Rank Signs vs % Param"
+        },
+        {
+          "id": "el-can-inbound-vendor",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "ROLE",
+            "Signs - Actuals",
+            "CLOSES",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-can-ssmo",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-can-bde",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "Signs - Actuals",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-regional",
+      "name": "Regional",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-regional",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-regional-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outside-regional-ml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-inside-regional-ae-blitz-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outside-regional-gml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SDR_OWNER",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outside-regional-ml-agml-and-gml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-blitz-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outside-regional-agml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SDR_OWNER",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-roster-cws",
+      "name": "Roster CWs",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-roster-cws",
+          "kind": "text",
+          "name": null
+        }
+      ]
+    },
+    {
+      "id": "page-ssmo---inbound",
+      "name": "SSMO + Inbound",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-ssmo-inbound",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-ssmo-anz",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "CW_COUNTRY",
+            "Signs - Actuals",
+            "INCREMENTAL_SIGN_TAM",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-selection-strategy",
+      "name": "Selection Strategy",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-selection-strategy",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-param-selection-param-selection-strategy",
+          "kind": "control",
+          "name": "Selection Param"
+        }
+      ]
+    },
+    {
+      "id": "page-strategic",
+      "name": "Strategic",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-strategic",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-strategic-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-inside-strategic-sae-sae-top-mx-sae-inbou",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outside-strategic-sml-sgl",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-sml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-sae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-sae-top-mx",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-sgl",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "Biz Signs",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-sae-inbound",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-tam-by-role",
+      "name": "TAM by Role",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-tam-by-role",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-tam-rep-by-submarket",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "REGION",
+            "SUBMARKET",
+            "Signs - Actuals",
+            "INCREMENTAL_SIGN_TAM",
+            "TAM / HC (copy)_5843842750844387346"
+          ]
+        },
+        {
+          "id": "el-tam-rep-by-submarket-qoq",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "REGION",
+            "Signs - Actuals",
+            "INCREMENTAL_SIGN_TAM",
+            "TAM / HC (copy)_5843842750844387346"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-total-pre-sale-org",
+      "name": "Total Pre-Sale Org",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-total-pre-sale-org",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-param-deck-rank-signs-vs-param-total-pre-sale-org",
+          "kind": "control",
+          "name": "Deck Rank Signs vs % Param"
+        },
+        {
+          "id": "el-kpi-smb-weekly-goals",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly Goals ",
+          "columnLabels": [
+            "CLOSES"
+          ]
+        },
+        {
+          "id": "el-kpi-smb-weekly-qtd-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly QTD Pacing",
+          "columnLabels": [
+            "Calculation_2310065177622220813"
+          ]
+        },
+        {
+          "id": "el-kpi-smb-weekly-ww-qtd-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly WW QTD Pacing",
+          "columnLabels": [
+            "Calculation_3645452848288170032"
+          ]
+        },
+        {
+          "id": "el-kpi-smb-weekly-updated-yoy-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly UPDATED YoY Pacing",
+          "columnLabels": [
+            "Calculation_4863183911928840232"
+          ]
+        },
+        {
+          "id": "el-smb-weekly",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "Signs - Actuals",
+            "CLOSES"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-vendor-outbound",
+      "name": "Vendor Outbound",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "title-vendor-outbound",
+          "kind": "text",
+          "name": null
+        },
+        {
+          "id": "el-vendor-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-regalix",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-wipro",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-taskus",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-concentrix",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-movate",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-scale-team",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2217 @@
+{
+  "model": {
+    "name": "PRESALES_CW_LEVEL (TABLEAU.PRESALES_CW_LEVEL) (TABLEAU)",
+    "schemaVersion": 1,
+    "pages": [
+      {
+        "id": "j8Q384FrIH",
+        "name": "Page 1",
+        "elements": [
+          {
+            "kind": "control",
+            "controlId": "Deck-Rank-Signs-Vs-%-Param",
+            "id": "glYRoErCamcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Inside-Toggle-Param",
+            "id": "Vj34ya0pE4con",
+            "controlType": "number-range"
+          },
+          {
+            "kind": "control",
+            "controlId": "Quarter-of-Cw-Param",
+            "id": "sEfCkgyNsAcon",
+            "controlType": "date-range",
+            "mode": "last",
+            "value": 90,
+            "unit": "day",
+            "includeToday": true
+          },
+          {
+            "kind": "control",
+            "controlId": "Multiple-Measure-Name-Selection",
+            "id": "HgYaw0u8Edcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Attainment-Detail",
+            "id": "YD4boxKNSDcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Mgr-Toggle-Param",
+            "id": "vbri1YNaFdcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Sgl-Nav-Param",
+            "id": "NxhgbJR8jQcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Selection-Param",
+            "id": "m2wBwcgXzGcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Can-Switch-Medals-and-Tiers-Param",
+            "id": "sfzkBepaghcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Mx-Metric-Param",
+            "id": "ZbCnL6rJddcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Drill-down-Level",
+            "id": "veZB6dlK86con",
+            "controlType": "number-range"
+          },
+          {
+            "kind": "control",
+            "controlId": "Mx-Health-Sheet-Toggle",
+            "id": "U9tIC4ihIIcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Sort-by",
+            "id": "94L0BOvWBxcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Activations-Country",
+            "id": "EmhhcmWsPUcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Input",
+            "id": "FAfEGUDG6jcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Number-of-Weeks",
+            "id": "qdSPWLS6YTcon",
+            "controlType": "number-range"
+          },
+          {
+            "kind": "control",
+            "controlId": "Qtd-Select-Week",
+            "id": "3aB1NDEtHgcon",
+            "controlType": "date-range",
+            "mode": "last",
+            "value": 90,
+            "unit": "day",
+            "includeToday": true
+          },
+          {
+            "kind": "control",
+            "controlId": "Qtd-Select-Quarter",
+            "id": "Cr9nBQrOPccon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Product-Param",
+            "id": "vfd3wqaTUHcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Signs-V-Goals-Param",
+            "id": "ktOp3kdxJYcon",
+            "controlType": "text",
+            "mode": "contains"
+          },
+          {
+            "kind": "control",
+            "controlId": "Signs-Goals-Toggle-Param-Week",
+            "id": "m24mg4WokZcon",
+            "controlType": "date-range",
+            "mode": "last",
+            "value": 90,
+            "unit": "day",
+            "includeToday": true
+          },
+          {
+            "kind": "control",
+            "controlId": "Product-Color-Param",
+            "id": "XUmkzxLZbMcon",
+            "controlType": "number-range"
+          },
+          {
+            "id": "G0uxTEfUET",
+            "name": "presales_cw_level",
+            "kind": "table",
+            "source": {
+              "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+              "kind": "sql",
+              "statement": "WITH __f AS (\nselect \nMERCHANT_CLOSE_DATE,\nWEEK_OF,\nCW_WEEK,\nQTR,\nYR,\nQTR_YR,\nREADINESS_CHECK_COMPLETE_DATE,\nMERCHANT_ACTIVATION_DATE,\nMX_ONBOARDING_LINK_SENT_DATE,\nOPPORTUNITY_ID,\nSTORE_ACCOUNT_ID,\nBUSINESS_ACCOUNT_ID,\nLEAD_ID,\nWORK_ORDER_ID,\nWORK_ORDER_NUMBER,\nSTORE_ID,\nBUSINESS_ID,\nPROVISIONING_STATUS,\nSALES_OWNER_ID,\nSALES_OWNER,\nFULL_NAME,\nMANAGER_NAME,\nREP_ROLE,\nOWNER_TEAM,\nOWNER_ORG_FOCUS,\nREP_SEGMENT,\nSDR_OWNER,\nSDR_ID,\nSDR_MANAGER_ID,\nSDR_MANAGER_NAME,\nSDR_ROLE,\nSDR_COUNTRY,\nREP_COUNTRY,\nCW_COUNTRY,\nCLEAN_COUNTRY,\nOWNER_ROLE_OFFICIAL_TITLE,\nCW_OWNER_ROLE_OFFICIAL_TITLE,\nSFDC_COMMISSION,\nDASHPASS_COMMISSION,\nNARR,\nOPPORTUNITY_NAME,\nOPP_TYPE,\nACCOUNT_NAME,\nSTORE_NAME,\nBUSINESS_NAME,\nDECK_RANK,\nPRIMARY_VERTICAL,\nCOUNTRY,\nSTARTING_POINT_ID,\nSTARTING_POINT,\nSUBMARKET,\nSUBMARKET_ID,\nTOP_MX,\nMARKET_MAKER,\nIS_GNC,\nIS_DASHPASS,\nIS_PICKUP,\nIS_STOREFRONT,\nIS_ALCOHOL,\nIS_TRIAL,\nIS_PROMO,\nIS_ADS,\nIS_ADS_PROMOS,\nPACKAGE_SOLD,\nNTAM,\nINCREMENTAL_SIGN_TAM,\nHISTORICAL_DELAY_REASONS_CUSTOMIZED,\nLEAD_LIST_CUSTOMIZED,\nTRIAL_PERIOD,\nTOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD,\nACTIVATION_BONUS_AMOUNT,\nPRODUCT_LIST,\nREGION,\nTIER,\nSFDC_SOURCE,\nLAST_ETL_RUN\nfrom REDACTED_DB.static.presales_cw_level\n),\n__s0 AS (\n  SELECT\n    \"ROLE_ACTIVATIONS\" AS \"ROLE_ACTIVATIONS\",\n    \"COUNTRY\" AS \"COUNTRY\",\n    MAX(\"WEEK_GOAL_ACTIVATIONS\") AS \"WEEK_GOAL_ACTIVATIONS\",\n    SUM(\"ACTIVATION_GOAL\") AS \"ACTIVATION_GOAL\",\n    MAX(\"QUARTER_YEAR\") AS \"QUARTER_YEAR\"\n  FROM (\nSELECT *\nFROM REDACTED_DB.static.activations_goals_presales \"ACTIVATIONS_GOALS_PRESALES\"\n) \"__src_0\"\n  GROUP BY \"ROLE_ACTIVATIONS\", \"COUNTRY\"\n),\n__s1 AS (\n  SELECT\n    \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AS \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\",\n    \"QTR_YR (PRESALES_ACTIVE_HC)\" AS \"QTR_YR (PRESALES_ACTIVE_HC)\",\n    MAX(\"COUNTRY (PRESALES_ACTIVE_HC)\") AS \"COUNTRY (PRESALES_ACTIVE_HC)\",\n    SUM(\"DAYS_OFF\") AS \"DAYS_OFF\",\n    SUM(\"HC\") AS \"HC\",\n    MAX(\"QTR (PRESALES_ACTIVE_HC)\") AS \"QTR (PRESALES_ACTIVE_HC)\",\n    MAX(\"REP_RANK\") AS \"REP_RANK\",\n    MAX(\"SALES_MANAGER\") AS \"SALES_MANAGER\",\n    MAX(\"SALES_OWNER (PRESALES_ACTIVE_HC)\") AS \"SALES_OWNER (PRESALES_ACTIVE_HC)\",\n    MAX(\"USER_ID\") AS \"USER_ID\",\n    MAX(\"WEEK_OF (PRESALES_ACTIVE_HC)\") AS \"WEEK_OF (PRESALES_ACTIVE_HC)\",\n    SUM(\"YR (PRESALES_ACTIVE_HC)\") AS \"YR (PRESALES_ACTIVE_HC)\"\n  FROM (\nwith final as (\nselect \n    case \n        when rep_segment = 'CAN SMB Sales' then 'Canada' \n        when rep_segment not in ('AUS SMB Sales','CAN SMB Sales','NZ SMB Sales','ANZ SMB Sales') then 'United States' \n        else null \n    end as country, \n    days_off,\n    days_worked/iff(working_days=0,null,working_days) as hc,\n    role_title as OWNER_ROLE_OFFICIAL_TITLE,\n    'Q'||quarter(to_date(week)) as qtr,\n        year(to_date(week)) as yr,\n        qtr||'-'||right(yr,2) as qtr_yr,\n    null as rep_rank,\n    null as SALES_MANAGER,\n    rep_name as sales_owner,\n    ddmx_id as user_id,\n    week as week_of\nfrom REDACTED_DB.public.sales_analytics_bis\nwhere country is not null\n)\nSELECT \"PRESALES_ACTIVE_HC\".\"COUNTRY\" AS \"COUNTRY (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"DAYS_OFF\" AS \"DAYS_OFF\",\n  \"PRESALES_ACTIVE_HC\".\"HC\" AS \"HC\",\n  \"PRESALES_ACTIVE_HC\".\"OWNER_ROLE_OFFICIAL_TITLE\" AS \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"QTR\" AS \"QTR (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"QTR_YR\" AS \"QTR_YR (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"REP_RANK\" AS \"REP_RANK\",\n  \"PRESALES_ACTIVE_HC\".\"SALES_MANAGER\" AS \"SALES_MANAGER\",\n  \"PRESALES_ACTIVE_HC\".\"SALES_OWNER\" AS \"SALES_OWNER (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"USER_ID\" AS \"USER_ID\",\n  \"PRESALES_ACTIVE_HC\".\"WEEK_OF\" AS \"WEEK_OF (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"YR\" AS \"YR (PRESALES_ACTIVE_HC)\"\nFROM final \"PRESALES_ACTIVE_HC\"\n) \"__src_1\"\n  GROUP BY \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\", \"QTR_YR (PRESALES_ACTIVE_HC)\"\n),\n__s2 AS (\n  SELECT\n    \"WEEK_GOAL\" AS \"WEEK_GOAL\",\n    \"ROLE (PRESALE_PRODUCT_GOALS)\" AS \"ROLE (PRESALE_PRODUCT_GOALS)\",\n    MAX(\"BASED\") AS \"BASED\",\n    MAX(\"ORG\") AS \"ORG\",\n    MAX(\"PRODUCT\") AS \"PRODUCT\",\n    SUM(\"PRODUCT_GOAL\") AS \"PRODUCT_GOAL\",\n    MAX(\"QTR_YR_PG\") AS \"QTR_YR_PG\",\n    MAX(\"TARGET\") AS \"TARGET\",\n    MAX(\"TEAM\") AS \"TEAM\"\n  FROM (\nSELECT \"PRESALE_PRODUCT_GOALS\".\"BASED\" AS \"BASED\",\n  \"PRESALE_PRODUCT_GOALS\".\"ORG\" AS \"ORG\",\n  \"PRESALE_PRODUCT_GOALS\".\"PRODUCT\" AS \"PRODUCT\",\n  \"PRESALE_PRODUCT_GOALS\".\"PRODUCT_GOAL\" AS \"PRODUCT_GOAL\",\n  \"PRESALE_PRODUCT_GOALS\".\"QTR_YR_PG\" AS \"QTR_YR_PG\",\n  \"PRESALE_PRODUCT_GOALS\".\"ROLE\" AS \"ROLE (PRESALE_PRODUCT_GOALS)\",\n  \"PRESALE_PRODUCT_GOALS\".\"TARGET\" AS \"TARGET\",\n  \"PRESALE_PRODUCT_GOALS\".\"TEAM\" AS \"TEAM\",\n  (CASE WHEN (NOT (CAST(TO_TIMESTAMP(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\", 'MM/DD/YYYY') AS DATE) IS NULL)) THEN CAST(TO_TIMESTAMP(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\", 'MM/DD/YYYY') AS DATE) WHEN (NOT (TRY_CAST(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\" AS DATE) IS NULL)) THEN TRY_CAST(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\" AS DATE) ELSE NULL END) AS \"WEEK_GOAL\"\nFROM REDACTED_DB.\"STATIC\".\"PRESALE_PRODUCT_GOALS\" \"PRESALE_PRODUCT_GOALS\"\n) \"__src_2\"\n  GROUP BY \"WEEK_GOAL\", \"ROLE (PRESALE_PRODUCT_GOALS)\"\n),\n__s3 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nSELECT *\nFROM REDACTED_DB.static.presale_special_projects_goals\n) \"__src_3\"\n  GROUP BY \"ROLE_SP\"\n),\n__s4 AS (\n  SELECT\n    \"CW_WEEK\" AS \"CW_WEEK\",\n    \"ROLE\" AS \"ROLE\",\n    \"QTR_YR\" AS \"QTR_YR\",\n    \"COUNTRY\" AS \"COUNTRY\",\n    MAX(\"QTR\") AS \"QTR\",\n    SUM(\"YR\") AS \"YR\",\n    SUM(\"CLOSES\") AS \"CLOSES\",\n    SUM(\"NARR\") AS \"NARR\",\n    SUM(\"WORKING_DAYS\") AS \"WORKING_DAYS\",\n    SUM(\"AHC_GOAL\") AS \"AHC_GOAL\",\n    SUM(\"CLOSE_PHASING\") AS \"CLOSE_PHASING\",\n    MAX(\"WEEK_OF\") AS \"WEEK_OF\"\n  FROM (\nselect * from REDACTED_DB.static.presale_weekly_goals\n) \"__src_4\"\n  GROUP BY \"CW_WEEK\", \"ROLE\", \"QTR_YR\", \"COUNTRY\"\n),\n__s5 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nselect * from REDACTED_DB.static.presale_special_projects_goals\n) \"__src_5\"\n  GROUP BY \"ROLE_SP\"\n),\n__s6 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nselect * from REDACTED_DB.static.presale_special_projects_goals\n) \"__src_6\"\n  GROUP BY \"ROLE_SP\"\n)\nSELECT\n  __f.\"MERCHANT_CLOSE_DATE\" AS \"MERCHANT_CLOSE_DATE\",\n  __f.\"WEEK_OF\" AS \"WEEK_OF\",\n  __f.\"CW_WEEK\" AS \"CW_WEEK\",\n  __f.\"QTR\" AS \"QTR\",\n  __f.\"YR\" AS \"YR\",\n  __f.\"QTR_YR\" AS \"QTR_YR\",\n  __f.\"READINESS_CHECK_COMPLETE_DATE\" AS \"READINESS_CHECK_COMPLETE_DATE\",\n  __f.\"MERCHANT_ACTIVATION_DATE\" AS \"MERCHANT_ACTIVATION_DATE\",\n  __f.\"MX_ONBOARDING_LINK_SENT_DATE\" AS \"MX_ONBOARDING_LINK_SENT_DATE\",\n  __f.\"OPPORTUNITY_ID\" AS \"OPPORTUNITY_ID\",\n  __f.\"STORE_ACCOUNT_ID\" AS \"STORE_ACCOUNT_ID\",\n  __f.\"BUSINESS_ACCOUNT_ID\" AS \"BUSINESS_ACCOUNT_ID\",\n  __f.\"LEAD_ID\" AS \"LEAD_ID\",\n  __f.\"WORK_ORDER_ID\" AS \"WORK_ORDER_ID\",\n  __f.\"WORK_ORDER_NUMBER\" AS \"WORK_ORDER_NUMBER\",\n  __f.\"STORE_ID\" AS \"STORE_ID\",\n  __f.\"BUSINESS_ID\" AS \"BUSINESS_ID\",\n  __f.\"PROVISIONING_STATUS\" AS \"PROVISIONING_STATUS\",\n  __f.\"SALES_OWNER_ID\" AS \"SALES_OWNER_ID\",\n  __f.\"SALES_OWNER\" AS \"SALES_OWNER\",\n  __f.\"FULL_NAME\" AS \"FULL_NAME\",\n  __f.\"MANAGER_NAME\" AS \"MANAGER_NAME\",\n  __f.\"REP_ROLE\" AS \"REP_ROLE\",\n  __f.\"OWNER_TEAM\" AS \"OWNER_TEAM\",\n  __f.\"OWNER_ORG_FOCUS\" AS \"OWNER_ORG_FOCUS\",\n  __f.\"REP_SEGMENT\" AS \"REP_SEGMENT\",\n  __f.\"SDR_OWNER\" AS \"SDR_OWNER\",\n  __f.\"SDR_ID\" AS \"SDR_ID\",\n  __f.\"SDR_MANAGER_ID\" AS \"SDR_MANAGER_ID\",\n  __f.\"SDR_MANAGER_NAME\" AS \"SDR_MANAGER_NAME\",\n  __f.\"SDR_ROLE\" AS \"SDR_ROLE\",\n  __f.\"SDR_COUNTRY\" AS \"SDR_COUNTRY\",\n  __f.\"REP_COUNTRY\" AS \"REP_COUNTRY\",\n  __f.\"CW_COUNTRY\" AS \"CW_COUNTRY\",\n  __f.\"CLEAN_COUNTRY\" AS \"CLEAN_COUNTRY\",\n  __f.\"OWNER_ROLE_OFFICIAL_TITLE\" AS \"OWNER_ROLE_OFFICIAL_TITLE\",\n  __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" AS \"CW_OWNER_ROLE_OFFICIAL_TITLE\",\n  __f.\"SFDC_COMMISSION\" AS \"SFDC_COMMISSION\",\n  __f.\"DASHPASS_COMMISSION\" AS \"DASHPASS_COMMISSION\",\n  __f.\"NARR\" AS \"NARR\",\n  __f.\"OPPORTUNITY_NAME\" AS \"OPPORTUNITY_NAME\",\n  __f.\"OPP_TYPE\" AS \"OPP_TYPE\",\n  __f.\"ACCOUNT_NAME\" AS \"ACCOUNT_NAME\",\n  __f.\"STORE_NAME\" AS \"STORE_NAME\",\n  __f.\"BUSINESS_NAME\" AS \"BUSINESS_NAME\",\n  __f.\"DECK_RANK\" AS \"DECK_RANK\",\n  __f.\"PRIMARY_VERTICAL\" AS \"PRIMARY_VERTICAL\",\n  __f.\"COUNTRY\" AS \"COUNTRY\",\n  __f.\"STARTING_POINT_ID\" AS \"STARTING_POINT_ID\",\n  __f.\"STARTING_POINT\" AS \"STARTING_POINT\",\n  __f.\"SUBMARKET\" AS \"SUBMARKET\",\n  __f.\"SUBMARKET_ID\" AS \"SUBMARKET_ID\",\n  __f.\"TOP_MX\" AS \"TOP_MX\",\n  __f.\"MARKET_MAKER\" AS \"MARKET_MAKER\",\n  __f.\"IS_GNC\" AS \"IS_GNC\",\n  __f.\"IS_DASHPASS\" AS \"IS_DASHPASS\",\n  __f.\"IS_PICKUP\" AS \"IS_PICKUP\",\n  __f.\"IS_STOREFRONT\" AS \"IS_STOREFRONT\",\n  __f.\"IS_ALCOHOL\" AS \"IS_ALCOHOL\",\n  __f.\"IS_TRIAL\" AS \"IS_TRIAL\",\n  __f.\"IS_PROMO\" AS \"IS_PROMO\",\n  __f.\"IS_ADS\" AS \"IS_ADS\",\n  __f.\"IS_ADS_PROMOS\" AS \"IS_ADS_PROMOS\",\n  __f.\"PACKAGE_SOLD\" AS \"PACKAGE_SOLD\",\n  __f.\"NTAM\" AS \"NTAM\",\n  __f.\"INCREMENTAL_SIGN_TAM\" AS \"INCREMENTAL_SIGN_TAM\",\n  __f.\"HISTORICAL_DELAY_REASONS_CUSTOMIZED\" AS \"HISTORICAL_DELAY_REASONS_CUSTOMIZED\",\n  __f.\"LEAD_LIST_CUSTOMIZED\" AS \"LEAD_LIST_CUSTOMIZED\",\n  __f.\"TRIAL_PERIOD\" AS \"TRIAL_PERIOD\",\n  __f.\"TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD\" AS \"TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD\",\n  __f.\"ACTIVATION_BONUS_AMOUNT\" AS \"ACTIVATION_BONUS_AMOUNT\",\n  __f.\"PRODUCT_LIST\" AS \"PRODUCT_LIST\",\n  __f.\"REGION\" AS \"REGION\",\n  __f.\"TIER\" AS \"TIER\",\n  __f.\"SFDC_SOURCE\" AS \"SFDC_SOURCE\",\n  __f.\"LAST_ETL_RUN\" AS \"LAST_ETL_RUN\",\n  __s0.\"WEEK_GOAL_ACTIVATIONS\" AS \"WEEK_GOAL_ACTIVATIONS\",\n  __s0.\"ROLE_ACTIVATIONS\" AS \"ROLE_ACTIVATIONS\",\n  __s0.\"ACTIVATION_GOAL\" AS \"ACTIVATION_GOAL\",\n  __s0.\"QUARTER_YEAR\" AS \"QUARTER_YEAR\",\n  __s0.\"COUNTRY\" AS \"COUNTRY_2\",\n  __s1.\"COUNTRY (PRESALES_ACTIVE_HC)\" AS \"COUNTRY_3\",\n  __s1.\"DAYS_OFF\" AS \"DAYS_OFF\",\n  __s1.\"HC\" AS \"HC\",\n  __s1.\"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AS \"OWNER_ROLE_OFFICIAL_TITLE_2\",\n  __s1.\"QTR (PRESALES_ACTIVE_HC)\" AS \"QTR_2\",\n  __s1.\"QTR_YR (PRESALES_ACTIVE_HC)\" AS \"QTR_YR_2\",\n  __s1.\"REP_RANK\" AS \"REP_RANK\",\n  __s1.\"SALES_MANAGER\" AS \"SALES_MANAGER\",\n  __s1.\"SALES_OWNER (PRESALES_ACTIVE_HC)\" AS \"SALES_OWNER_2\",\n  __s1.\"USER_ID\" AS \"USER_ID\",\n  __s1.\"WEEK_OF (PRESALES_ACTIVE_HC)\" AS \"WEEK_OF_2\",\n  __s1.\"YR (PRESALES_ACTIVE_HC)\" AS \"YR_2\",\n  __s2.\"BASED\" AS \"BASED\",\n  __s2.\"ORG\" AS \"ORG\",\n  __s2.\"PRODUCT\" AS \"PRODUCT\",\n  __s2.\"PRODUCT_GOAL\" AS \"PRODUCT_GOAL\",\n  __s2.\"QTR_YR_PG\" AS \"QTR_YR_PG\",\n  __s2.\"ROLE (PRESALE_PRODUCT_GOALS)\" AS \"ROLE\",\n  __s2.\"TARGET\" AS \"TARGET\",\n  __s2.\"TEAM\" AS \"TEAM\",\n  __s2.\"WEEK_GOAL\" AS \"WEEK_GOAL\",\n  __s3.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP\",\n  __s3.\"INITIATIVE\" AS \"INITIATIVE\",\n  __s3.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL\",\n  __s3.\"QTR_YR_SP\" AS \"QTR_YR_SP\",\n  __s3.\"ROLE_SP\" AS \"ROLE_SP\",\n  __s4.\"QTR\" AS \"QTR_3\",\n  __s4.\"YR\" AS \"YR_3\",\n  __s4.\"QTR_YR\" AS \"QTR_YR_3\",\n  __s4.\"COUNTRY\" AS \"COUNTRY_4\",\n  __s4.\"ROLE\" AS \"ROLE_2\",\n  __s4.\"CLOSES\" AS \"CLOSES\",\n  __s4.\"NARR\" AS \"NARR_2\",\n  __s4.\"CW_WEEK\" AS \"CW_WEEK_2\",\n  __s4.\"WORKING_DAYS\" AS \"WORKING_DAYS\",\n  __s4.\"AHC_GOAL\" AS \"AHC_GOAL\",\n  __s4.\"CLOSE_PHASING\" AS \"CLOSE_PHASING\",\n  __s4.\"WEEK_OF\" AS \"WEEK_OF_3\",\n  __s5.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP_2\",\n  __s5.\"INITIATIVE\" AS \"INITIATIVE_2\",\n  __s5.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL_2\",\n  __s5.\"QTR_YR_SP\" AS \"QTR_YR_SP_2\",\n  __s5.\"ROLE_SP\" AS \"ROLE_SP_2\",\n  __s6.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP_3\",\n  __s6.\"INITIATIVE\" AS \"INITIATIVE_3\",\n  __s6.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL_3\",\n  __s6.\"QTR_YR_SP\" AS \"QTR_YR_SP_3\",\n  __s6.\"ROLE_SP\" AS \"ROLE_SP_3\"\nFROM __f\nLEFT JOIN __s0 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s0.\"ROLE_ACTIVATIONS\" AND __f.\"CW_COUNTRY\" = __s0.\"COUNTRY\"\nLEFT JOIN __s1 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s1.\"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AND __f.\"QTR_YR\" = __s1.\"QTR_YR (PRESALES_ACTIVE_HC)\"\nLEFT JOIN __s2 ON __f.\"WEEK_OF\" = __s2.\"WEEK_GOAL\" AND __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s2.\"ROLE (PRESALE_PRODUCT_GOALS)\"\nLEFT JOIN __s3 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s3.\"ROLE_SP\"\nLEFT JOIN __s4 ON __f.\"CW_WEEK\" = __s4.\"CW_WEEK\" AND __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s4.\"ROLE\" AND __f.\"QTR_YR\" = __s4.\"QTR_YR\" AND __f.\"CW_COUNTRY\" = __s4.\"COUNTRY\"\nLEFT JOIN __s5 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s5.\"ROLE_SP\"\nLEFT JOIN __s6 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s6.\"ROLE_SP\""
+            },
+            "columns": [
+              {
+                "id": "inode-CyHPZIJbphGOqHKK204CLh/MERCHANT_CLOSE_DATE",
+                "name": "MERCHANT_CLOSE_DATE",
+                "formula": "[Custom SQL/MERCHANT_CLOSE_DATE]"
+              },
+              {
+                "id": "inode-jcvmOGjiZLPT9JoHGeIRj7/WEEK_OF",
+                "name": "WEEK_OF",
+                "formula": "[Custom SQL/WEEK_OF]"
+              },
+              {
+                "id": "inode-aY7RpFaDhvNtPQ14P1Dkqr/CW_WEEK",
+                "name": "CW_WEEK",
+                "formula": "[Custom SQL/CW_WEEK]"
+              },
+              {
+                "id": "inode-YqmQRGHNkHoFMSpEw8VP8e/QTR",
+                "name": "QTR",
+                "formula": "[Custom SQL/QTR]"
+              },
+              {
+                "id": "inode-oXl69RV5yK7af4hF67wDWn/YR",
+                "name": "YR",
+                "formula": "[Custom SQL/YR]"
+              },
+              {
+                "id": "inode-qFyC4o85MR90liHYlssQcN/QTR_YR",
+                "name": "QTR_YR",
+                "formula": "[Custom SQL/QTR_YR]"
+              },
+              {
+                "id": "inode-KioEPz8REDD5RVBjnyWuZH/READINESS_CHECK_COMPLETE_DATE",
+                "name": "READINESS_CHECK_COMPLETE_DATE",
+                "formula": "[Custom SQL/READINESS_CHECK_COMPLETE_DATE]"
+              },
+              {
+                "id": "inode-vDMyoV2tPANpwDeklchulE/MERCHANT_ACTIVATION_DATE",
+                "name": "MERCHANT_ACTIVATION_DATE",
+                "formula": "[Custom SQL/MERCHANT_ACTIVATION_DATE]"
+              },
+              {
+                "id": "inode-r1hoFCw8049w2u5AwWjUyk/MX_ONBOARDING_LINK_SENT_DATE",
+                "name": "MX_ONBOARDING_LINK_SENT_DATE",
+                "formula": "[Custom SQL/MX_ONBOARDING_LINK_SENT_DATE]"
+              },
+              {
+                "id": "inode-IhkWIdmLrs8hMqcRM0bctE/OPPORTUNITY_ID",
+                "name": "OPPORTUNITY_ID",
+                "formula": "[Custom SQL/OPPORTUNITY_ID]"
+              },
+              {
+                "id": "inode-BM92nYDmGGf8x3NUVTZmSy/STORE_ACCOUNT_ID",
+                "name": "STORE_ACCOUNT_ID",
+                "formula": "[Custom SQL/STORE_ACCOUNT_ID]"
+              },
+              {
+                "id": "inode-IM7muYuUkpEdg0l9mCgJMh/BUSINESS_ACCOUNT_ID",
+                "name": "BUSINESS_ACCOUNT_ID",
+                "formula": "[Custom SQL/BUSINESS_ACCOUNT_ID]"
+              },
+              {
+                "id": "inode-HbbCfcZykyhaPbv59CfIt7/LEAD_ID",
+                "name": "LEAD_ID",
+                "formula": "[Custom SQL/LEAD_ID]"
+              },
+              {
+                "id": "inode-jmxWfpIGBriEb8k8ri8jaM/WORK_ORDER_ID",
+                "name": "WORK_ORDER_ID",
+                "formula": "[Custom SQL/WORK_ORDER_ID]"
+              },
+              {
+                "id": "inode-Mw9L7oDONDM83WB6W1Chg7/WORK_ORDER_NUMBER",
+                "name": "WORK_ORDER_NUMBER",
+                "formula": "[Custom SQL/WORK_ORDER_NUMBER]"
+              },
+              {
+                "id": "inode-5mpybU9vBnfZTLBcdOCi3b/STORE_ID",
+                "name": "STORE_ID",
+                "formula": "[Custom SQL/STORE_ID]"
+              },
+              {
+                "id": "inode-agfEzQOdOekkcmwtKn5zwu/BUSINESS_ID",
+                "name": "BUSINESS_ID",
+                "formula": "[Custom SQL/BUSINESS_ID]"
+              },
+              {
+                "id": "inode-0TzxTOqSv2fJiNxdFHFeu4/PROVISIONING_STATUS",
+                "name": "PROVISIONING_STATUS",
+                "formula": "[Custom SQL/PROVISIONING_STATUS]"
+              },
+              {
+                "id": "inode-PJ9hveWIOkAS3FypuO7T8v/SALES_OWNER_ID",
+                "name": "SALES_OWNER_ID",
+                "formula": "[Custom SQL/SALES_OWNER_ID]"
+              },
+              {
+                "id": "inode-Vhu5Xyf5qoru3Mn9X46GvB/SALES_OWNER",
+                "name": "SALES_OWNER",
+                "formula": "[Custom SQL/SALES_OWNER]"
+              },
+              {
+                "id": "inode-9ZsAlcXyGdk8H7n2QhOvPf/FULL_NAME",
+                "name": "FULL_NAME",
+                "formula": "[Custom SQL/FULL_NAME]"
+              },
+              {
+                "id": "inode-0couyvEolzKAMESyKeWtMS/MANAGER_NAME",
+                "name": "MANAGER_NAME",
+                "formula": "[Custom SQL/MANAGER_NAME]"
+              },
+              {
+                "id": "inode-mHP3xVbUhkhpibV4LlrvFZ/REP_ROLE",
+                "name": "REP_ROLE",
+                "formula": "[Custom SQL/REP_ROLE]"
+              },
+              {
+                "id": "inode-0sr5smSE2drgOwEybvmLuh/OWNER_TEAM",
+                "name": "OWNER_TEAM",
+                "formula": "[Custom SQL/OWNER_TEAM]"
+              },
+              {
+                "id": "inode-MtEkyAqqtUK7G1lhe96HfR/OWNER_ORG_FOCUS",
+                "name": "OWNER_ORG_FOCUS",
+                "formula": "[Custom SQL/OWNER_ORG_FOCUS]"
+              },
+              {
+                "id": "inode-Ga7rYs97dsES4D6zxNWo3C/REP_SEGMENT",
+                "name": "REP_SEGMENT",
+                "formula": "[Custom SQL/REP_SEGMENT]"
+              },
+              {
+                "id": "inode-15oSkK73S51z5oKO4PxIqZ/SDR_OWNER",
+                "name": "SDR_OWNER",
+                "formula": "[Custom SQL/SDR_OWNER]"
+              },
+              {
+                "id": "inode-Kh1N7jgL5bgZ1IJr9T8zxY/SDR_ID",
+                "name": "SDR_ID",
+                "formula": "[Custom SQL/SDR_ID]"
+              },
+              {
+                "id": "inode-wnm7PZ2v0lJ0kZkzi3C9Ss/SDR_MANAGER_ID",
+                "name": "SDR_MANAGER_ID",
+                "formula": "[Custom SQL/SDR_MANAGER_ID]"
+              },
+              {
+                "id": "inode-3IgdRx5GYjcfWlaaz975ar/SDR_MANAGER_NAME",
+                "name": "SDR_MANAGER_NAME",
+                "formula": "[Custom SQL/SDR_MANAGER_NAME]"
+              },
+              {
+                "id": "inode-D2euaX69Fe0Hcik36VT9yT/SDR_ROLE",
+                "name": "SDR_ROLE",
+                "formula": "[Custom SQL/SDR_ROLE]"
+              },
+              {
+                "id": "inode-SCdAhQeZ0ssSJSeDENzHMc/SDR_COUNTRY",
+                "name": "SDR_COUNTRY",
+                "formula": "[Custom SQL/SDR_COUNTRY]"
+              },
+              {
+                "id": "inode-1lQmxPo9iJurur30uRxZ28/REP_COUNTRY",
+                "name": "REP_COUNTRY",
+                "formula": "[Custom SQL/REP_COUNTRY]"
+              },
+              {
+                "id": "inode-UTNixdkdBzt5oMmaM9sQTj/CW_COUNTRY",
+                "name": "CW_COUNTRY",
+                "formula": "[Custom SQL/CW_COUNTRY]"
+              },
+              {
+                "id": "inode-TkuqN89V3hpWQmhasV2Aam/CLEAN_COUNTRY",
+                "name": "CLEAN_COUNTRY",
+                "formula": "[Custom SQL/CLEAN_COUNTRY]"
+              },
+              {
+                "id": "inode-L3Bfaq7mY1Cpjl2t2z3f89/OWNER_ROLE_OFFICIAL_TITLE",
+                "name": "OWNER_ROLE_OFFICIAL_TITLE",
+                "formula": "[Custom SQL/OWNER_ROLE_OFFICIAL_TITLE]"
+              },
+              {
+                "id": "inode-hePZGXjZcgQDxIt94njeFS/CW_OWNER_ROLE_OFFICIAL_TITLE",
+                "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+                "formula": "[Custom SQL/CW_OWNER_ROLE_OFFICIAL_TITLE]"
+              },
+              {
+                "id": "inode-PsN58AUM2Mr28gmk9FuU5p/SFDC_COMMISSION",
+                "name": "SFDC_COMMISSION",
+                "formula": "[Custom SQL/SFDC_COMMISSION]"
+              },
+              {
+                "id": "inode-xoYB8JludHeum838t76MqC/DASHPASS_COMMISSION",
+                "name": "DASHPASS_COMMISSION",
+                "formula": "[Custom SQL/DASHPASS_COMMISSION]"
+              },
+              {
+                "id": "inode-bKSH2E15O3u14jyejt5muF/NARR",
+                "name": "NARR",
+                "formula": "[Custom SQL/NARR]"
+              },
+              {
+                "id": "inode-tvhU0IhfvvZeFG6f223h1m/OPPORTUNITY_NAME",
+                "name": "OPPORTUNITY_NAME",
+                "formula": "[Custom SQL/OPPORTUNITY_NAME]"
+              },
+              {
+                "id": "inode-OvG2ytfWejJMcpqRbrt8SF/OPP_TYPE",
+                "name": "OPP_TYPE",
+                "formula": "[Custom SQL/OPP_TYPE]"
+              },
+              {
+                "id": "inode-CYp1jdFhQEW4SU1qyWOIqM/ACCOUNT_NAME",
+                "name": "ACCOUNT_NAME",
+                "formula": "[Custom SQL/ACCOUNT_NAME]"
+              },
+              {
+                "id": "inode-ZwgXfopJP74EDVwfY2UAMD/STORE_NAME",
+                "name": "STORE_NAME",
+                "formula": "[Custom SQL/STORE_NAME]"
+              },
+              {
+                "id": "inode-RStrIAGfmwuQIznSIQTYRN/BUSINESS_NAME",
+                "name": "BUSINESS_NAME",
+                "formula": "[Custom SQL/BUSINESS_NAME]"
+              },
+              {
+                "id": "inode-720NWO1GrSFNvo4Pw7ZONm/DECK_RANK",
+                "name": "DECK_RANK",
+                "formula": "[Custom SQL/DECK_RANK]"
+              },
+              {
+                "id": "inode-3hBh0LJh5CLKPAV93ARTbq/PRIMARY_VERTICAL",
+                "name": "PRIMARY_VERTICAL",
+                "formula": "[Custom SQL/PRIMARY_VERTICAL]"
+              },
+              {
+                "id": "inode-b0e6rxeocWuUsDoXjdVdFH/COUNTRY",
+                "name": "COUNTRY",
+                "formula": "[Custom SQL/COUNTRY]"
+              },
+              {
+                "id": "inode-730rCIdSfnzACvGpd7aB3o/STARTING_POINT_ID",
+                "name": "STARTING_POINT_ID",
+                "formula": "[Custom SQL/STARTING_POINT_ID]"
+              },
+              {
+                "id": "inode-N2uI0FsYcYh4R6Rqh0kxHT/STARTING_POINT",
+                "name": "STARTING_POINT",
+                "formula": "[Custom SQL/STARTING_POINT]"
+              },
+              {
+                "id": "inode-XTbZpiC8dbPRa5UilRMMzB/SUBMARKET",
+                "name": "SUBMARKET",
+                "formula": "[Custom SQL/SUBMARKET]"
+              },
+              {
+                "id": "inode-1ZZXu7LzNjQai2qiwTsBd9/SUBMARKET_ID",
+                "name": "SUBMARKET_ID",
+                "formula": "[Custom SQL/SUBMARKET_ID]"
+              },
+              {
+                "id": "inode-21QXTPEJpNVT6fonLg5hzB/TOP_MX",
+                "name": "TOP_MX",
+                "formula": "[Custom SQL/TOP_MX]"
+              },
+              {
+                "id": "inode-jaOGrkhLVYsTxEWtq7e9WZ/MARKET_MAKER",
+                "name": "MARKET_MAKER",
+                "formula": "[Custom SQL/MARKET_MAKER]"
+              },
+              {
+                "id": "inode-mKnlsdyrpA1X5R3Xx88UNk/IS_GNC",
+                "name": "IS_GNC",
+                "formula": "[Custom SQL/IS_GNC]"
+              },
+              {
+                "id": "inode-lgVcLMclLyK9zPIQ8FvQOZ/IS_DASHPASS",
+                "name": "IS_DASHPASS",
+                "formula": "[Custom SQL/IS_DASHPASS]"
+              },
+              {
+                "id": "inode-27MTQ3UbOiKagHCteIRBWB/IS_PICKUP",
+                "name": "IS_PICKUP",
+                "formula": "[Custom SQL/IS_PICKUP]"
+              },
+              {
+                "id": "inode-mOsg2e7x8DAXEZz673ufSb/IS_STOREFRONT",
+                "name": "IS_STOREFRONT",
+                "formula": "[Custom SQL/IS_STOREFRONT]"
+              },
+              {
+                "id": "inode-GRb3qcEbT0HSWf82nOoIsY/IS_ALCOHOL",
+                "name": "IS_ALCOHOL",
+                "formula": "[Custom SQL/IS_ALCOHOL]"
+              },
+              {
+                "id": "inode-u8x4NsWkmxyEF4qp6aJkjx/IS_TRIAL",
+                "name": "IS_TRIAL",
+                "formula": "[Custom SQL/IS_TRIAL]"
+              },
+              {
+                "id": "inode-1dPcSVGvXBcFTkQewUULDb/IS_PROMO",
+                "name": "IS_PROMO",
+                "formula": "[Custom SQL/IS_PROMO]"
+              },
+              {
+                "id": "inode-Q0bfUPMNudgHDdceY4i8zi/IS_ADS",
+                "name": "IS_ADS",
+                "formula": "[Custom SQL/IS_ADS]"
+              },
+              {
+                "id": "inode-LVSW4thFOsbywGjizxovFJ/IS_ADS_PROMOS",
+                "name": "IS_ADS_PROMOS",
+                "formula": "[Custom SQL/IS_ADS_PROMOS]"
+              },
+              {
+                "id": "inode-84vxnfXg89kiE1dqfLrHWe/PACKAGE_SOLD",
+                "name": "PACKAGE_SOLD",
+                "formula": "[Custom SQL/PACKAGE_SOLD]"
+              },
+              {
+                "id": "inode-4W2GDQcsCGCtl3JvlvSZFN/NTAM",
+                "name": "NTAM",
+                "formula": "[Custom SQL/NTAM]"
+              },
+              {
+                "id": "inode-jBByPuMr6IAWrtN0siiNzI/INCREMENTAL_SIGN_TAM",
+                "name": "INCREMENTAL_SIGN_TAM",
+                "formula": "[Custom SQL/INCREMENTAL_SIGN_TAM]"
+              },
+              {
+                "id": "inode-zBC8aj9oruaSL9a5ubqajr/HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+                "name": "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+                "formula": "[Custom SQL/HISTORICAL_DELAY_REASONS_CUSTOMIZED]"
+              },
+              {
+                "id": "inode-AD8b9VmVztp6nWxUCFfTKV/LEAD_LIST_CUSTOMIZED",
+                "name": "LEAD_LIST_CUSTOMIZED",
+                "formula": "[Custom SQL/LEAD_LIST_CUSTOMIZED]"
+              },
+              {
+                "id": "inode-YBnu8pyEymCVPycAwuPh1u/TRIAL_PERIOD",
+                "name": "TRIAL_PERIOD",
+                "formula": "[Custom SQL/TRIAL_PERIOD]"
+              },
+              {
+                "id": "inode-TEcRTYuToO5n0ribFiCcc0/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+                "name": "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+                "formula": "[Custom SQL/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD]"
+              },
+              {
+                "id": "inode-LgybyvWTWhPYgeF6800JE6/ACTIVATION_BONUS_AMOUNT",
+                "name": "ACTIVATION_BONUS_AMOUNT",
+                "formula": "[Custom SQL/ACTIVATION_BONUS_AMOUNT]"
+              },
+              {
+                "id": "inode-KqGgrWO1ZC97sj7UTjfAhL/PRODUCT_LIST",
+                "name": "PRODUCT_LIST",
+                "formula": "[Custom SQL/PRODUCT_LIST]"
+              },
+              {
+                "id": "inode-t3WPdcNOR8Onml9cUC1S0M/REGION",
+                "name": "REGION",
+                "formula": "[Custom SQL/REGION]"
+              },
+              {
+                "id": "inode-tkNT3ytkhlptWXlZFE8gGb/TIER",
+                "name": "TIER",
+                "formula": "[Custom SQL/TIER]"
+              },
+              {
+                "id": "inode-tQXIeDohSrgKjo1CsBve8n/SFDC_SOURCE",
+                "name": "SFDC_SOURCE",
+                "formula": "[Custom SQL/SFDC_SOURCE]"
+              },
+              {
+                "id": "inode-rmQ3o1N5Z2MH6q1sRWe6Xb/LAST_ETL_RUN",
+                "name": "LAST_ETL_RUN",
+                "formula": "[Custom SQL/LAST_ETL_RUN]"
+              },
+              {
+                "id": "inode-R9xyreuNri0lcWX93i1xnr/WEEK_GOAL_ACTIVATIONS",
+                "name": "WEEK_GOAL_ACTIVATIONS",
+                "formula": "[Custom SQL/WEEK_GOAL_ACTIVATIONS]"
+              },
+              {
+                "id": "inode-kLOW8A0iznTPPs04gyH4d2/ROLE_ACTIVATIONS",
+                "name": "ROLE_ACTIVATIONS",
+                "formula": "[Custom SQL/ROLE_ACTIVATIONS]"
+              },
+              {
+                "id": "inode-WiyXGvUWKaO1PyLhjc5PTS/ACTIVATION_GOAL",
+                "name": "ACTIVATION_GOAL",
+                "formula": "[Custom SQL/ACTIVATION_GOAL]"
+              },
+              {
+                "id": "inode-1CUztxjqMQOCcRg0L3bAml/QUARTER_YEAR",
+                "name": "QUARTER_YEAR",
+                "formula": "[Custom SQL/QUARTER_YEAR]"
+              },
+              {
+                "id": "inode-3EuH0KclfxTd1Y6cBADrqZ/COUNTRY",
+                "name": "COUNTRY_2",
+                "formula": "[Custom SQL/COUNTRY_2]"
+              },
+              {
+                "id": "inode-lr41ki0MpAyWlT7V4gN0bN/COUNTRY (PRESALES_ACTIVE_HC)",
+                "name": "COUNTRY_3",
+                "formula": "[Custom SQL/COUNTRY_3]"
+              },
+              {
+                "id": "inode-RMmVhOy73BnFcLPgEDovVn/DAYS_OFF",
+                "name": "DAYS_OFF",
+                "formula": "[Custom SQL/DAYS_OFF]"
+              },
+              {
+                "id": "inode-kQXvNHNSDL9GFagltSaItm/HC",
+                "name": "HC",
+                "formula": "[Custom SQL/HC]"
+              },
+              {
+                "id": "inode-xUluVELDXqPb4ArfcKzIOT/OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)",
+                "name": "OWNER_ROLE_OFFICIAL_TITLE_2",
+                "formula": "[Custom SQL/OWNER_ROLE_OFFICIAL_TITLE_2]"
+              },
+              {
+                "id": "inode-7X5fcVvhxfEAXXKmyB4lMu/QTR (PRESALES_ACTIVE_HC)",
+                "name": "QTR_2",
+                "formula": "[Custom SQL/QTR_2]"
+              },
+              {
+                "id": "inode-74EvQjbaaywZo3MmWFopzf/QTR_YR (PRESALES_ACTIVE_HC)",
+                "name": "QTR_YR_2",
+                "formula": "[Custom SQL/QTR_YR_2]"
+              },
+              {
+                "id": "inode-AwvCSKccvvN5vlH89xxLZU/REP_RANK",
+                "name": "REP_RANK",
+                "formula": "[Custom SQL/REP_RANK]"
+              },
+              {
+                "id": "inode-7AALvadTlgSkEJolFxLnhr/SALES_MANAGER",
+                "name": "SALES_MANAGER",
+                "formula": "[Custom SQL/SALES_MANAGER]"
+              },
+              {
+                "id": "inode-4EVeJ50EagpLILfPWfE2Rq/SALES_OWNER (PRESALES_ACTIVE_HC)",
+                "name": "SALES_OWNER_2",
+                "formula": "[Custom SQL/SALES_OWNER_2]"
+              },
+              {
+                "id": "inode-IClDfq97hNEBV855UOO41p/USER_ID",
+                "name": "USER_ID",
+                "formula": "[Custom SQL/USER_ID]"
+              },
+              {
+                "id": "inode-B93d2I2BoQoqFhYFZDB2uo/WEEK_OF (PRESALES_ACTIVE_HC)",
+                "name": "WEEK_OF_2",
+                "formula": "[Custom SQL/WEEK_OF_2]"
+              },
+              {
+                "id": "inode-vKwIDYyyoitC1ZhMxbBLNg/YR (PRESALES_ACTIVE_HC)",
+                "name": "YR_2",
+                "formula": "[Custom SQL/YR_2]"
+              },
+              {
+                "id": "inode-fzfd7lnlrFdYS0ZAxierMS/BASED",
+                "name": "BASED",
+                "formula": "[Custom SQL/BASED]"
+              },
+              {
+                "id": "inode-lXnsHstfKUptK3uj1j3TKn/ORG",
+                "name": "ORG",
+                "formula": "[Custom SQL/ORG]"
+              },
+              {
+                "id": "inode-of9DHyFNmGdBcCVfK3ybNS/PRODUCT",
+                "name": "PRODUCT",
+                "formula": "[Custom SQL/PRODUCT]"
+              },
+              {
+                "id": "inode-6me4FeTGqzb4wawEPjfvHN/PRODUCT_GOAL",
+                "name": "PRODUCT_GOAL",
+                "formula": "[Custom SQL/PRODUCT_GOAL]"
+              },
+              {
+                "id": "inode-3Ca1uqhmWsXgKmQZS2m0QN/QTR_YR_PG",
+                "name": "QTR_YR_PG",
+                "formula": "[Custom SQL/QTR_YR_PG]"
+              },
+              {
+                "id": "inode-zrn9AgHUx8wYpuPLDmdDRy/ROLE (PRESALE_PRODUCT_GOALS)",
+                "name": "ROLE",
+                "formula": "[Custom SQL/ROLE]"
+              },
+              {
+                "id": "inode-4s03FLyTR9LihG3JtRaXXu/TARGET",
+                "name": "TARGET",
+                "formula": "[Custom SQL/TARGET]"
+              },
+              {
+                "id": "inode-5iGYXbNVQak1PHDtuuLL0M/TEAM",
+                "name": "TEAM",
+                "formula": "[Custom SQL/TEAM]"
+              },
+              {
+                "id": "inode-eNNxNQ8hX8W01FvGievzhW/WEEK_GOAL",
+                "name": "WEEK_GOAL",
+                "formula": "[Custom SQL/WEEK_GOAL]"
+              },
+              {
+                "id": "inode-N1fZreTewpouU25skWgki3/WEEK_GOAL_SP",
+                "name": "WEEK_GOAL_SP",
+                "formula": "[Custom SQL/WEEK_GOAL_SP]"
+              },
+              {
+                "id": "inode-2yGW0h64FcsyEVL8zSiqYP/INITIATIVE",
+                "name": "INITIATIVE",
+                "formula": "[Custom SQL/INITIATIVE]"
+              },
+              {
+                "id": "inode-VGBQHpHCj20ipEuM2ogTVf/INITIATIVE_GOAL",
+                "name": "INITIATIVE_GOAL",
+                "formula": "[Custom SQL/INITIATIVE_GOAL]"
+              },
+              {
+                "id": "inode-tidAS0w1tyX6b5jlfY02hf/QTR_YR_SP",
+                "name": "QTR_YR_SP",
+                "formula": "[Custom SQL/QTR_YR_SP]"
+              },
+              {
+                "id": "inode-ELK9MK7YzKhp8nrGocVZMw/ROLE_SP",
+                "name": "ROLE_SP",
+                "formula": "[Custom SQL/ROLE_SP]"
+              },
+              {
+                "id": "inode-rcOcQ7RRpuTMWUBD27JKNT/QTR",
+                "name": "QTR_3",
+                "formula": "[Custom SQL/QTR_3]"
+              },
+              {
+                "id": "inode-xXMNNKxhKtx2vw94x6uM4A/YR",
+                "name": "YR_3",
+                "formula": "[Custom SQL/YR_3]"
+              },
+              {
+                "id": "inode-GXgGqwjSCLeLWwCRN0kGJO/QTR_YR",
+                "name": "QTR_YR_3",
+                "formula": "[Custom SQL/QTR_YR_3]"
+              },
+              {
+                "id": "inode-U30JxoYIYMJT1Z6NzoWd4r/COUNTRY",
+                "name": "COUNTRY_4",
+                "formula": "[Custom SQL/COUNTRY_4]"
+              },
+              {
+                "id": "inode-LmyKg84xW17K7PzzLIqYdG/ROLE",
+                "name": "ROLE_2",
+                "formula": "[Custom SQL/ROLE_2]"
+              },
+              {
+                "id": "inode-35LnTtjfDZMsnfxH5Thqxr/CLOSES",
+                "name": "CLOSES",
+                "formula": "[Custom SQL/CLOSES]"
+              },
+              {
+                "id": "inode-66BZ0cIEHorYkJ2GA4QRdy/NARR",
+                "name": "NARR_2",
+                "formula": "[Custom SQL/NARR_2]"
+              },
+              {
+                "id": "inode-CONKAYV89IHrLEX9SFyN08/CW_WEEK",
+                "name": "CW_WEEK_2",
+                "formula": "[Custom SQL/CW_WEEK_2]"
+              },
+              {
+                "id": "inode-IJWLBNqn0jOBuX2t1APyls/WORKING_DAYS",
+                "name": "WORKING_DAYS",
+                "formula": "[Custom SQL/WORKING_DAYS]"
+              },
+              {
+                "id": "inode-NMguRd218xKVQyrIW9BkP6/AHC_GOAL",
+                "name": "AHC_GOAL",
+                "formula": "[Custom SQL/AHC_GOAL]"
+              },
+              {
+                "id": "inode-6IUiF0QVMimLZiOuE41gGD/CLOSE_PHASING",
+                "name": "CLOSE_PHASING",
+                "formula": "[Custom SQL/CLOSE_PHASING]"
+              },
+              {
+                "id": "inode-KseJxwi4GCb5Ul6A8KofuT/WEEK_OF",
+                "name": "WEEK_OF_3",
+                "formula": "[Custom SQL/WEEK_OF_3]"
+              },
+              {
+                "id": "inode-VGW0zRycXdNJbf3r6uFUY6/WEEK_GOAL_SP",
+                "name": "WEEK_GOAL_SP_2",
+                "formula": "[Custom SQL/WEEK_GOAL_SP_2]"
+              },
+              {
+                "id": "inode-cHU3b0brmJdLeTAOdoqOyL/INITIATIVE",
+                "name": "INITIATIVE_2",
+                "formula": "[Custom SQL/INITIATIVE_2]"
+              },
+              {
+                "id": "inode-soTNDjeVs1ni1dzwXqbgaG/INITIATIVE_GOAL",
+                "name": "INITIATIVE_GOAL_2",
+                "formula": "[Custom SQL/INITIATIVE_GOAL_2]"
+              },
+              {
+                "id": "inode-7MXRhjDL7h3P1tPnKWseiQ/QTR_YR_SP",
+                "name": "QTR_YR_SP_2",
+                "formula": "[Custom SQL/QTR_YR_SP_2]"
+              },
+              {
+                "id": "inode-6elSG28uB4v7PJmNIEmnZX/ROLE_SP",
+                "name": "ROLE_SP_2",
+                "formula": "[Custom SQL/ROLE_SP_2]"
+              },
+              {
+                "id": "inode-VRKC79nb7kbYTnFYZu9hkT/WEEK_GOAL_SP",
+                "name": "WEEK_GOAL_SP_3",
+                "formula": "[Custom SQL/WEEK_GOAL_SP_3]"
+              },
+              {
+                "id": "inode-d28UUAK6hYpGqiriK8fG20/INITIATIVE",
+                "name": "INITIATIVE_3",
+                "formula": "[Custom SQL/INITIATIVE_3]"
+              },
+              {
+                "id": "inode-SueGv0GdUW2ZdwMmxofxxh/INITIATIVE_GOAL",
+                "name": "INITIATIVE_GOAL_3",
+                "formula": "[Custom SQL/INITIATIVE_GOAL_3]"
+              },
+              {
+                "id": "inode-rKsb1OmUpenkD76MieC5oc/QTR_YR_SP",
+                "name": "QTR_YR_SP_3",
+                "formula": "[Custom SQL/QTR_YR_SP_3]"
+              },
+              {
+                "id": "inode-kFxYHUNvSQHCnOTyj1aLPo/ROLE_SP",
+                "name": "ROLE_SP_3",
+                "formula": "[Custom SQL/ROLE_SP_3]"
+              },
+              {
+                "id": "inode-yScJzcqHW5Q0nlYiit9yCo/MEASURE_NAMES",
+                "formula": "[FACT/:Measure Names]"
+              },
+              {
+                "id": "7YRu4bCCro",
+                "formula": "If([Calculation_272115961656373248] = 0, 0&#10;, If([Calculation_272115961656373248] < 1, &#10;[Calculation_272115961656373248]&#10;, null))",
+                "name": "<1 Deck Rank Param Calc"
+              },
+              {
+                "id": "inode-tPzhA0UcjpFqwZiwmlh2sE/ACCOUNT_ID",
+                "formula": "[FACT/Account Id]"
+              },
+              {
+                "id": "inode-YlvDNeSUFxyldkDZE48Xil/CAN_SPECIAL_ROLES",
+                "formula": "[FACT/CAN Special Roles]"
+              },
+              {
+                "id": "inode-uHcYM26eufJ4wCb6dC4vpW/COUNTRY_CUSTOM_SQL_QUERY1",
+                "formula": "[FACT/COUNTRY (Custom SQL Query1)]"
+              },
+              {
+                "id": "inode-mrHrtWIhK0K7xp1dnMu25g/COUNTRY_CUSTOM_SQL_QUERY4",
+                "formula": "[FACT/COUNTRY Activations]"
+              },
+              {
+                "id": "VFFsvWudTA",
+                "formula": "([Calculation_3783938539825639424])/([Calculation_3783938539836088324])",
+                "name": "CWs / AHC (CAN)"
+              },
+              {
+                "id": "LFoihlpXAx",
+                "formula": "If(RegexpMatch([Primary Campaign Source], \"CAN\") and (RegexpMatch([Primary Campaign Source], \"Tier\") or RegexpMatch([Primary Campaign Source], \"TIER\")) &#10;, [Primary Campaign Source]&#10;, null)",
+                "name": "CAN Tiers"
+              },
+              {
+                "id": "1W5yOkP0AW",
+                "formula": "If([Merchant Close Date] < Date(2024-10-28), &#10;\"https://figment.lightning.force.com/lightning/r/Opportunity/\" + [Opportunity Id] + \"/view\"&#10;, \"https://doordashmx.lightning.force.com/lightning/r/Opportunity/\" + [Opportunity Id] + \"/view\"&#10;)",
+                "name": "Opp URL"
+              },
+              {
+                "id": "8tKG3zsqxr",
+                "formula": "If([Merchant Close Date] >= DateTrunc(\"quarter\", [Merchant Close Date])  &#10;             and [Merchant Close Date] < DateTrunc(\"week\", DateAdd(\"week\", 1, DateTrunc(\"quarter\", [Merchant Close Date]))) &#10;, DateTrunc(\"quarter\", [Merchant Close Date]) &#10;, DateTrunc(\"week\", [Merchant Close Date]))",
+                "name": "Week_start"
+              },
+              {
+                "id": "xuZZdd6PxF",
+                "formula": "If([Team - Tier Tracking (copy)_4245346387490271233] in (\"Strategic\", \"Regional\", \"BD\", \"OB Vendor\"), \"Outbound Signs\" &#10;, \"Inbound + SSMO Signs\"&#10;)",
+                "name": "Org - Top Mx Tracking"
+              },
+              {
+                "id": "X2biycSjjz",
+                "formula": "If([Calculation_4245346387489398784] in (\"Strategic\", \"Regional\", \"OB Vendor\"), \"Outbound Signs\" &#10;, \"Inbound + SSMO Signs\" &#10;)",
+                "name": "Org - Tier Tracking"
+              },
+              {
+                "id": "keELRRVFYf",
+                "formula": "[SP: Whales (copy)_3215429439119798272]/[Calculation_3783938539825639424]",
+                "name": "% of Total Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "KmRQwjOszw",
+                "formula": "[SP: Top Mx (copy)_5820832199702355969]/[Calculation_3783938539825639424]",
+                "name": "% of Total Signs (T4-5)",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "kiIz7PsLMC",
+                "formula": "//get week nums&#10;Week(([Merchant Close Date])) < (Week(Today()))&#10;and Quarter([Merchant Close Date]) = Quarter(Today())&#10;and Year([Merchant Close Date]) = Year(Today())",
+                "name": "YoY Curr QTD"
+              },
+              {
+                "id": "dLA75LNV88",
+                "formula": "If(IsNull([Merchant Activation Date]), \"No\", \"Yes\")",
+                "name": "Is Activated?"
+              },
+              {
+                "id": "vwRkRbCcif",
+                "formula": "If([Calculation_272115961656373248] = 0, 0&#10;, If([Calculation_272115961656373248] > 1, &#10;[Calculation_272115961656373248]&#10;, null))",
+                "name": ">1 Deck Rank Param Calc"
+              },
+              {
+                "id": "U8enrf3S2R",
+                "formula": "If([Cw Owner Role Official Title (group)]&#10; = \"IS Regional\", \"Inside\"&#10;, If([Cw Owner Role Official Title (group)]&#10; = \"OS Regional\", \"Outside\"&#10;, If([Cw Owner Role Official Title (group)]&#10; = \"IS Strategic\", \"Inside\"&#10;, If([Cw Owner Role Official Title (group)]&#10; = \"OS Strategic\", \"Outside\"&#10;, If([Cw Owner Role Official Title (group)]&#10; = \"Self Serve\", \"SSMO\"&#10;, \"Inside\"&#10;)))))",
+                "name": "OS v IS"
+              },
+              {
+                "id": "dqMiofPBpt",
+                "formula": "If([Merchant Activation Date] = Date(\"2024-09-30\"), Date(DateAdd(\"day\", -7, DateTrunc(\"week\", [Merchant Activation Date], \"monday\")))&#10;, If(Date(DateTrunc(\"week\", [Merchant Activation Date], \"monday\")) = Date(\"2024-09-30\"), Date( DateTrunc(\"week\", [Merchant Activation Date], \"tuesday\"))&#10;, Date(DateTrunc(\"week\", [Merchant Activation Date], \"monday\"))))",
+                "name": "Activation_Week"
+              },
+              {
+                "id": "yaJde3070t",
+                "formula": "[Work Order Number]",
+                "name": "WO Number"
+              },
+              {
+                "id": "pqsTgyjdpn",
+                "formula": "If(IsNull([Sdr Id]), False &#10;&#9;, True&#10;)",
+                "name": "Has SDR"
+              },
+              {
+                "id": "8vepEVOBIv",
+                "formula": "Text(Year([Week Goal Activations]))+\"-Q\"+Text(Quarter([Week Goal Activations]))",
+                "name": "Quarter of Activations"
+              },
+              {
+                "id": "Qqcme66j1o",
+                "formula": "If([Role]&#10; = \"Inbound VND - TaskUs\", \"Inbound\"&#10;, If([Role]&#10; = \"Inbound VND - Teleperformance\", \"Inbound\"&#10;, If([Role]&#10; = \"Inbound VND - Regalix\", \"Inbound\"&#10;, \"Outbound\"&#10;)))",
+                "name": "Inbound vs Outbound"
+              },
+              {
+                "id": "bNHfoMuBhZ",
+                "formula": "If([Role]&#10; = \"Inbound VND - TaskUs\", \"Vendor\"&#10;, If([Role]&#10; = \"Inbound VND - Teleperformance\", \"Vendor\"&#10;, If([Role]&#10; = \"Inbound VND - Regalix\", \"Vendor\"&#10;, If([Role]&#10; = \"Inbound VND - Concentrix\", \"Vendor\"&#10;, If([Role]&#10; = \"OB Vendors - Regalix\", \"Vendor\"&#10;, If([Role]&#10; = \"OB Vendors - TaskUs\", \"Vendor\"&#10;, If([Role]&#10; = \"OB Vendors - Teleperformance\", \"Vendor\"&#10;, If([Role]&#10; = \"OB Vendors - Concentrix\", \"Vendor\"&#10;, If([Role]&#10; = \"OB Vendors - MarketStar\", \"Vendor\"&#10;, \"Onshore\"&#10;)))))))))",
+                "name": "Vendor v Onshore"
+              },
+              {
+                "id": "uzyl3aoTq3",
+                "formula": "If([Calculation_4591490232371261484] = True, True&#10;, null)",
+                "name": "QTD (last full week)"
+              },
+              {
+                "id": "nphGPsoo55",
+                "formula": "([Calculation_3783938539825639424])/([Calculation_3783938539836088324])",
+                "name": "CWs / AHC"
+              },
+              {
+                "id": "VhffLghbjt",
+                "formula": "If([Sales Owner] in (\"Ivory Mae Montecillo\"&#10;                        , \"Ivory Montecillo\"&#10;                        , \"Jamaica Lambunao\"&#10;                        , \"Caleb Rivera\"&#10;                        , \"Christian Marquez\"&#10;                        , \"Irah Manalang\"&#10;                        , \"Jerome Noquiao\"&#10;                        , \"Rienel Acierto\"&#10;                        , \"Aldwin Clark Albaladejo\"&#10;                        , \"Erika Tanya De Leon\"&#10;                        , \"Gerkin Charles Viray\"&#10;                        , \"Engeline Suba\")&#10;&#9;, \"Virtual Brand\" &#10;, If([Sales Owner] = \"Shane Mejia\" and [Merchant Close Date] >= Date(\"2025-04-14\")&#10;&#9;, \"Virtual Brand\" &#10;, \"Include\"&#10;))",
+                "name": "Temp Filter (Virtual Brand)"
+              },
+              {
+                "id": "sWRPKxgkGp",
+                "formula": "If([ROLE_SP (Custom SQL Query)] in (\"SGL\", \"SAE\", \"SML\", \"SAE (Top Mx)\", \"Top Gun (ML)\", \"Strategic Inbound\"), \"Strategic\"&#10;, If([ROLE_SP (Custom SQL Query)] in (\"AE\", \"OB aAE\", \"ML\", \"GML\",\"aGML\", \"Blitz (AE)\"), \"Regional\"&#10;, If([ROLE_SP (Custom SQL Query)] in (\"Self Serve\"), \"Self Serve\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query)], \"Inbound VND\"), \"IB Vendor\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query)], \"OB Vendor\"), \"OB Vendor\"&#10;, null)))))",
+                "name": "Team - Tier Activations Tracking"
+              },
+              {
+                "id": "OaPu8gWH2a",
+                "formula": "Coalesce([SP: Top Mx (copy, 0)_4245346387502661635]/[SP: Top Mx Goal (copy)_4245346387502661636])",
+                "name": "Top Mx Activations Pacing"
+              },
+              {
+                "id": "5h7EOAQPv4",
+                "formula": "Text(Year([WEEK_OF (Custom SQL Query3)]))+\"-Q\"+Text(Quarter([WEEK_OF (Custom SQL Query3)]))",
+                "name": "Quarter of CW FILTER"
+              },
+              {
+                "id": "SdNaX2WK0U",
+                "formula": "If([Cw Owner Role Official Title]&#10; = \"AE\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Blitz (AE)\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB aAE\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"ML\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"GML\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"aGML\", \"Regional\"&#10;, If([Cw Owner Role Official Title]&#10; = \"SML\", \"Strategic\"&#10;, If([Cw Owner Role Official Title]&#10; = \"SAE\", \"Strategic\"&#10;, If([Cw Owner Role Official Title]&#10; = \"SAE (Top Mx)\", \"Strategic\"&#10;, If([Cw Owner Role Official Title]&#10; = \"SGL\", \"Strategic\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Strategic Inbound\", \"Strategic\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Inbound VND - TaskUs\", \"Vendor IB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Inbound VND - Teleperformance\", \"Vendor IB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Inbound VND - Concentrix\", \"Vendor IB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Inbound VND - Regalix\", \"Vendor IB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - Regalix\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - MarketStar\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - TaskUs\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - Concentrix\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - Teleperformance\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"OB Vendors - Movate\", \"Vendor OB\"&#10;, If([Cw Owner Role Official Title]&#10; = \"Self Serve\", \"SSMO\"&#10;, null))))))))))))))))))))))",
+                "name": "Strategic v Regional v Vendor"
+              },
+              {
+                "id": "vCpMuXtYWi",
+                "formula": "Week(([WEEK_OF (Custom SQL Query3)])) < (Week(Date(Today())))",
+                "name": "Exclude this Week"
+              },
+              {
+                "id": "rk4tXukQFB",
+                "formula": "If([Role] = \"CAN AE\", \"Include CAN AE\"&#10;, If([Role] = \"CAN SAE\", \"Include CAN SAE\" &#10;, If([Role] = \"CAN SAE (Top Mx)\", \"Include CAN SAE (Top Mx)\" &#10;, null)))",
+                "name": "CAN Inside Roles"
+              },
+              {
+                "id": "LhUqoCCMoc",
+                "formula": "Coalesce([Country],\"null\")+Coalesce([Cw Country],\"null\")",
+                "name": "Combined Country"
+              },
+              {
+                "id": "5LAVKgOMvz",
+                "formula": "If([Calculation_573927491585601539] = Year(Today()) &#10;and [Lookup Date(copy)_2117114051411013634]  = Year(Today()) &#10;, \"Show\", \"Hide\")",
+                "name": "lookup filter"
+              },
+              {
+                "id": "xDHQEnR6Uo",
+                "formula": "([Cw Country])+([Role])",
+                "name": "Canada roles"
+              },
+              {
+                "id": "ZEt8ILPDVN",
+                "formula": "If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"ML\", \"OS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"SML\", \"OS Strategic\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"GML\", \"OS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"aGML\", \"OS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"SGL\", \"OS Strategic\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"AE\", \"IS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Blitz (AE)\", \"IS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB aAE\", \"IS Regional\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"SAE\", \"IS Strategic\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"SAE (Top Mx)\", \"IS Strategic\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Self Serve\", \"SSMO\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Formstack\", \"SSMO\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"SSMO\", \"SSMO\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - Regalix\", \"Outbound VND\"&#10;&#9;&#9;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - MarketStar\", \"Outbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - Movate\", \"Outbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - Teleperformance\", \"Outbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - Concentrix\", \"Outbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"OB Vendors - TaskUs\", \"Outbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Inbound VND - Regalix\", \"Inbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Inbound VND - Teleperformance\", \"Inbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Inbound VND - TaskUs\", \"Inbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Inbound VND - Concentrix\", \"Inbound VND\"&#10;, If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner Role Official Title]&#10; = \"Team Lead- Outside Sales\", \"OS Regional\"&#10;, null)))))))))))))))))))))))))&#10;    , [Cw Owner Role Official Title])&#10;)&#10;when \"ML\" then \"OS Regional\"&#10;when \"SML\" then \"OS Strategic\"&#10;when \"SGL\" then \"OS Strategic\"&#10;when \"GML\" then \"OS Regional\"&#10;when \"aGML\" then \"OS Regional\"&#10;When \"AE\" then \"IS Regional\"&#10;When \"Blitz (AE)\" then \"IS Regional\"&#10;when \"OB aAE\" then \"IS Regional\"&#10;when \"SAE\" then \"IS Strategic\"&#10;when \"SAE (Top Mx)\" then \"IS Strategic\"&#10;when \"Self Serve\" then \"SSMO\"&#10;when \"Formstack\" then \"SSMO\"&#10;when \"SSMO\" then \"SSMO\"&#10;when \"OB Vendors - Regalix\" then \"Outbound VND\"&#10;when \"OB Vendors - Teleperformance\" then \"Outbound VND\"&#10;when \"OB Vendors - TaskUs\" then \"Outbound VND\"&#10;when \"OB Vendors - MarketStar\" then \"Outbound VND\"&#10;when \"OB Vendors - Movate\" then \"Outbound VND\"&#10;when \"OB Vendors - Concentrix\" then \"Outbound VND\"&#10;when \"Inbound VND - Regalix\" then \"Inbound VND\"&#10;when \"Inbound VND - Teleperformance\" then \"Inbound VND\"&#10;when \"Inbound VND - TaskUs\" then \"Inbound VND\"&#10;when \"Inbound VND - Concentrix\" then \"Inbound VND\"&#10;when \"OS Regional\" then \"OS Regional\"&#10;when \"IS Regional\" then \"IS Regional\"&#10;when \"OS Strategic\" then \"OS Strategic\"&#10;when \"IS Strategic\" then \"IS Strategic\"&#10;when \"SSMO\" then \"SSMO\"&#10;when \"Inbound VND\" then \"Inbound VND\"&#10;when \"Outbound VND\" then \"Outbound VND\"&#10;end",
+                "name": "Strategic v Regional (Current Role Title)"
+              },
+              {
+                "id": "1h84yy3QVX",
+                "formula": "[Calculation_4591490232373194802]/[Calculation_649925764156874755]",
+                "name": "Strategic Staffing Pacing"
+              },
+              {
+                "id": "bsqCzNIRUV",
+                "formula": "[Strategic Staffing (copy)_4591490232394051671]/[Calculation_649925764158148612]",
+                "name": "Regional Staffing Pacing"
+              },
+              {
+                "id": "x3xGHpKYfc",
+                "formula": "[Regional Staffing (copy)_2310065177616936960]/[Calculation_649925764158341126]",
+                "name": "Vendor OB Staffing Pacing"
+              },
+              {
+                "id": "HYIGf2vev6",
+                "formula": "[OB Vendors Staffing (copy)_2310065177617342465]/[Calculation_649925764158705671]",
+                "name": "Vendor IB Staffing Pacing"
+              },
+              {
+                "id": "6GZttQx4yl",
+                "formula": "If([Top Mx] = True, 1, 0)",
+                "name": "Top Mx"
+              },
+              {
+                "id": "FdIp2IwlRe",
+                "formula": "If(not IsNull([Role (copy)_6915347642917625947]), \"Total Org\", null)",
+                "name": "Total Org"
+              },
+              {
+                "id": "5XN2l7CS3C",
+                "formula": "Coalesce([SP: Top Mx (copy, 0)_5820832199702355969]/[SP: Top Mx Goal (copy)_5820832199702355970])",
+                "name": "Tier Pacing"
+              },
+              {
+                "id": "oRLsvEQrfh",
+                "formula": "//contcatenatoin of goal country and presales_cw_level country&#10;If([Combined Country (copy)_7030541291992104961]&#10; = \"CanadaNull\", \"Canada\"&#10;, If([Combined Country (copy)_7030541291992104961]&#10; = \"CanadaCanada\", \"Canada\"&#10;//, If([Combined Country (copy)_7030541291992104961]&#10; = \"United StatesCanada\", \"Canada\"&#10;, If([Combined Country (copy)_7030541291992104961]&#10; = \"NullCanada\", \"Canada\"&#10;, If([Combined Country (copy)_7030541291992104961]&#10; = \"CanadaNull\", \"Canada\"&#10;//, If([Combined Country (copy)_7030541291992104961]&#10; = \"CanadaUnited States\", \"United States\"&#10;, If([Combined Country (copy)_7030541291992104961]&#10; = \"United StatesNull\", \"United States\"&#10;, If([Combined Country (copy)_7030541291992104961]&#10; = \"United StatesUnited States\", \"United States\"&#10;//, If([Combined Country (copy)_7030541291992104961]&#10; = \"NullUnited States\", \"United States\"&#10;//, If([Combined Country (copy)_7030541291992104961]&#10; = \"United StatesCanada\", \"United States\"&#10;, \"United States\"&#10;))))))))))",
+                "name": "Clean Combined Country - Activations"
+              },
+              {
+                "id": "n8gOQj8pxz",
+                "formula": "[Cw Country (copy)_522769460683739155]",
+                "name": "Clean Combined Country (copy)"
+              },
+              {
+                "id": "qGf8dJEkp0",
+                "formula": "If([Calculation_522769460686950421]&#10; = \"CanadaNull\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"CanadaCanada\", \"Canada\"&#10;//, If([Calculation_522769460686950421]&#10; = \"United StatesCanada\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"NullCanada\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"CanadaNull\", \"Canada\"&#10;//, If([Calculation_522769460686950421]&#10; = \"CanadaUnited States\", \"United States\"&#10;, If([Calculation_522769460686950421]&#10; = \"United StatesNull\", \"United States\"&#10;, If([Calculation_522769460686950421]&#10; = \"United StatesUnited States\", \"United States\"&#10;//, If([Calculation_522769460686950421]&#10; = \"NullUnited States\", \"United States\"&#10;//, If([Calculation_522769460686950421]&#10; = \"United StatesCanada\", \"United States\"&#10;, \"null\"&#10;))))))))))",
+                "name": "Clean Combined Country - Remove NULLS"
+              },
+              {
+                "id": "llAsQBFjmJ",
+                "formula": "Coalesce([COUNTRY (Custom SQL Query4)],\"null\")+Coalesce([Cw Country],\"null\")",
+                "name": "Combined Country - Activations"
+              },
+              {
+                "id": "m8nroM2X0I",
+                "formula": "//contcatenatoin of goal country and presales_cw_level country&#10;If([Calculation_522769460686950421]&#10; = \"CanadaNull\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"CanadaCanada\", \"Canada\"&#10;//, If([Calculation_522769460686950421]&#10; = \"United StatesCanada\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"NullCanada\", \"Canada\"&#10;, If([Calculation_522769460686950421]&#10; = \"CanadaNull\", \"Canada\"&#10;//, If([Calculation_522769460686950421]&#10; = \"CanadaUnited States\", \"United States\"&#10;, If([Calculation_522769460686950421]&#10; = \"United StatesNull\", \"United States\"&#10;, If([Calculation_522769460686950421]&#10; = \"United StatesUnited States\", \"United States\"&#10;//, If([Calculation_522769460686950421]&#10; = \"NullUnited States\", \"United States\"&#10;//, If([Calculation_522769460686950421]&#10; = \"United StatesCanada\", \"United States\"&#10;, \"United States\"&#10;))))))))))",
+                "name": "Clean Combined Country"
+              },
+              {
+                "id": "inode-fSyWjnrvRxQUejOTXyTMzA/CW_OWNER_ROLE_OFFICIAL_TITLE_GROUP_1",
+                "formula": "[FACT/Role Title]"
+              },
+              {
+                "id": "h8B9LBYgKo",
+                "formula": "Week(([Merchant Activation Date])) < (Week(Date(Today())))",
+                "name": "Exclude this Week - Activations"
+              },
+              {
+                "id": "inode-uFgM5dIGQ2FfDVeLlsDAYv/INITIATIVE_CUSTOM_SQL_QUERY",
+                "formula": "[FACT/Initiative_SP_Copy]"
+              },
+              {
+                "id": "inode-RgTIyZoBYJbrYeIWQaKVsx/INITIATIVE_GOAL_CUSTOM_SQL_QUERY",
+                "formula": "[FACT/Initiative_Goal_Copy]"
+              },
+              {
+                "id": "inode-J9QSmiXUI21GGWAQSHsRcV/IS_HOLDOUT",
+                "formula": "[FACT/Is Holdout]"
+              },
+              {
+                "id": "inode-uXE0XCTQZsYawKGPu8ogZn/IS_HOLDOUT_GROUP_COPY_6915347642868269064",
+                "formula": "[FACT/Holdout?]"
+              },
+              {
+                "id": "inode-v39SEvkKQxKQ02bN2Q15Zg/LINK_IMPLEMENTED",
+                "formula": "[FACT/LINK_IMPLEMENTED]"
+              },
+              {
+                "id": "BTkK2AexbP",
+                "formula": "Year([Merchant Close Date])",
+                "name": "Lookup Merchant Close Date"
+              },
+              {
+                "id": "inode-rXiZvYHLpQ6o9Aapn1UEx8/MEDAL_RANK",
+                "formula": "[FACT/Medal Rank]"
+              },
+              {
+                "id": "stoqGpvbPo",
+                "formula": "[Manager Name]",
+                "name": "Manager Name  (Activations)"
+              },
+              {
+                "id": "XGX8GGmYyL",
+                "formula": "[Manager Name]",
+                "name": "Manager Name  (copy)"
+              },
+              {
+                "id": "kvPh6XneTI",
+                "formula": "[Manager Name]",
+                "name": "Manager Name"
+              },
+              {
+                "id": "ZMc9kFbtcY",
+                "formula": "[Manager Name]",
+                "name": "Manager Name (copy)"
+              },
+              {
+                "id": "2cFOJDsicS",
+                "formula": "If(([Cw Owner Role Official Title] = \"Self Serve\" or [Cw Owner Role Official Title] = \"SSMO\")&#10;and [Opp Type] = \"DoorDash Drive\" &#10;, \"null\"&#10;, \"Exclude SSMO Drive\"&#10;)",
+                "name": "Exclude SSMO Drive CWs"
+              },
+              {
+                "id": "inode-Y1LedSKzPdnhqINMgPXg40/PRIMARY_CAMPAIGN_SOURCE",
+                "formula": "[FACT/Primary Campaign Source]"
+              },
+              {
+                "id": "F0dPreSml4",
+                "formula": "If(Week(([Merchant Close Date])) < (Week(Date(Today()))) = True, True&#10;, null)",
+                "name": "QTD (last full week) - Top Mx"
+              },
+              {
+                "id": "BKTe6Bw2ic",
+                "formula": "If([Exclude this Week(copy)_1819595047244206080] = True, True&#10;, null)",
+                "name": "QTD (last full week) - Activations"
+              },
+              {
+                "id": "DUIU08Z3hz",
+                "formula": "If(Week(([Merchant Close Date])) < (Week(Date(Today()))) = True, True&#10;, null)",
+                "name": "QTD (last full week) - Tiers"
+              },
+              {
+                "id": "inode-vDz15rsBCvfqZqASI6NkaM/ROLE_PRESALE_PRODUCT_GOALS",
+                "formula": "[FACT/Role (Presale Product Goals)]"
+              },
+              {
+                "id": "inode-wd1DL4rp7hGOK3WbBWyvSY/ROLE_SP_CUSTOM_SQL_QUERY",
+                "formula": "[FACT/Role_SP_Copy]"
+              },
+              {
+                "id": "jsnlVg2MRM",
+                "formula": "If([ROLE_SP (Custom SQL Query2)] in (\"SGL\", \"SAE\", \"SML\", \"SAE (Top Mx)\", \"Top Gun (ML)\", \"Strategic Inbound\"), \"Strategic\"&#10;, If([ROLE_SP (Custom SQL Query2)] in (\"AE\", \"OB aAE\", \"ML\", \"GML\", \"aGML\", \"Blitz (AE)\"), \"Regional\"&#10;, If([ROLE_SP (Custom SQL Query2)] in (\"Self Serve\"), \"Self Serve\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query2)], \"Inbound VND\"), \"IB Vendor\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query2)], \"OB Vendor\"), \"OB Vendor\"&#10;, null)))))",
+                "name": "Team - Top Mx Activations Tracking"
+              },
+              {
+                "id": "uSHA3BLEuE",
+                "formula": "If([ROLE_SP (Custom SQL Query2)] in (\"AE\", \"ML\", \"GML\", \"aGML\", \"OB aAE\", \"Blitz (AE)\"), \"Regional\"&#10;, If([ROLE_SP (Custom SQL Query2)] in (\"SAE\", \"SAE (Top Mx)\", \"SML\", \"SGL\", \"Strategic Inbound\"), \"Strategic\"&#10;, If([ROLE_SP (Custom SQL Query2)] in (\"Self Serve\"), \"Self Serve\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query2)], \"OB Vendor\"), \"OB Vendor\"&#10;, If(RegexpMatch([ROLE_SP (Custom SQL Query2)], \"Inbound VND\"), \"IB Vendors\"&#10;, null)))))",
+                "name": "T4-5 Activations by Team"
+              },
+              {
+                "id": "sqpn9QwhPa",
+                "formula": "[Role Sp]",
+                "name": "Role - Top Mx Tracking"
+              },
+              {
+                "id": "YWs6gU2t45",
+                "formula": "[Role Sp]",
+                "name": "ROLE_SP (copy)"
+              },
+              {
+                "id": "QtFNKaJuHD",
+                "formula": "[Role]",
+                "name": "Role Goals"
+              },
+              {
+                "id": "TBrTI2RSUO",
+                "formula": "[Role Sp]",
+                "name": "Role - Top Mx Tracking (copy)"
+              },
+              {
+                "id": "IyqRWJc4F7",
+                "formula": "If([Role Activations] in (\"AE\", \"OB aAE\", \"GML\", \"aGML\", \"ML\", \"Blitz (AE)\"), \"Regional\"&#10;, If([Role Activations] in (\"SAE\", \"SAE (Top Mx)\", \"SML\", \"SGL\", \"Strategic Inbound\"), \"Strategic\"&#10;, If(RegexpMatch([Role Activations], \"OB Vendor\"), \"OB Vendor\"&#10;, If(RegexpMatch([Role Activations], \"Inbound VND\"), \"IB Vendor\"&#10;, If([Role Activations] in (\"Self Serve\"), \"Self Serve\"&#10;, [Role Activations]&#10;)))))",
+                "name": "Activations by Team"
+              },
+              {
+                "id": "vd7Iq09BLT",
+                "formula": "If(RegexpMatch([Role], \"Inbound VND\") = True, &#10;[Role]&#10;, null)",
+                "name": "Inbound Roles filter"
+              },
+              {
+                "id": "inode-Z45AgpiQilfrEv5YmbNd6d/SALES_OWNER_PRESALES_ACTIVE_HC",
+                "formula": "[FACT/Sales Owner]"
+              },
+              {
+                "id": "kjr069T8QZ",
+                "formula": "If([Market Maker] = True, 1, 0)",
+                "name": "Market Maker"
+              },
+              {
+                "id": "wXkv9xCnBU",
+                "formula": "[Sales Owner]",
+                "name": "SSMO Owner"
+              },
+              {
+                "id": "7vqPORkR4a",
+                "formula": "[Sales Owner]",
+                "name": "Sales Owner Top Mx Tracking",
+                "format": {
+                  "kind": "number",
+                  "formatString": "$,.2f",
+                  "currencySymbol": "$"
+                }
+              },
+              {
+                "id": "6oAbeeXvcH",
+                "formula": "[Sales Owner]",
+                "name": "SGL"
+              },
+              {
+                "id": "shKPnHa1h2",
+                "formula": "[Sales Owner]",
+                "name": "Sales Owner (copy)",
+                "format": {
+                  "kind": "number",
+                  "formatString": "$,.2f",
+                  "currencySymbol": "$"
+                }
+              },
+              {
+                "id": "OLVVBEIt1I",
+                "formula": "[Sales Owner]",
+                "name": "Sales Owner Tier 4-5 Tracking",
+                "format": {
+                  "kind": "number",
+                  "formatString": "$,.2f",
+                  "currencySymbol": "$"
+                }
+              },
+              {
+                "id": "CrYLHx0DtX",
+                "formula": "[Sales Owner]",
+                "name": "Sales Owner Top Mx Tracking (copy)",
+                "format": {
+                  "kind": "number",
+                  "formatString": "$,.2f",
+                  "currencySymbol": "$"
+                }
+              },
+              {
+                "id": "b485wN5nrp",
+                "formula": "If([Role]&#10; = \"AE\", \"Regional\"&#10;, If([Role]&#10; = \"Blitz (AE)\", \"Regional\"&#10;, If([Role]&#10; = \"CAN ML\", \"CAN Outside\"&#10;, If([Role]&#10; = \"CAN SML\", \"CAN Outside\"&#10;, If([Role]&#10; = \"CAN AE\", \"CAN Inside\"&#10;, If([Role]&#10; = \"CAN SAE\", \"CAN Inside\"&#10;, If([Role]&#10; = \"CAN SAE (Top Mx)\", \"CAN Inside\"&#10;, If([Role]&#10; = \"OB aAE\", \"Regional\"&#10;, If([Role]&#10; = \"GML\", \"Regional\"&#10;, If([Role]&#10; = \"aGML\", \"Regional\"&#10;, If([Role]&#10; = \"ML\", \"Regional\"&#10;, If([Role]&#10; = \"SML\", \"Strategic\"&#10;, If([Role]&#10; = \"SAE\", \"Strategic\"&#10;, If([Role]&#10; = \"SAE (Top Mx)\", \"Strategic\"&#10;, If([Role]&#10; = \"SGL\", \"Strategic\"&#10;, If([Role]&#10; = \"Strategic Inbound\", \"Strategic\"&#10;, If([Role]&#10; = \"Inbound VND - TaskUs\", \"Vendor IB\"&#10;, If([Role]&#10; = \"Inbound VND - Regalix\", \"Vendor IB\"&#10;, If([Role]&#10; = \"Inbound VND - Teleperformance\", \"Vendor IB\"&#10;, If([Role]&#10; = \"Inbound VND - Concentrix\", \"Vendor IB\"&#10;, If([Role]&#10; = \"OB Vendors - Regalix\", \"Vendor OB\"&#10;, If([Role]&#10; = \"OB Vendors - Teleperformance\", \"Vendor OB\"&#10;, If([Role]&#10; = \"OB Vendors - TaskUs\", \"Vendor OB\"&#10;, If([Role]&#10; = \"OB Vendors - Concentrix\", \"Vendor OB\"&#10;, If([Role]&#10; = \"OB Vendors - MarketStar\", \"Vendor OB\"&#10;, If([Role]&#10; = \"OB Vendors - Movate\", \"Vendor OB\"&#10;, If([Role]&#10; = \"Self Serve\", \"SSMO\"&#10;, null)))))))))))))))))))))))))))",
+                "name": "Goals by Team"
+              },
+              {
+                "id": "xqJPiT5l5C",
+                "formula": "Coalesce([SP: Top Mx (copy, 0)_5820832199702355969])",
+                "name": "T3-5 Actuals (copy)"
+              },
+              {
+                "id": "mSFF0wRhDu",
+                "formula": "[Incremental Sign Tam]",
+                "name": "CY TAM"
+              },
+              {
+                "id": "hVkBfgGMS2",
+                "formula": "Int([Tier])",
+                "name": "Tier"
+              },
+              {
+                "id": "RkaHt0M2SB",
+                "formula": "If([Role Sp] in (\"SGL\", \"SAE\", \"SML\", \"SAE (Top Mx)\", \"Top Gun (ML)\", \"Strategic Inbound\"), \"Strategic\"&#10;, If([Role Sp] in (\"AE\", \"OB aAE\", \"ML\", \"GML\", \"aGML\", \"Blitz (AE)\"), \"Regional\"&#10;, If([Role Sp] in (\"Self Serve\"), \"Self Serve\"&#10;, If(RegexpMatch([Role Sp], \"Inbound VND\"), \"IB Vendor\"&#10;, If(RegexpMatch([Role Sp], \"OB Vendor\"), \"OB Vendor\"&#10;, If([Role Sp] = \"BD\", \"BD\"&#10;, [Role Sp]&#10;))))))",
+                "name": "Team - Top Mx Tracking"
+              },
+              {
+                "id": "yJXMrkmYUA",
+                "formula": "Coalesce([Top Mx Activations (copy, 0)_6190549589460205569]/[Top Mx Activations Goal (copy)_6190549589460205570])",
+                "name": "T4-5 Activations Pacing"
+              },
+              {
+                "id": "inode-ucwEyYtgUjB5pf8NN43ylQ/US_HISTORICAL_ROLES",
+                "formula": "[FACT/US Historical Roles]"
+              },
+              {
+                "id": "inode-6h2bH0KAqB2F4HbgazUKXW/WEEK_GOAL_SP_CUSTOM_SQL_QUERY",
+                "formula": "[FACT/Week_SP_Copy]"
+              },
+              {
+                "id": "inode-pRqbaiZTN6EspleJ4ABvqG/WEEK_OF_CUSTOM_SQL_QUERY3",
+                "formula": "[FACT/Week]"
+              },
+              {
+                "id": "inode-RaPjePbBczOHi7bB25Q7ZM/WEEK_OF_PRESALES_ACTIVE_HC",
+                "formula": "[FACT/Week Of (Presales Active Hc)]"
+              },
+              {
+                "id": "h3kYpC4JkZ",
+                "formula": "//get week nums&#10;Week(([WEEK_OF (PRESALES_ACTIVE_HC)])) < (Week(Date(Today())))&#10;and Quarter([WEEK_OF (PRESALES_ACTIVE_HC)]) = Quarter(Today())&#10;and Year([WEEK_OF (PRESALES_ACTIVE_HC)]) = Year(Today())",
+                "name": "YoY Curr QTD - HC"
+              },
+              {
+                "id": "QYLggB5TmA",
+                "formula": "//get week nums&#10;Week(([WEEK_OF (PRESALES_ACTIVE_HC)]), \"monday\") <= (Week(Date(Today()), \"monday\")) and&#10;Quarter([WEEK_OF (PRESALES_ACTIVE_HC)]) = Quarter(Today())&#10;and Year([WEEK_OF (PRESALES_ACTIVE_HC)]) = Year(Today())-1",
+                "name": "YoY Prev QTD - HC"
+              }
+            ],
+            "order": [
+              "inode-CyHPZIJbphGOqHKK204CLh/MERCHANT_CLOSE_DATE",
+              "inode-jcvmOGjiZLPT9JoHGeIRj7/WEEK_OF",
+              "inode-aY7RpFaDhvNtPQ14P1Dkqr/CW_WEEK",
+              "inode-YqmQRGHNkHoFMSpEw8VP8e/QTR",
+              "inode-oXl69RV5yK7af4hF67wDWn/YR",
+              "inode-qFyC4o85MR90liHYlssQcN/QTR_YR",
+              "inode-KioEPz8REDD5RVBjnyWuZH/READINESS_CHECK_COMPLETE_DATE",
+              "inode-vDMyoV2tPANpwDeklchulE/MERCHANT_ACTIVATION_DATE",
+              "inode-r1hoFCw8049w2u5AwWjUyk/MX_ONBOARDING_LINK_SENT_DATE",
+              "inode-IhkWIdmLrs8hMqcRM0bctE/OPPORTUNITY_ID",
+              "inode-BM92nYDmGGf8x3NUVTZmSy/STORE_ACCOUNT_ID",
+              "inode-IM7muYuUkpEdg0l9mCgJMh/BUSINESS_ACCOUNT_ID",
+              "inode-HbbCfcZykyhaPbv59CfIt7/LEAD_ID",
+              "inode-jmxWfpIGBriEb8k8ri8jaM/WORK_ORDER_ID",
+              "inode-Mw9L7oDONDM83WB6W1Chg7/WORK_ORDER_NUMBER",
+              "inode-5mpybU9vBnfZTLBcdOCi3b/STORE_ID",
+              "inode-agfEzQOdOekkcmwtKn5zwu/BUSINESS_ID",
+              "inode-0TzxTOqSv2fJiNxdFHFeu4/PROVISIONING_STATUS",
+              "inode-PJ9hveWIOkAS3FypuO7T8v/SALES_OWNER_ID",
+              "inode-Vhu5Xyf5qoru3Mn9X46GvB/SALES_OWNER",
+              "inode-9ZsAlcXyGdk8H7n2QhOvPf/FULL_NAME",
+              "inode-0couyvEolzKAMESyKeWtMS/MANAGER_NAME",
+              "inode-mHP3xVbUhkhpibV4LlrvFZ/REP_ROLE",
+              "inode-0sr5smSE2drgOwEybvmLuh/OWNER_TEAM",
+              "inode-MtEkyAqqtUK7G1lhe96HfR/OWNER_ORG_FOCUS",
+              "inode-Ga7rYs97dsES4D6zxNWo3C/REP_SEGMENT",
+              "inode-15oSkK73S51z5oKO4PxIqZ/SDR_OWNER",
+              "inode-Kh1N7jgL5bgZ1IJr9T8zxY/SDR_ID",
+              "inode-wnm7PZ2v0lJ0kZkzi3C9Ss/SDR_MANAGER_ID",
+              "inode-3IgdRx5GYjcfWlaaz975ar/SDR_MANAGER_NAME",
+              "inode-D2euaX69Fe0Hcik36VT9yT/SDR_ROLE",
+              "inode-SCdAhQeZ0ssSJSeDENzHMc/SDR_COUNTRY",
+              "inode-1lQmxPo9iJurur30uRxZ28/REP_COUNTRY",
+              "inode-UTNixdkdBzt5oMmaM9sQTj/CW_COUNTRY",
+              "inode-TkuqN89V3hpWQmhasV2Aam/CLEAN_COUNTRY",
+              "inode-L3Bfaq7mY1Cpjl2t2z3f89/OWNER_ROLE_OFFICIAL_TITLE",
+              "inode-hePZGXjZcgQDxIt94njeFS/CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "inode-PsN58AUM2Mr28gmk9FuU5p/SFDC_COMMISSION",
+              "inode-xoYB8JludHeum838t76MqC/DASHPASS_COMMISSION",
+              "inode-bKSH2E15O3u14jyejt5muF/NARR",
+              "inode-tvhU0IhfvvZeFG6f223h1m/OPPORTUNITY_NAME",
+              "inode-OvG2ytfWejJMcpqRbrt8SF/OPP_TYPE",
+              "inode-CYp1jdFhQEW4SU1qyWOIqM/ACCOUNT_NAME",
+              "inode-ZwgXfopJP74EDVwfY2UAMD/STORE_NAME",
+              "inode-RStrIAGfmwuQIznSIQTYRN/BUSINESS_NAME",
+              "inode-720NWO1GrSFNvo4Pw7ZONm/DECK_RANK",
+              "inode-3hBh0LJh5CLKPAV93ARTbq/PRIMARY_VERTICAL",
+              "inode-b0e6rxeocWuUsDoXjdVdFH/COUNTRY",
+              "inode-730rCIdSfnzACvGpd7aB3o/STARTING_POINT_ID",
+              "inode-N2uI0FsYcYh4R6Rqh0kxHT/STARTING_POINT",
+              "inode-XTbZpiC8dbPRa5UilRMMzB/SUBMARKET",
+              "inode-1ZZXu7LzNjQai2qiwTsBd9/SUBMARKET_ID",
+              "inode-21QXTPEJpNVT6fonLg5hzB/TOP_MX",
+              "inode-jaOGrkhLVYsTxEWtq7e9WZ/MARKET_MAKER",
+              "inode-mKnlsdyrpA1X5R3Xx88UNk/IS_GNC",
+              "inode-lgVcLMclLyK9zPIQ8FvQOZ/IS_DASHPASS",
+              "inode-27MTQ3UbOiKagHCteIRBWB/IS_PICKUP",
+              "inode-mOsg2e7x8DAXEZz673ufSb/IS_STOREFRONT",
+              "inode-GRb3qcEbT0HSWf82nOoIsY/IS_ALCOHOL",
+              "inode-u8x4NsWkmxyEF4qp6aJkjx/IS_TRIAL",
+              "inode-1dPcSVGvXBcFTkQewUULDb/IS_PROMO",
+              "inode-Q0bfUPMNudgHDdceY4i8zi/IS_ADS",
+              "inode-LVSW4thFOsbywGjizxovFJ/IS_ADS_PROMOS",
+              "inode-84vxnfXg89kiE1dqfLrHWe/PACKAGE_SOLD",
+              "inode-4W2GDQcsCGCtl3JvlvSZFN/NTAM",
+              "inode-jBByPuMr6IAWrtN0siiNzI/INCREMENTAL_SIGN_TAM",
+              "inode-zBC8aj9oruaSL9a5ubqajr/HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+              "inode-AD8b9VmVztp6nWxUCFfTKV/LEAD_LIST_CUSTOMIZED",
+              "inode-YBnu8pyEymCVPycAwuPh1u/TRIAL_PERIOD",
+              "inode-TEcRTYuToO5n0ribFiCcc0/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+              "inode-LgybyvWTWhPYgeF6800JE6/ACTIVATION_BONUS_AMOUNT",
+              "inode-KqGgrWO1ZC97sj7UTjfAhL/PRODUCT_LIST",
+              "inode-t3WPdcNOR8Onml9cUC1S0M/REGION",
+              "inode-tkNT3ytkhlptWXlZFE8gGb/TIER",
+              "inode-tQXIeDohSrgKjo1CsBve8n/SFDC_SOURCE",
+              "inode-rmQ3o1N5Z2MH6q1sRWe6Xb/LAST_ETL_RUN",
+              "inode-R9xyreuNri0lcWX93i1xnr/WEEK_GOAL_ACTIVATIONS",
+              "inode-kLOW8A0iznTPPs04gyH4d2/ROLE_ACTIVATIONS",
+              "inode-WiyXGvUWKaO1PyLhjc5PTS/ACTIVATION_GOAL",
+              "inode-1CUztxjqMQOCcRg0L3bAml/QUARTER_YEAR",
+              "inode-3EuH0KclfxTd1Y6cBADrqZ/COUNTRY",
+              "inode-lr41ki0MpAyWlT7V4gN0bN/COUNTRY (PRESALES_ACTIVE_HC)",
+              "inode-RMmVhOy73BnFcLPgEDovVn/DAYS_OFF",
+              "inode-kQXvNHNSDL9GFagltSaItm/HC",
+              "inode-xUluVELDXqPb4ArfcKzIOT/OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)",
+              "inode-7X5fcVvhxfEAXXKmyB4lMu/QTR (PRESALES_ACTIVE_HC)",
+              "inode-74EvQjbaaywZo3MmWFopzf/QTR_YR (PRESALES_ACTIVE_HC)",
+              "inode-AwvCSKccvvN5vlH89xxLZU/REP_RANK",
+              "inode-7AALvadTlgSkEJolFxLnhr/SALES_MANAGER",
+              "inode-4EVeJ50EagpLILfPWfE2Rq/SALES_OWNER (PRESALES_ACTIVE_HC)",
+              "inode-IClDfq97hNEBV855UOO41p/USER_ID",
+              "inode-B93d2I2BoQoqFhYFZDB2uo/WEEK_OF (PRESALES_ACTIVE_HC)",
+              "inode-vKwIDYyyoitC1ZhMxbBLNg/YR (PRESALES_ACTIVE_HC)",
+              "inode-fzfd7lnlrFdYS0ZAxierMS/BASED",
+              "inode-lXnsHstfKUptK3uj1j3TKn/ORG",
+              "inode-of9DHyFNmGdBcCVfK3ybNS/PRODUCT",
+              "inode-6me4FeTGqzb4wawEPjfvHN/PRODUCT_GOAL",
+              "inode-3Ca1uqhmWsXgKmQZS2m0QN/QTR_YR_PG",
+              "inode-zrn9AgHUx8wYpuPLDmdDRy/ROLE (PRESALE_PRODUCT_GOALS)",
+              "inode-4s03FLyTR9LihG3JtRaXXu/TARGET",
+              "inode-5iGYXbNVQak1PHDtuuLL0M/TEAM",
+              "inode-eNNxNQ8hX8W01FvGievzhW/WEEK_GOAL",
+              "inode-N1fZreTewpouU25skWgki3/WEEK_GOAL_SP",
+              "inode-2yGW0h64FcsyEVL8zSiqYP/INITIATIVE",
+              "inode-VGBQHpHCj20ipEuM2ogTVf/INITIATIVE_GOAL",
+              "inode-tidAS0w1tyX6b5jlfY02hf/QTR_YR_SP",
+              "inode-ELK9MK7YzKhp8nrGocVZMw/ROLE_SP",
+              "inode-rcOcQ7RRpuTMWUBD27JKNT/QTR",
+              "inode-xXMNNKxhKtx2vw94x6uM4A/YR",
+              "inode-GXgGqwjSCLeLWwCRN0kGJO/QTR_YR",
+              "inode-U30JxoYIYMJT1Z6NzoWd4r/COUNTRY",
+              "inode-LmyKg84xW17K7PzzLIqYdG/ROLE",
+              "inode-35LnTtjfDZMsnfxH5Thqxr/CLOSES",
+              "inode-66BZ0cIEHorYkJ2GA4QRdy/NARR",
+              "inode-CONKAYV89IHrLEX9SFyN08/CW_WEEK",
+              "inode-IJWLBNqn0jOBuX2t1APyls/WORKING_DAYS",
+              "inode-NMguRd218xKVQyrIW9BkP6/AHC_GOAL",
+              "inode-6IUiF0QVMimLZiOuE41gGD/CLOSE_PHASING",
+              "inode-KseJxwi4GCb5Ul6A8KofuT/WEEK_OF",
+              "inode-VGW0zRycXdNJbf3r6uFUY6/WEEK_GOAL_SP",
+              "inode-cHU3b0brmJdLeTAOdoqOyL/INITIATIVE",
+              "inode-soTNDjeVs1ni1dzwXqbgaG/INITIATIVE_GOAL",
+              "inode-7MXRhjDL7h3P1tPnKWseiQ/QTR_YR_SP",
+              "inode-6elSG28uB4v7PJmNIEmnZX/ROLE_SP",
+              "inode-VRKC79nb7kbYTnFYZu9hkT/WEEK_GOAL_SP",
+              "inode-d28UUAK6hYpGqiriK8fG20/INITIATIVE",
+              "inode-SueGv0GdUW2ZdwMmxofxxh/INITIATIVE_GOAL",
+              "inode-rKsb1OmUpenkD76MieC5oc/QTR_YR_SP",
+              "inode-kFxYHUNvSQHCnOTyj1aLPo/ROLE_SP",
+              "inode-yScJzcqHW5Q0nlYiit9yCo/MEASURE_NAMES",
+              "7YRu4bCCro",
+              "inode-tPzhA0UcjpFqwZiwmlh2sE/ACCOUNT_ID",
+              "inode-YlvDNeSUFxyldkDZE48Xil/CAN_SPECIAL_ROLES",
+              "inode-uHcYM26eufJ4wCb6dC4vpW/COUNTRY_CUSTOM_SQL_QUERY1",
+              "inode-mrHrtWIhK0K7xp1dnMu25g/COUNTRY_CUSTOM_SQL_QUERY4",
+              "VFFsvWudTA",
+              "LFoihlpXAx",
+              "1W5yOkP0AW",
+              "8tKG3zsqxr",
+              "xuZZdd6PxF",
+              "X2biycSjjz",
+              "keELRRVFYf",
+              "KmRQwjOszw",
+              "kiIz7PsLMC",
+              "dLA75LNV88",
+              "vwRkRbCcif",
+              "U8enrf3S2R",
+              "dqMiofPBpt",
+              "yaJde3070t",
+              "pqsTgyjdpn",
+              "8vepEVOBIv",
+              "Qqcme66j1o",
+              "bNHfoMuBhZ",
+              "uzyl3aoTq3",
+              "nphGPsoo55",
+              "VhffLghbjt",
+              "sWRPKxgkGp",
+              "OaPu8gWH2a",
+              "5h7EOAQPv4",
+              "SdNaX2WK0U",
+              "vCpMuXtYWi",
+              "rk4tXukQFB",
+              "LhUqoCCMoc",
+              "5LAVKgOMvz",
+              "xDHQEnR6Uo",
+              "ZEt8ILPDVN",
+              "1h84yy3QVX",
+              "bsqCzNIRUV",
+              "x3xGHpKYfc",
+              "HYIGf2vev6",
+              "6GZttQx4yl",
+              "FdIp2IwlRe",
+              "5XN2l7CS3C",
+              "oRLsvEQrfh",
+              "n8gOQj8pxz",
+              "qGf8dJEkp0",
+              "llAsQBFjmJ",
+              "m8nroM2X0I",
+              "inode-fSyWjnrvRxQUejOTXyTMzA/CW_OWNER_ROLE_OFFICIAL_TITLE_GROUP_1",
+              "h8B9LBYgKo",
+              "inode-uFgM5dIGQ2FfDVeLlsDAYv/INITIATIVE_CUSTOM_SQL_QUERY",
+              "inode-RgTIyZoBYJbrYeIWQaKVsx/INITIATIVE_GOAL_CUSTOM_SQL_QUERY",
+              "inode-J9QSmiXUI21GGWAQSHsRcV/IS_HOLDOUT",
+              "inode-uXE0XCTQZsYawKGPu8ogZn/IS_HOLDOUT_GROUP_COPY_6915347642868269064",
+              "inode-v39SEvkKQxKQ02bN2Q15Zg/LINK_IMPLEMENTED",
+              "BTkK2AexbP",
+              "inode-rXiZvYHLpQ6o9Aapn1UEx8/MEDAL_RANK",
+              "stoqGpvbPo",
+              "XGX8GGmYyL",
+              "kvPh6XneTI",
+              "ZMc9kFbtcY",
+              "2cFOJDsicS",
+              "inode-Y1LedSKzPdnhqINMgPXg40/PRIMARY_CAMPAIGN_SOURCE",
+              "F0dPreSml4",
+              "BKTe6Bw2ic",
+              "DUIU08Z3hz",
+              "inode-vDz15rsBCvfqZqASI6NkaM/ROLE_PRESALE_PRODUCT_GOALS",
+              "inode-wd1DL4rp7hGOK3WbBWyvSY/ROLE_SP_CUSTOM_SQL_QUERY",
+              "jsnlVg2MRM",
+              "uSHA3BLEuE",
+              "sqpn9QwhPa",
+              "YWs6gU2t45",
+              "QtFNKaJuHD",
+              "TBrTI2RSUO",
+              "IyqRWJc4F7",
+              "vd7Iq09BLT",
+              "inode-Z45AgpiQilfrEv5YmbNd6d/SALES_OWNER_PRESALES_ACTIVE_HC",
+              "kjr069T8QZ",
+              "wXkv9xCnBU",
+              "7vqPORkR4a",
+              "6oAbeeXvcH",
+              "shKPnHa1h2",
+              "OLVVBEIt1I",
+              "CrYLHx0DtX",
+              "b485wN5nrp",
+              "xqJPiT5l5C",
+              "mSFF0wRhDu",
+              "hVkBfgGMS2",
+              "RkaHt0M2SB",
+              "yJXMrkmYUA",
+              "inode-ucwEyYtgUjB5pf8NN43ylQ/US_HISTORICAL_ROLES",
+              "inode-6h2bH0KAqB2F4HbgazUKXW/WEEK_GOAL_SP_CUSTOM_SQL_QUERY",
+              "inode-pRqbaiZTN6EspleJ4ABvqG/WEEK_OF_CUSTOM_SQL_QUERY3",
+              "inode-RaPjePbBczOHi7bB25Q7ZM/WEEK_OF_PRESALES_ACTIVE_HC",
+              "h3kYpC4JkZ",
+              "QYLggB5TmA"
+            ],
+            "metrics": [
+              {
+                "id": "xgOCH9oFxv",
+                "formula": "([Calculation_3783938539825639424])/Sum(([Ahc Goal]))",
+                "name": "CWs / AHC - Goal (Vendor)"
+              },
+              {
+                "id": "4TAXAUm5k2",
+                "formula": "Sum(If([Week of] <= DateAdd(\"week\", -3, Today()) = True, [Incremental Sign Tam], null))",
+                "name": "TAM, excl last 2 weeks"
+              },
+              {
+                "id": "3F7YKhdS93",
+                "formula": "Sum(If([Week of] <= DateAdd(\"week\", -3, Today()) = True and [Calculation_2307320765861478405] = True, [Incremental Sign Tam], null))&#10;&#10;/&#10;&#10;Sum(&#10;If([Calculation_2307320765864128521] = True &#10;and Week([Week of]) <= Week(DateAdd(\"week\", -3, Today()))&#10;, [Incremental Sign Tam]&#10;, null))&#10;- 1",
+                "name": "TAM excl last 2 weeks YoY"
+              },
+              {
+                "id": "xYNu6XJ6vt",
+                "formula": "CountIf(IsNotNull([Sdr Owner]))",
+                "name": "Signs with SDR",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "CFaX0wdSJQ",
+                "formula": "CountIf(IsNotNull([Sdr Owner]))/[Calculation_3783938539825639424]",
+                "name": "% SDR Supported",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "dTjd49wvJA",
+                "formula": "CountDistinct(If([Deck Rank] = \"Ace\"&#10;, [Store Account Id], null))",
+                "name": "SP: Aces Actuals",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "IOBNo8fR8q",
+                "formula": "Sum(If([Initiative] = \"Aces\", [Initiative Goal], null))",
+                "name": "SP: Aces Goal"
+              },
+              {
+                "id": "x7xzxOGnlz",
+                "formula": "[Calculation_2319283496593170440]/Sum([Activation Goal])",
+                "name": "Activations Pacing"
+              },
+              {
+                "id": "HoHJouMKOk",
+                "formula": "Sum([Incremental Sign Tam])/[Calculation_2319283496593170440]",
+                "name": "TAM / Activations"
+              },
+              {
+                "id": "2TblklGUy6",
+                "formula": "CountDistinct(&#10;    If(IsNull([Merchant Activation Date]), &#10;        null &#10;, &#10;        [Store Id] &#10;)&#10;)",
+                "name": "Activations - Actuals",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "xidjWTH52j",
+                "formula": "\"Includes all CWs before: \" + Text( Max([Merchant Close Date]))",
+                "name": "Max Date"
+              },
+              {
+                "id": "MUZKrZsBIV",
+                "formula": "(running_sum(CountDistinct(If([Week of] <=  DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <=  DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <=  DateAdd(\"day\", 2, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Closes], null))) //last week goal&#10;&#10;)",
+                "name": "W/W % Pacing Change: Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "Cq5W90cHwL",
+                "formula": "CountDistinct(&#10;    [Store Account Id]&#10;)",
+                "name": "Signs - Actuals",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "QCc19MlN8H",
+                "formula": "([Calculation_3783938539825639424])/Round(Sum([Closes]),0)",
+                "name": "Signs Pacing"
+              },
+              {
+                "id": "KaCGkzmwCU",
+                "formula": "Int(((Sum([HC]) * Avg([Working Days]))-Sum([Days Off]))/Avg([Working Days]))",
+                "name": "Active HC - Actuals"
+              },
+              {
+                "id": "52ikvPS92T",
+                "formula": "([Calculation_3783938539836088324])/Sum([Ahc Goal])",
+                "name": "Active HC Pacing"
+              },
+              {
+                "id": "DKrJzN0DOM",
+                "formula": "Sum([Is Dashpass])/([Calculation_3783938539825639424])",
+                "name": "Dashpass Attachment"
+              },
+              {
+                "id": "i1zJ3iAkgL",
+                "formula": "Sum([Is Pickup])/[Calculation_3783938539825639424]",
+                "name": "Pickup Attachment"
+              },
+              {
+                "id": "wIRNN040p7",
+                "formula": "Sum([Is Alcohol])/[Calculation_3783938539825639424]",
+                "name": "Alcohol Attachment"
+              },
+              {
+                "id": "jcpr5WJckJ",
+                "formula": "Sum([Is Storefront])/[Calculation_3783938539825639424]",
+                "name": "Storefront Attachment"
+              },
+              {
+                "id": "h7h1cirIKD",
+                "formula": "Sum([Incremental Sign Tam])/[Calculation_3783938539825639424]",
+                "name": "TAM / CW"
+              },
+              {
+                "id": "RQNxjoiURJ",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\")&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\"), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\"), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\"), [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Strategic Staffing"
+              },
+              {
+                "id": "T9qu8RzNRj",
+                "formula": "[Calculation_3783938539858427923]&#10;/&#10;Avg([Closes] / [Ahc Goal]&#10;)",
+                "name": "AHC Pacing (SMB Weekly)"
+              },
+              {
+                "id": "1OlSfhvJVD",
+                "formula": "Sum([Incremental Sign Tam])/Sum([HC])",
+                "name": "TAM / HC",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2f"
+                }
+              },
+              {
+                "id": "xEIk44BrUN",
+                "formula": "CountDistinct(If([Is Holdout] = 1, [Store Account Id], null))",
+                "name": "Holdout Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "FpVZZGdoYc",
+                "formula": "Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;&#10;:Sum(If([Role] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\"), [Ahc Goal], null))})",
+                "name": "Strategic Staffing - Goals"
+              },
+              {
+                "id": "DDFi3O9EOW",
+                "formula": "Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;&#10;:Sum(If([Role] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\"), [Ahc Goal], null))})",
+                "name": "Regional Staffing -  Goals"
+              },
+              {
+                "id": "KTnewqTHFG",
+                "formula": "Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;&#10;:Sum(If([Role] in&#10;(\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - MarketStar\", \"OB Vendors - Concentrix\"), [Ahc Goal], null))})",
+                "name": "Vendors OB Staffing - Goals"
+              },
+              {
+                "id": "rR9SIj8hZ2",
+                "formula": "Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;&#10;:Sum(If([Role] in (\"Inbound VND - TaskUs\", \"Inbound VND - Teleperformance\", \"Inbound VND - Regalix\", \"Inbound VND - Concentrix\"), [Ahc Goal], null))})",
+                "name": "Vendor IB Staffing - Goals"
+              },
+              {
+                "id": "e259Ek8OXk",
+                "formula": "Sum(If([Role] in (\"SML\", \"SGL\",\"SAE\", \"SAE (Top Mx)\", \"Strategic Inbound\"), [Closes], null))",
+                "name": "Strategic Signs - Goals"
+              },
+              {
+                "id": "EqRDshgJvd",
+                "formula": "Sum(If([Role] in (\"ML\",\"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\"), [Closes], null))",
+                "name": "Regional Signs - Goals"
+              },
+              {
+                "id": "GtUU4TimjQ",
+                "formula": "Sum(If([Role] in (\"OB Vendors - Teleperformance\",\"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\", \"OB Vendors - Movate\"), [Closes], null))",
+                "name": "Vendor OB Signs - Goals"
+              },
+              {
+                "id": "bRHZGLwOqX",
+                "formula": "Sum(If([Role] in (\"Inbound VND - TaskUs\",\"Inbound VND - Regalix\", \"Inbound VND - Teleperformance\", \"Inbound VND - Concentrix\"), [Closes], null))",
+                "name": "Vendor IB Signs - Goals"
+              },
+              {
+                "id": "7ZJXWGQuh0",
+                "formula": "Sum(If([Role] = \"Self Serve\", [Closes], null))",
+                "name": "SSMO Signs - Goals"
+              },
+              {
+                "id": "Xf1iu2pDV4",
+                "formula": "CountDistinct(If([Calculation_4591490232365199376] = \"Strategic\", [Store Account Id], null))/Round([Calculation_649925764159447048],0)",
+                "name": "Strategic Signs Pacing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "4g6eukkL2y",
+                "formula": "CountDistinct(If([Calculation_4591490232365199376] = \"Regional\", [Store Account Id], null))/Round([Calculation_649925764159578121],0)",
+                "name": "Regional Signs Pacing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "SpxTz30g6E",
+                "formula": "CountDistinct(If([Calculation_4591490232365199376] = \"Vendor OB\", [Store Account Id], null))/[Calculation_649925764159709194]",
+                "name": "Vendor OB Signs Pacing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "ghdrC2HC5Z",
+                "formula": "CountDistinct(If([Calculation_4591490232365199376] = \"Vendor IB\", [Store Account Id], null))/[Calculation_649925764159963147]",
+                "name": "Vendor IB Signs Pacing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "7AeI2kLReu",
+                "formula": "CountDistinct(If([Calculation_4591490232365199376] = \"SSMO\", [Store Account Id], null))/[Calculation_649925764160098316]",
+                "name": "SSMO Signs Pacing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "byCPR60D63",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;/&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Strategic Staffing YoY"
+              },
+              {
+                "id": "2XJYd1y6Nq",
+                "formula": "CountDistinct([Business Account Id])",
+                "name": "Biz Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "TAUnYNJ4kf",
+                "formula": "Sum([Initiative_Goal_Copy])",
+                "name": "Initiative_Goal_Copy"
+              },
+              {
+                "id": "ixu59C2Muv",
+                "formula": "Sum([Is Holdout])",
+                "name": "Is Holdout"
+              },
+              {
+                "id": "9NvqyORzg3",
+                "formula": "Sum([LINK_IMPLEMENTED])",
+                "name": "LINK_IMPLEMENTED"
+              },
+              {
+                "id": "zFamIi0qVI",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\")&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\"), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\"), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\"), [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Vendors IB Staffing"
+              },
+              {
+                "id": "wLowCuqNnC",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - Concentrix\", \"OB Vendors - TaskUs\", \"OB Vendors - MarketStar\")&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - Concentrix\", \"OB Vendors - TaskUs\", \"OB Vendors - MarketStar\"), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - Concentrix\", \"OB Vendors - TaskUs\", \"OB Vendors - MarketStar\"), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - Concentrix\", \"OB Vendors - TaskUs\", \"OB Vendors - MarketStar\"), [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Vendors OB Staffing"
+              },
+              {
+                "id": "1E1y75ATKZ",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;/&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"OB Vendors - Regalix\", \"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Vendors OB Staffing YoY"
+              },
+              {
+                "id": "DSSAZnuZFS",
+                "formula": "Sum(If([Initiative] = \"Holdouts\", [Initiative Goal], null))",
+                "name": "SP: Holdouts Goal"
+              },
+              {
+                "id": "S9cgnROwfK",
+                "formula": "CountDistinct(If([Top Mx] = True &#10;and IsNull([Merchant Close Date])=False, [Store Id], null))",
+                "name": "Top Mx Activations",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "UPcwbJHK1O",
+                "formula": "CountDistinct(&#10;&#10;&#10;If([Merchant Close Date] <= Date(\"2024-09-30\") &#10;&#9;, (if [TIER (copy)_4245346387496407042] in (3,4,5)&#10;&#9;&#9;&#9;or [ROLE_SP (Custom SQL Query)] = \"Blitz (AE)\"&#10;&#9;&#9;&#9;or ([Submarket Id]<>0 and IsNull([TIER (copy)_4245346387496407042]) )&#10;&#9;&#9;&#9;, null))&#10; &#10; elseif [Merchant Close Date] >= Date(\"2024-10-01\") &#10;&#9; then  (If([TIER (copy)_4245346387496407042] in (4,5)&#10;&#9;&#9;&#9;//or [Role_SP_Copy] = \"Blitz (AE)\"&#10;&#9;&#9;&#9;&#10;&#9;&#9;&#9;, [Store Account Id], null))&#10;end)&#10;&#10;/*&#10;(&#10;    If([Tier] in (\"3\",\"4\",\"5\") or&#10;        ((Text([Lead List Customized]) >= \"2024-01-01\" or Text([Lead List Customized]) < \"2024-04-01\")&#10;            and [Tier] in (\"1\", \"2\"))&#10;, [Account Id]&#10;, null)&#10;&#10;)&#10;*/",
+                "name": "Tier Actuals",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "FmsAflPOub",
+                "formula": "Sum(If([INITIATIVE (Custom SQL Query2)] = \"Top Mx Activations\", [INITIATIVE_GOAL (Custom SQL Query2)], null))",
+                "name": "Top Mx Activations Goal"
+              },
+              {
+                "id": "h3qSMtqfSm",
+                "formula": "Sum(If([INITIATIVE (Custom SQL Query)] = \"T3-5 CW\" or  [INITIATIVE (Custom SQL Query)] = \"T4-5 CW\"&#10;, [INITIATIVE_GOAL (Custom SQL Query)], null))",
+                "name": "Tier Goal"
+              },
+              {
+                "id": "eS6XpJlZXQ",
+                "formula": "CountDistinct(If([Top Mx] = True, [Store Account Id], null))",
+                "name": "SP: Top Mx",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "CmFZzdA3kK",
+                "formula": "Sum(If([Initiative] = \"Top Mx\", [Initiative Goal], null))",
+                "name": "SP: Top Mx Goal"
+              },
+              {
+                "id": "cEBu80WN2T",
+                "formula": "CountDistinct(&#10;  If([Cw Country] = \"Australia\" or [Cw Country] = \"New Zealand\", &#10;    [Store Account Id]&#10;, null)&#10;)",
+                "name": "SSMO Signs - Actuals - ANZ",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "jen8TzraD2",
+                "formula": "CountDistinct([Store Account Id])",
+                "name": "Current Year Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "71shKLZG2J",
+                "formula": "CountDistinct(If([Is Holdout] = 1, [Store Account Id], null))",
+                "name": "SP: Holdouts Actuals",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "9TH5I0Un4X",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\")&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\"), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\"), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"Blitz (AE)\", \"aGML\"), [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Regional Staffing"
+              },
+              {
+                "id": "4H0y6e3Egb",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;/&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"OB aAE\", \"GML\", \"aGML\", \"Blitz (AE)\") and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Regional Staffing YoY"
+              },
+              {
+                "id": "zrYa6LNHIQ",
+                "formula": "Sum([Incremental Sign Tam])/CountDistinct([Sales Owner])",
+                "name": "TAM / HC for Reps with CWs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2f"
+                }
+              },
+              {
+                "id": "Gs7gyL9DAw",
+                "formula": "CountDistinct(If(([TIER (copy)_4245346387496407042] = 4 or [TIER (copy)_4245346387496407042]=5) and  IsNull([Merchant Activation Date]) = False, [Store Id], null))",
+                "name": "T4-5 Activations",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.0f"
+                }
+              },
+              {
+                "id": "xKyO5ea3DV",
+                "formula": "Sum(If([INITIATIVE (Custom SQL Query2)] = \"T4-5 Activations\", [INITIATIVE_GOAL (Custom SQL Query2)], null))",
+                "name": "T4-5 Activations Goal"
+              },
+              {
+                "id": "3Gz83JwQDw",
+                "formula": "Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\" ) and [YoY Curr QTD (copy)_4470104127756128291] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\" ) and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\" ) and [YoY Curr QTD (copy)_4470104127756128291] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\",  \"Inbound VND - Concentrix\" ) and [YoY Curr QTD (copy)_4470104127756128291] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;/&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]: &#10;((Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\",  \"Inbound VND - Concentrix\" ) and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\",  \"Inbound VND - Concentrix\" ) and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\",  \"Inbound VND - Concentrix\" ) and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Days Off], null))&#10;)&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\",  \"Inbound VND - Concentrix\" ) and [YoY Curr QTD - HC (copy)_6915347642895757359] = True, [Working Days], null))&#10;}&#10;))&#10;}&#10;)",
+                "name": "Vendors IB Staffing YoY"
+              },
+              {
+                "id": "XXu6Wi5Kh1",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Calculation_4591490232365199376] = \"Vendor OB\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Role] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Regalix\", \"Inbound VND - Concentrix\")&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10; and [Calculation_4591490232365199376] = \"Vendor OB\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 2, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10; and [Role] in (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Regalix\", \"Inbound VND - Concentrix\")&#10;, [Closes], null))) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: IB Vendor Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "K0bEd9lepj",
+                "formula": "(&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;)&#10;&#10; //last week actuals&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)&#10;-&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in  (\"Inbound VND - Teleperformance\", \"Inbound VND - TaskUs\", \"Inbound VND - Concentrix\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;&#10;, [Ahc Goal], null))})&#10;)&#10;)",
+                "name": "W/W % Pacing Change: IB Vendors Staffing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "V6GDcC63xz",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))) and [Calculation_4591490232365199376] = \"SSMO\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))) and [Role] in (\"Self Serve\")&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Calculation_4591490232365199376] = \"SSMO\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Role] in (\"Self Serve\")&#10;, [Closes], null))) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: SSMO Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "DTF7Gssri2",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))) and [Deck Rank] = \"Ace\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([Week Goal Sp] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, (if [Initiative] = \"Aces\", null)) end)) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: Aces",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "4I9Ko9XOFF",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Is Holdout] = 1&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;&#10;, (if [Initiative] = \"Holdouts\", null)) end)) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10; and [Is Holdout] = 1&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;&#10;, (if [Initiative] = \"Holdouts\", null)) end)) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: Holdouts",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "dlUb2RXUy4",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Calculation_4591490232365199376] = \"Strategic\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Role] in (\"SML\", \"SGL\", \"SAE\", \"SAE (Top Mx)\", \"Strategic Inbound\")&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Calculation_4591490232365199376] = \"Strategic\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 2, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Role] in (\"SML\", \"SGL\", \"SAE\", \"SAE (Top Mx)\", \"Strategic Inbound\")&#10;, [Closes], null))) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: Strategic Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "bHbHFJYGJ7",
+                "formula": "(&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;)&#10;&#10; //last week actuals&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)&#10;-&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in (\"SML\", \"SAE\", \"SAE (Top Mx)\", \"SGL\", \"Strategic Inbound\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)",
+                "name": "W/W % Pacing Change: Strategic Staffing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "Z5Ht4r4gXl",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))) and [Calculation_4591490232365199376] = \"Regional\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))) and [Role] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\")&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Calculation_4591490232365199376] = \"Regional\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 2, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))) and [Role] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\")&#10;, [Closes], null))) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: Regional Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "MASM1gDrkq",
+                "formula": "(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Calculation_4591490232365199376] = \"Vendor OB\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 2, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10; and [Role] in (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\")&#10;, [Closes], null))) //last week goal&#10;)&#10;-&#10;(running_sum(CountDistinct(If([Week of] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10; and [Calculation_4591490232365199376] = \"Vendor OB\"&#10;, [Store Account Id], null))) //last week actuals&#10;/&#10;running_sum(Sum(If([WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10; and [Role] in (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\")&#10;, [Closes], null))) //last week goal&#10;)",
+                "name": "W/W % Pacing Change: OB Vendor Signs",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "NaxDJkdBMt",
+                "formula": "(&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;)&#10;&#10; //last week actuals&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)&#10;-&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in (\"ML\", \"AE\", \"Blitz (AE)\", \"GML\", \"aGML\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)",
+                "name": "W/W % Pacing Change: Regional Staffing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              },
+              {
+                "id": "GviFf7JFzd",
+                "formula": "(&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - MarketStar\", \"OB Vendors - Concentrix\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;, [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;)&#10;&#10; //last week actuals&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-1,Today())))&#10;&#10;, [Ahc Goal], null))})&#10;)&#10;)&#10;-&#10;(&#10;Avg({ fixed [WEEK_OF (PRESALES_ACTIVE_HC)] :&#10;Sum(&#10;({fixed [WEEK_OF (PRESALES_ACTIVE_HC)], [OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)]:&#10;(&#10;(Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [HC], null))&#10;*Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null)))&#10;-&#10;&#10;Sum(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Days Off], null))&#10;)&#10;&#10;/&#10;&#10;Avg(If([OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (PRESALES_ACTIVE_HC)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today()))), [Working Days], null))&#10;}&#10;))&#10;}&#10;)&#10;&#10;/&#10;running_sum(&#10;Avg({ fixed [WEEK_OF (Custom SQL Query3)]&#10;:Sum(If([Role] in  (\"OB Vendors - Teleperformance\", \"OB Vendors - TaskUs\", \"OB Vendors - Regalix\", \"OB Vendors - Concentrix\", \"OB Vendors - MarketStar\") and [WEEK_OF (Custom SQL Query3)] <= DateAdd(\"day\", 1, DateTrunc(\"week\", DateAdd(\"week\",-2,Today())))&#10;, [Ahc Goal], null))})&#10;)&#10;)",
+                "name": "W/W % Pacing Change: OB Vendors Staffing",
+                "format": {
+                  "kind": "number",
+                  "formatString": ",.2%"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "warnings": [
+    "⚠ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY4: wired 2 physical key(s); 1 computed condition(s) dropped — verify join grain in Sigma.",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY4 wired on 2 physical key(s).",
+    "⚠ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY7: wired 2 physical key(s); 1 computed condition(s) dropped — verify join grain in Sigma.",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY7 wired on 2 physical key(s).",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY6 wired on 2 physical key(s).",
+    "⚠ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY5: wired 1 physical key(s); 2 computed condition(s) dropped — verify join grain in Sigma.",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY5 wired on 1 physical key(s).",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY3 wired on 4 physical key(s).",
+    "⚠ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY2: wired 1 physical key(s); 2 computed condition(s) dropped — verify join grain in Sigma.",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY2 wired on 1 physical key(s).",
+    "⚠ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY: wired 1 physical key(s); 1 computed condition(s) dropped — verify join grain in Sigma.",
+    "ℹ Relationship CUSTOM SQL QUERY1 → CUSTOM SQL QUERY wired on 1 physical key(s).",
+    "ℹ Multi-source blend collapsed into one wide JOIN element: fact + 7 pre-aggregated secondary island(s) (link-grain SUM/MAX) → 129 columns. Charts can now resolve every column locally.",
+    "ℹ \"<1 Deck Rank Param Calc\" → calculated column. Review: If([Calculation_272115961656373248] = 0, 0&#10;, If([Calcula",
+    "ℹ \"King - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Queen - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"King - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Ace - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"CWs / AHC (CAN)\" → calculated column. Review: ([Calculation_3783938539825639424])/([Calculation_3783938539",
+    "ℹ \"CAN Tiers\" → calculated column. Review: If(RegexpMatch([Primary Campaign Source], \"CAN\") and (Regexp",
+    "ℹ \"CAN Switch Medals and Tiers FILTER\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Selection Param Filter\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Opp URL\" → calculated column. Review: If([Merchant Close Date] < Date(2024-10-28), &#10;\"https://f",
+    "ℹ \"Week_start\" → calculated column. Review: If([Merchant Close Date] >= DateTrunc(\"quarter\", [Merchant C",
+    "ℹ \"Org - Top Mx Tracking\" → calculated column. Review: If([Team - Tier Tracking (copy)_4245346387490271233] in (\"St",
+    "ℹ \"Org - Tier Tracking\" → calculated column. Review: If([Calculation_4245346387489398784] in (\"Strategic\", \"Regio",
+    "ℹ \"Ace - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"SGL Nav Filter\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"% of Total Signs\" → calculated column. Review: [SP: Whales (copy)_3215429439119798272]/[Calculation_3783938",
+    "ℹ \"% of Total Signs (T4-5)\" → calculated column. Review: [SP: Top Mx (copy)_5820832199702355969]/[Calculation_3783938",
+    "ℹ \"YoY Curr QTD\" → calculated column. Review: //get week nums&#10;Week(([Merchant Close Date])) < (Week(To",
+    "ℹ \"Is Activated?\" → calculated column. Review: If(IsNull([Merchant Activation Date]), \"No\", \"Yes\")",
+    "ℹ \"Deck Rank Param Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Deck Rank Prop by Date\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \">1 Deck Rank Param Calc\" → calculated column. Review: If([Calculation_272115961656373248] = 0, 0&#10;, If([Calcula",
+    "ℹ \"OS v IS\" → calculated column. Review: If([Cw Owner Role Official Title (group)]&#10; = \"IS Regiona",
+    "ℹ \"Activation_Week\" → calculated column. Review: If([Merchant Activation Date] = Date(\"2024-09-30\"), Date(Dat",
+    "ℹ \"WO Number\" → calculated column. Review: [Work Order Number]",
+    "ℹ \"Has SDR\" → calculated column. Review: If(IsNull([Sdr Id]), False &#10;&#9;, True&#10;)",
+    "ℹ \"Quarter of Activations\" → calculated column. Review: Text(Year([Week Goal Activations]))+\"-Q\"+Text(Quarter([Week ",
+    "ℹ \"Inbound vs Outbound\" → calculated column. Review: If([Role]&#10; = \"Inbound VND - TaskUs\", \"Inbound\"&#10;, If(",
+    "ℹ \"Vendor v Onshore\" → calculated column. Review: If([Role]&#10; = \"Inbound VND - TaskUs\", \"Vendor\"&#10;, If([",
+    "ℹ \"QTD (last full week)\" → calculated column. Review: If([Calculation_4591490232371261484] = True, True&#10;, null",
+    "ℹ \"CWs / AHC\" → calculated column. Review: ([Calculation_3783938539825639424])/([Calculation_3783938539",
+    "ℹ \"Temp Filter (Virtual Brand)\" → calculated column. Review: If([Sales Owner] in (\"Ivory Mae Montecillo\"&#10;            ",
+    "ℹ \"Team - Tier Activations Tracking\" → calculated column. Review: If([ROLE_SP (Custom SQL Query)] in (\"SGL\", \"SAE\", \"SML\", \"SA",
+    "ℹ \"Top Mx Activations Pacing\" → calculated column. Review: Coalesce([SP: Top Mx (copy, 0)_4245346387502661635]/[SP: Top",
+    "ℹ \"Holdouts (table)\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Quarter of CW FILTER\" → calculated column. Review: Text(Year([WEEK_OF (Custom SQL Query3)]))+\"-Q\"+Text(Quarter(",
+    "ℹ \"Strategic v Regional v Vendor\" → calculated column. Review: If([Cw Owner Role Official Title]&#10; = \"AE\", \"Regional\"&#1",
+    "ℹ \"Exclude this Week\" → calculated column. Review: Week(([WEEK_OF (Custom SQL Query3)])) < (Week(Date(Today()))",
+    "ℹ \"CAN Inside Roles\" → calculated column. Review: If([Role] = \"CAN AE\", \"Include CAN AE\"&#10;, If([Role] = \"CA",
+    "ℹ \"Combined Country\" → calculated column. Review: Coalesce([Country],\"null\")+Coalesce([Cw Country],\"null\")",
+    "⚠ Table-calc function embedded in a larger expression — NOT translated in place. Untranslated fragment: If(/* table calc: INDEX()<=200&#10; */, \"Show\"&#10;, \"Hide\"&#10;)",
+    "⚠ \"Show/Hide\" embeds a table-calc fragment that could not be translated — NOT emitted as a DM column. Untranslated fragment: If INDEX()<=200&#10;then 'Show'&#10;else 'Hide'&#10;END",
+    "ℹ \"previous tam\": table calc → ready Sigma formula Lag(Sum([Incremental Sign Tam]), 52) in result.workbookPatterns — CHART/grouped-element context only (SQL window lowering failed (no partition dims resolved on base)); not emitted as a DM column.",
+    "⚠ Table calculation not converted. Untranslated fragment: lookup(attr([Lookup Merchant Close Date]),0)",
+    "ℹ \"lookup filter\" → calculated column. Review: If([Calculation_573927491585601539] = Year(Today()) &#10;and",
+    "ℹ \"Canada roles\" → calculated column. Review: ([Cw Country])+([Role])",
+    "ℹ \"Strategic v Regional (Current Role Title)\" → calculated column. Review: If(&#10;(&#10;Coalesce(&#10;        (case&#10;        [Owner",
+    "ℹ \"Activation Goal (via param)\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Strategic Staffing Pacing\" → calculated column. Review: [Calculation_4591490232373194802]/[Calculation_6499257641568",
+    "ℹ \"Regional Staffing Pacing\" → calculated column. Review: [Strategic Staffing (copy)_4591490232394051671]/[Calculation",
+    "ℹ \"Vendor OB Staffing Pacing\" → calculated column. Review: [Regional Staffing (copy)_2310065177616936960]/[Calculation_",
+    "ℹ \"Vendor IB Staffing Pacing\" → calculated column. Review: [OB Vendors Staffing (copy)_2310065177617342465]/[Calculatio",
+    "ℹ \"Top Mx\" → calculated column. Review: If([Top Mx] = True, 1, 0)",
+    "ℹ \"Total Org\" → calculated column. Review: If(not IsNull([Role (copy)_6915347642917625947]), \"Total Org",
+    "ℹ \"Tier Pacing\" → calculated column. Review: Coalesce([SP: Top Mx (copy, 0)_5820832199702355969]/[SP: Top",
+    "ℹ \"Clean Combined Country - Activations\" → calculated column. Review: //contcatenatoin of goal country and presales_cw_level count",
+    "ℹ \"Clean Combined Country (copy)\" → calculated column. Review: [Cw Country (copy)_522769460683739155]",
+    "ℹ \"Clean Combined Country - Remove NULLS\" → calculated column. Review: If([Calculation_522769460686950421]&#10; = \"CanadaNull\", \"Ca",
+    "ℹ \"Combined Country - Activations\" → calculated column. Review: Coalesce([COUNTRY (Custom SQL Query4)],\"null\")+Coalesce([Cw ",
+    "ℹ \"Clean Combined Country\" → calculated column. Review: //contcatenatoin of goal country and presales_cw_level count",
+    "ℹ \"Medal Rank: Bronze Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Exclude this Week - Activations\" → calculated column. Review: Week(([Merchant Activation Date])) < (Week(Date(Today())))",
+    "ℹ \"Joker - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Unranked - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Queen - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Jack - Activations by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "⚠ Table calculation not converted. Untranslated fragment: lookup(attr([Lookup Merchant Close Date]),0)",
+    "ℹ \"Lookup Merchant Close Date\" → calculated column. Review: Year([Merchant Close Date])",
+    "ℹ \"Manager Name  (Activations)\" → calculated column. Review: [Manager Name]",
+    "ℹ \"Manager Name  (copy)\" → calculated column. Review: [Manager Name]",
+    "ℹ \"Manager Name\" → calculated column. Review: [Manager Name]",
+    "ℹ \"Manager Name (copy)\" → calculated column. Review: [Manager Name]",
+    "ℹ \"Medal Rank: Gold Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Medal Rank: Silver Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Tiers 1 Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Tiers 5 Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Tiers 4 Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Medal Rank: Tin Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Medal Rank: Platinum Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Tiers 3 Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Medal Rank: Null\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Tiers 2 Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Exclude SSMO Drive CWs\" → calculated column. Review: If(([Cw Owner Role Official Title] = \"Self Serve\" or [Cw Own",
+    "ℹ \"QTD (last full week) - Top Mx\" → calculated column. Review: If(Week(([Merchant Close Date])) < (Week(Date(Today()))) = T",
+    "ℹ \"QTD (last full week) - Activations\" → calculated column. Review: If([Exclude this Week(copy)_1819595047244206080] = True, Tru",
+    "ℹ \"QTD (last full week) - Tiers\" → calculated column. Review: If(Week(([Merchant Close Date])) < (Week(Date(Today()))) = T",
+    "ℹ \"Unranked - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Joker - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"Team - Top Mx Activations Tracking\" → calculated column. Review: If([ROLE_SP (Custom SQL Query2)] in (\"SGL\", \"SAE\", \"SML\", \"S",
+    "ℹ \"T4-5 Activations by Team\" → calculated column. Review: If([ROLE_SP (Custom SQL Query2)] in (\"AE\", \"ML\", \"GML\", \"aGM",
+    "ℹ \"Role - Top Mx Tracking\" → calculated column. Review: [Role Sp]",
+    "ℹ \"ROLE_SP (copy)\" → calculated column. Review: [Role Sp]",
+    "ℹ \"Role Goals\" → calculated column. Review: [Role]",
+    "ℹ \"Role - Top Mx Tracking (copy)\" → calculated column. Review: [Role Sp]",
+    "ℹ \"Activations by Team\" → calculated column. Review: If([Role Activations] in (\"AE\", \"OB aAE\", \"GML\", \"aGML\", \"ML",
+    "ℹ \"Inbound Roles filter\" → calculated column. Review: If(RegexpMatch([Role], \"Inbound VND\") = True, &#10;[Role]&#1",
+    "ℹ \"Market Maker\" → calculated column. Review: If([Market Maker] = True, 1, 0)",
+    "ℹ \"SSMO Owner\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"Sales Owner Top Mx Tracking\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"SGL\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"Sales Owner (copy)\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"Sales Owner Tier 4-5 Tracking\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"Sales Owner Top Mx Tracking (copy)\" → calculated column. Review: [Sales Owner]",
+    "ℹ \"Goals by Team\" → calculated column. Review: If([Role]&#10; = \"AE\", \"Regional\"&#10;, If([Role]&#10; = \"Bl",
+    "ℹ \"T3-5 Actuals (copy)\" → calculated column. Review: Coalesce([SP: Top Mx (copy, 0)_5820832199702355969])",
+    "ℹ \"CY TAM\" → calculated column. Review: [Incremental Sign Tam]",
+    "ℹ \"Tier\" → calculated column. Review: Int([Tier])",
+    "ℹ \"Team - Top Mx Tracking\" → calculated column. Review: If([Role Sp] in (\"SGL\", \"SAE\", \"SML\", \"SAE (Top Mx)\", \"Top G",
+    "ℹ \"Non-Tier Calc\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"T4-5 Activations Pacing\" → calculated column. Review: Coalesce([Top Mx Activations (copy, 0)_6190549589460205569]/",
+    "ℹ \"Jack - Signs by Deck Rank\" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).",
+    "ℹ \"YoY Curr QTD - HC\" → calculated column. Review: //get week nums&#10;Week(([WEEK_OF (PRESALES_ACTIVE_HC)])) <",
+    "ℹ \"YoY Prev QTD - HC\" → calculated column. Review: //get week nums&#10;Week(([WEEK_OF (PRESALES_ACTIVE_HC)]), \"",
+    "⚠ Table calculation not converted. Untranslated fragment: lookup(([Calculation_3783938539825639424]),-52)",
+    "ℹ Parameter \"Deck Rank Signs vs % Param\" → text control",
+    "ℹ Parameter \"Inside Toggle Param\" → number-range control",
+    "ℹ Parameter \"Quarter of CW Param\" → date-range control (default: last 90 days — adjust in Sigma UI)",
+    "ℹ Parameter \"MULTIPLE MEASURE NAME SELECTION\" → text control",
+    "ℹ Parameter \"Attainment Detail\" → text control",
+    "ℹ Parameter \"Mgr Toggle Param\" → text control",
+    "ℹ Parameter \"SGL Nav Param\" → text control",
+    "ℹ Parameter \"Selection Param\" → text control",
+    "ℹ Parameter \"CAN Switch Medals and Tiers PARAM\" → text control",
+    "ℹ Parameter \"Mx Metric Param\" → text control",
+    "ℹ Parameter \"Drill-down Level\" → number-range control",
+    "ℹ Parameter \"Mx Health Sheet Toggle\" → text control",
+    "ℹ Parameter \"Sort By\" → text control",
+    "ℹ Parameter \"Activations Country\" → text control",
+    "ℹ Parameter \"Input\" → text control",
+    "ℹ Parameter \"Number of Weeks\" → number-range control",
+    "ℹ Parameter \"QTD Select Week\" → date-range control (default: last 90 days — adjust in Sigma UI)",
+    "ℹ Parameter \"QTD Select Quarter\" → text control",
+    "ℹ Parameter \"Product Param\" → text control",
+    "ℹ Parameter \"Signs v Goals Param\" → text control",
+    "ℹ Parameter \"Signs Goals Toggle Param Week\" → date-range control (default: last 90 days — adjust in Sigma UI)",
+    "ℹ Parameter \"Product Color Param\" → number-range control"
+  ],
+  "stats": {
+    "datasources": 1,
+    "elements": 1,
+    "columns": 226,
+    "metrics": 74,
+    "relationships": 0,
+    "controls": 22,
+    "parameters": 22,
+    "lodChildElements": 0
+  },
+  "security": []
+}

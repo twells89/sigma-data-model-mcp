@@ -1,0 +1,258 @@
+{
+  "dataModelId": "0afc947d-9f0e-4557-b7ea-a70607ca0248",
+  "pages": [
+    {
+      "id": "Z_liNCmnJC",
+      "name": "Page 1",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "glYRoErCamcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "Vj34ya0pE4con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "sEfCkgyNsAcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "HgYaw0u8Edcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "YD4boxKNSDcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "vbri1YNaFdcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "NxhgbJR8jQcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "m2wBwcgXzGcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "sfzkBepaghcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "ZbCnL6rJddcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "veZB6dlK86con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "U9tIC4ihIIcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "94L0BOvWBxcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "EmhhcmWsPUcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "FAfEGUDG6jcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "qdSPWLS6YTcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "3aB1NDEtHgcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "Cr9nBQrOPccon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "vfd3wqaTUHcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "ktOp3kdxJYcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "m24mg4WokZcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "XUmkzxLZbMcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "NixMfFN5--",
+          "kind": "table",
+          "name": "presales_cw_level",
+          "columnLabels": [
+            "QTR_YR_PG",
+            "SDR_MANAGER_ID",
+            "SUBMARKET_ID",
+            "STARTING_POINT_ID",
+            "ACCOUNT_NAME",
+            "SALES_OWNER",
+            "HC",
+            "IS_ALCOHOL",
+            "WORK_ORDER_NUMBER",
+            "OWNER_ORG_FOCUS",
+            "MERCHANT_ACTIVATION_DATE",
+            "OPP_TYPE",
+            "PRODUCT_GOAL",
+            "QTR_2",
+            "ORG",
+            "OPPORTUNITY_NAME",
+            "REP_COUNTRY",
+            "ROLE_2",
+            "TIER",
+            "SDR_ROLE",
+            "INITIATIVE_3",
+            "QTR_YR_2",
+            "MERCHANT_CLOSE_DATE",
+            "ROLE_SP",
+            "BUSINESS_ID",
+            "TEAM",
+            "SALES_OWNER_2",
+            "CLOSE_PHASING",
+            "SDR_MANAGER_NAME",
+            "COUNTRY_2",
+            "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+            "INITIATIVE_GOAL_2",
+            "CW_WEEK_2",
+            "LEAD_ID",
+            "OWNER_ROLE_OFFICIAL_TITLE",
+            "BUSINESS_ACCOUNT_ID",
+            "WEEK_GOAL_SP_2",
+            "REP_SEGMENT",
+            "REGION",
+            "CW_COUNTRY",
+            "TARGET",
+            "QTR_3",
+            "TOP_MX",
+            "IS_PICKUP",
+            "QTR_YR_3",
+            "STORE_ID",
+            "PROVISIONING_STATUS",
+            "STORE_ACCOUNT_ID",
+            "ROLE_ACTIVATIONS",
+            "YR_3",
+            "QTR_YR",
+            "TRIAL_PERIOD",
+            "ACTIVATION_GOAL",
+            "SDR_ID",
+            "STARTING_POINT",
+            "STORE_NAME",
+            "PRIMARY_VERTICAL",
+            "NTAM",
+            "SALES_MANAGER",
+            "OWNER_ROLE_OFFICIAL_TITLE_2",
+            "SDR_COUNTRY",
+            "IS_DASHPASS",
+            "NARR",
+            "NARR_2",
+            "CW_WEEK",
+            "USER_ID",
+            "WEEK_OF",
+            "REP_ROLE",
+            "MX_ONBOARDING_LINK_SENT_DATE",
+            "MANAGER_NAME",
+            "COUNTRY_3",
+            "REP_RANK",
+            "CLOSES",
+            "SFDC_SOURCE",
+            "OWNER_TEAM",
+            "DAYS_OFF",
+            "YR_2",
+            "LEAD_LIST_CUSTOMIZED",
+            "INITIATIVE",
+            "IS_ADS",
+            "INITIATIVE_2",
+            "WORK_ORDER_ID",
+            "QTR",
+            "WEEK_GOAL_SP_3",
+            "SUBMARKET",
+            "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+            "WEEK_GOAL_ACTIVATIONS",
+            "WORKING_DAYS",
+            "INITIATIVE_GOAL_3",
+            "OPPORTUNITY_ID",
+            "BUSINESS_NAME",
+            "SFDC_COMMISSION",
+            "WEEK_GOAL",
+            "COUNTRY_4",
+            "DECK_RANK",
+            "SDR_OWNER",
+            "IS_STOREFRONT",
+            "PRODUCT",
+            "INCREMENTAL_SIGN_TAM",
+            "IS_TRIAL",
+            "WEEK_OF_2",
+            "WEEK_GOAL_SP",
+            "BASED",
+            "INITIATIVE_GOAL",
+            "QTR_YR_SP_3",
+            "ROLE_SP_2",
+            "WEEK_OF_3",
+            "ROLE_SP_3",
+            "CW_OWNER_ROLE_OFFICIAL_TITLE",
+            "MARKET_MAKER",
+            "COUNTRY",
+            "DASHPASS_COMMISSION",
+            "READINESS_CHECK_COMPLETE_DATE",
+            "PRODUCT_LIST",
+            "IS_ADS_PROMOS",
+            "YR",
+            "FULL_NAME",
+            "QTR_YR_SP",
+            "SALES_OWNER_ID",
+            "PACKAGE_SOLD",
+            "LAST_ETL_RUN",
+            "CLEAN_COUNTRY",
+            "ROLE",
+            "QTR_YR_SP_2",
+            "QUARTER_YEAR",
+            "AHC_GOAL",
+            "ACTIVATION_BONUS_AMOUNT",
+            "IS_GNC",
+            "IS_PROMO"
+          ]
+        }
+      ]
+    }
+  ]
+}

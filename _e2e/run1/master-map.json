@@ -1,0 +1,1315 @@
+{
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE_SP_3$": {
+    "id": "m-role-sp-3",
+    "name": "ROLE_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_OF$": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW_WEEK$": {
+    "id": "m-cw-week",
+    "name": "CW_WEEK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR$": {
+    "id": "m-qtr",
+    "name": "QTR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?YR$": {
+    "id": "m-yr",
+    "name": "YR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR$": {
+    "id": "m-qtr-yr",
+    "name": "QTR_YR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?READINESS_CHECK_COMPLETE_DATE$": {
+    "id": "m-readiness-check-complete-date",
+    "name": "READINESS_CHECK_COMPLETE_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MERCHANT_ACTIVATION_DATE$": {
+    "id": "m-merchant-activation-date",
+    "name": "MERCHANT_ACTIVATION_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MX_ONBOARDING_LINK_SENT_DATE$": {
+    "id": "m-mx-onboarding-link-sent-date",
+    "name": "MX_ONBOARDING_LINK_SENT_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPPORTUNITY_ID$": {
+    "id": "m-opportunity-id",
+    "name": "OPPORTUNITY_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE_ACCOUNT_ID$": {
+    "id": "m-store-account-id",
+    "name": "STORE_ACCOUNT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS_ACCOUNT_ID$": {
+    "id": "m-business-account-id",
+    "name": "BUSINESS_ACCOUNT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LEAD_ID$": {
+    "id": "m-lead-id",
+    "name": "LEAD_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORK_ORDER_ID$": {
+    "id": "m-work-order-id",
+    "name": "WORK_ORDER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORK_ORDER_NUMBER$": {
+    "id": "m-work-order-number",
+    "name": "WORK_ORDER_NUMBER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE_ID$": {
+    "id": "m-store-id",
+    "name": "STORE_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS_ID$": {
+    "id": "m-business-id",
+    "name": "BUSINESS_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PROVISIONING_STATUS$": {
+    "id": "m-provisioning-status",
+    "name": "PROVISIONING_STATUS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES_OWNER_ID$": {
+    "id": "m-sales-owner-id",
+    "name": "SALES_OWNER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES_OWNER$": {
+    "id": "m-sales-owner",
+    "name": "SALES_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?FULL_NAME$": {
+    "id": "m-full-name",
+    "name": "FULL_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MANAGER_NAME$": {
+    "id": "m-manager-name",
+    "name": "MANAGER_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP_ROLE$": {
+    "id": "m-rep-role",
+    "name": "REP_ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER_TEAM$": {
+    "id": "m-owner-team",
+    "name": "OWNER_TEAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER_ORG_FOCUS$": {
+    "id": "m-owner-org-focus",
+    "name": "OWNER_ORG_FOCUS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP_SEGMENT$": {
+    "id": "m-rep-segment",
+    "name": "REP_SEGMENT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_OWNER$": {
+    "id": "m-sdr-owner",
+    "name": "SDR_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_ID$": {
+    "id": "m-sdr-id",
+    "name": "SDR_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_MANAGER_ID$": {
+    "id": "m-sdr-manager-id",
+    "name": "SDR_MANAGER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_MANAGER_NAME$": {
+    "id": "m-sdr-manager-name",
+    "name": "SDR_MANAGER_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_ROLE$": {
+    "id": "m-sdr-role",
+    "name": "SDR_ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR_COUNTRY$": {
+    "id": "m-sdr-country",
+    "name": "SDR_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP_COUNTRY$": {
+    "id": "m-rep-country",
+    "name": "REP_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW_COUNTRY$": {
+    "id": "m-cw-country",
+    "name": "CW_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CLEAN_COUNTRY$": {
+    "id": "m-clean-country",
+    "name": "CLEAN_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER_ROLE_OFFICIAL_TITLE$": {
+    "id": "m-owner-role-official-title",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW_OWNER_ROLE_OFFICIAL_TITLE$": {
+    "id": "m-cw-owner-role-official-title",
+    "name": "CW_OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SFDC_COMMISSION$": {
+    "id": "m-sfdc-commission",
+    "name": "SFDC_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DASHPASS_COMMISSION$": {
+    "id": "m-dashpass-commission",
+    "name": "DASHPASS_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?NARR$": {
+    "id": "m-narr",
+    "name": "NARR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPPORTUNITY_NAME$": {
+    "id": "m-opportunity-name",
+    "name": "OPPORTUNITY_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPP_TYPE$": {
+    "id": "m-opp-type",
+    "name": "OPP_TYPE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACCOUNT_NAME$": {
+    "id": "m-account-name",
+    "name": "ACCOUNT_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE_NAME$": {
+    "id": "m-store-name",
+    "name": "STORE_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS_NAME$": {
+    "id": "m-business-name",
+    "name": "BUSINESS_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DECK_RANK$": {
+    "id": "m-deck-rank",
+    "name": "DECK_RANK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRIMARY_VERTICAL$": {
+    "id": "m-primary-vertical",
+    "name": "PRIMARY_VERTICAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STARTING_POINT_ID$": {
+    "id": "m-starting-point-id",
+    "name": "STARTING_POINT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STARTING_POINT$": {
+    "id": "m-starting-point",
+    "name": "STARTING_POINT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SUBMARKET$": {
+    "id": "m-submarket",
+    "name": "SUBMARKET"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SUBMARKET_ID$": {
+    "id": "m-submarket-id",
+    "name": "SUBMARKET_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TOP_MX$": {
+    "id": "m-top-mx",
+    "name": "TOP_MX"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MARKET_MAKER$": {
+    "id": "m-market-maker",
+    "name": "MARKET_MAKER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_GNC$": {
+    "id": "m-is-gnc",
+    "name": "IS_GNC"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_DASHPASS$": {
+    "id": "m-is-dashpass",
+    "name": "IS_DASHPASS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_PICKUP$": {
+    "id": "m-is-pickup",
+    "name": "IS_PICKUP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_STOREFRONT$": {
+    "id": "m-is-storefront",
+    "name": "IS_STOREFRONT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_ALCOHOL$": {
+    "id": "m-is-alcohol",
+    "name": "IS_ALCOHOL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_TRIAL$": {
+    "id": "m-is-trial",
+    "name": "IS_TRIAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_PROMO$": {
+    "id": "m-is-promo",
+    "name": "IS_PROMO"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_ADS$": {
+    "id": "m-is-ads",
+    "name": "IS_ADS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS_ADS_PROMOS$": {
+    "id": "m-is-ads-promos",
+    "name": "IS_ADS_PROMOS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PACKAGE_SOLD$": {
+    "id": "m-package-sold",
+    "name": "PACKAGE_SOLD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?NTAM$": {
+    "id": "m-ntam",
+    "name": "NTAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INCREMENTAL_SIGN_TAM$": {
+    "id": "m-incremental-sign-tam",
+    "name": "INCREMENTAL_SIGN_TAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?HISTORICAL_DELAY_REASONS_CUSTOMIZED$": {
+    "id": "m-historical-delay-reasons-customized",
+    "name": "HISTORICAL_DELAY_REASONS_CUSTOMIZED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LEAD_LIST_CUSTOMIZED$": {
+    "id": "m-lead-list-customized",
+    "name": "LEAD_LIST_CUSTOMIZED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TRIAL_PERIOD$": {
+    "id": "m-trial-period",
+    "name": "TRIAL_PERIOD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD$": {
+    "id": "m-top-mx-signing-bonus-approval-threshold",
+    "name": "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACTIVATION_BONUS_AMOUNT$": {
+    "id": "m-activation-bonus-amount",
+    "name": "ACTIVATION_BONUS_AMOUNT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRODUCT_LIST$": {
+    "id": "m-product-list",
+    "name": "PRODUCT_LIST"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REGION$": {
+    "id": "m-region",
+    "name": "REGION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TIER$": {
+    "id": "m-tier",
+    "name": "TIER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SFDC_SOURCE$": {
+    "id": "m-sfdc-source",
+    "name": "SFDC_SOURCE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LAST_ETL_RUN$": {
+    "id": "m-last-etl-run",
+    "name": "LAST_ETL_RUN"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_GOAL_ACTIVATIONS$": {
+    "id": "m-week-goal-activations",
+    "name": "WEEK_GOAL_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE_ACTIVATIONS$": {
+    "id": "m-role-activations",
+    "name": "ROLE_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACTIVATION_GOAL$": {
+    "id": "m-activation-goal",
+    "name": "ACTIVATION_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QUARTER_YEAR$": {
+    "id": "m-quarter-year",
+    "name": "QUARTER_YEAR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY_2$": {
+    "id": "m-country-2",
+    "name": "COUNTRY_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY_3$": {
+    "id": "m-country-3",
+    "name": "COUNTRY_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DAYS_OFF$": {
+    "id": "m-days-off",
+    "name": "DAYS_OFF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?HC$": {
+    "id": "m-hc",
+    "name": "HC"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER_ROLE_OFFICIAL_TITLE_2$": {
+    "id": "m-owner-role-official-title-2",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_2$": {
+    "id": "m-qtr-2",
+    "name": "QTR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_2$": {
+    "id": "m-qtr-yr-2",
+    "name": "QTR_YR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP_RANK$": {
+    "id": "m-rep-rank",
+    "name": "REP_RANK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES_MANAGER$": {
+    "id": "m-sales-manager",
+    "name": "SALES_MANAGER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES_OWNER_2$": {
+    "id": "m-sales-owner-2",
+    "name": "SALES_OWNER_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?USER_ID$": {
+    "id": "m-user-id",
+    "name": "USER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_OF_2$": {
+    "id": "m-week-of-2",
+    "name": "WEEK_OF_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?YR_2$": {
+    "id": "m-yr-2",
+    "name": "YR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BASED$": {
+    "id": "m-based",
+    "name": "BASED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ORG$": {
+    "id": "m-org",
+    "name": "ORG"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRODUCT$": {
+    "id": "m-product",
+    "name": "PRODUCT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRODUCT_GOAL$": {
+    "id": "m-product-goal",
+    "name": "PRODUCT_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_PG$": {
+    "id": "m-qtr-yr-pg",
+    "name": "QTR_YR_PG"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE$": {
+    "id": "m-role",
+    "name": "ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TARGET$": {
+    "id": "m-target",
+    "name": "TARGET"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TEAM$": {
+    "id": "m-team",
+    "name": "TEAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_GOAL$": {
+    "id": "m-week-goal",
+    "name": "WEEK_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_GOAL_SP$": {
+    "id": "m-week-goal-sp",
+    "name": "WEEK_GOAL_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE$": {
+    "id": "m-initiative",
+    "name": "INITIATIVE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE_GOAL$": {
+    "id": "m-initiative-goal",
+    "name": "INITIATIVE_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_SP$": {
+    "id": "m-qtr-yr-sp",
+    "name": "QTR_YR_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE_SP$": {
+    "id": "m-role-sp",
+    "name": "ROLE_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_3$": {
+    "id": "m-qtr-3",
+    "name": "QTR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?YR_3$": {
+    "id": "m-yr-3",
+    "name": "YR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_3$": {
+    "id": "m-qtr-yr-3",
+    "name": "QTR_YR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY_4$": {
+    "id": "m-country-4",
+    "name": "COUNTRY_4"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE_2$": {
+    "id": "m-role-2",
+    "name": "ROLE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CLOSES$": {
+    "id": "m-closes",
+    "name": "CLOSES"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?NARR_2$": {
+    "id": "m-narr-2",
+    "name": "NARR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW_WEEK_2$": {
+    "id": "m-cw-week-2",
+    "name": "CW_WEEK_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORKING_DAYS$": {
+    "id": "m-working-days",
+    "name": "WORKING_DAYS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?AHC_GOAL$": {
+    "id": "m-ahc-goal",
+    "name": "AHC_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CLOSE_PHASING$": {
+    "id": "m-close-phasing",
+    "name": "CLOSE_PHASING"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_OF_3$": {
+    "id": "m-week-of-3",
+    "name": "WEEK_OF_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_GOAL_SP_2$": {
+    "id": "m-week-goal-sp-2",
+    "name": "WEEK_GOAL_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE_2$": {
+    "id": "m-initiative-2",
+    "name": "INITIATIVE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE_GOAL_2$": {
+    "id": "m-initiative-goal-2",
+    "name": "INITIATIVE_GOAL_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_SP_2$": {
+    "id": "m-qtr-yr-sp-2",
+    "name": "QTR_YR_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE_SP_2$": {
+    "id": "m-role-sp-2",
+    "name": "ROLE_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK_GOAL_SP_3$": {
+    "id": "m-week-goal-sp-3",
+    "name": "WEEK_GOAL_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE_3$": {
+    "id": "m-initiative-3",
+    "name": "INITIATIVE_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE_GOAL_3$": {
+    "id": "m-initiative-goal-3",
+    "name": "INITIATIVE_GOAL_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_SP_3$": {
+    "id": "m-qtr-yr-sp-3",
+    "name": "QTR_YR_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MERCHANT_CLOSE_DATE$": {
+    "id": "m-merchant-close-date",
+    "name": "MERCHANT_CLOSE_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SSMO\\ Signs\\ \\-\\ Goals$": {
+    "id": "m-ssmo-signs-goals",
+    "name": "SSMO Signs - Goals",
+    "formula": "Sum(If([Master/Role] = \"Self Serve\", [Master/Closes], null))"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE[\\s_]*SP[\\s_]*3$": {
+    "id": "m-role-sp-3",
+    "name": "ROLE_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*OF$": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW[\\s_]*WEEK$": {
+    "id": "m-cw-week",
+    "name": "CW_WEEK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR$": {
+    "id": "m-qtr-yr",
+    "name": "QTR_YR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?READINESS[\\s_]*CHECK[\\s_]*COMPLETE[\\s_]*DATE$": {
+    "id": "m-readiness-check-complete-date",
+    "name": "READINESS_CHECK_COMPLETE_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MERCHANT[\\s_]*ACTIVATION[\\s_]*DATE$": {
+    "id": "m-merchant-activation-date",
+    "name": "MERCHANT_ACTIVATION_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MX[\\s_]*ONBOARDING[\\s_]*LINK[\\s_]*SENT[\\s_]*DATE$": {
+    "id": "m-mx-onboarding-link-sent-date",
+    "name": "MX_ONBOARDING_LINK_SENT_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPPORTUNITY[\\s_]*ID$": {
+    "id": "m-opportunity-id",
+    "name": "OPPORTUNITY_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE[\\s_]*ACCOUNT[\\s_]*ID$": {
+    "id": "m-store-account-id",
+    "name": "STORE_ACCOUNT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS[\\s_]*ACCOUNT[\\s_]*ID$": {
+    "id": "m-business-account-id",
+    "name": "BUSINESS_ACCOUNT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LEAD[\\s_]*ID$": {
+    "id": "m-lead-id",
+    "name": "LEAD_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORK[\\s_]*ORDER[\\s_]*ID$": {
+    "id": "m-work-order-id",
+    "name": "WORK_ORDER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORK[\\s_]*ORDER[\\s_]*NUMBER$": {
+    "id": "m-work-order-number",
+    "name": "WORK_ORDER_NUMBER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE[\\s_]*ID$": {
+    "id": "m-store-id",
+    "name": "STORE_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS[\\s_]*ID$": {
+    "id": "m-business-id",
+    "name": "BUSINESS_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PROVISIONING[\\s_]*STATUS$": {
+    "id": "m-provisioning-status",
+    "name": "PROVISIONING_STATUS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES[\\s_]*OWNER[\\s_]*ID$": {
+    "id": "m-sales-owner-id",
+    "name": "SALES_OWNER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES[\\s_]*OWNER$": {
+    "id": "m-sales-owner",
+    "name": "SALES_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?FULL[\\s_]*NAME$": {
+    "id": "m-full-name",
+    "name": "FULL_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MANAGER[\\s_]*NAME$": {
+    "id": "m-manager-name",
+    "name": "MANAGER_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP[\\s_]*ROLE$": {
+    "id": "m-rep-role",
+    "name": "REP_ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER[\\s_]*TEAM$": {
+    "id": "m-owner-team",
+    "name": "OWNER_TEAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER[\\s_]*ORG[\\s_]*FOCUS$": {
+    "id": "m-owner-org-focus",
+    "name": "OWNER_ORG_FOCUS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP[\\s_]*SEGMENT$": {
+    "id": "m-rep-segment",
+    "name": "REP_SEGMENT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*OWNER$": {
+    "id": "m-sdr-owner",
+    "name": "SDR_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*ID$": {
+    "id": "m-sdr-id",
+    "name": "SDR_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*MANAGER[\\s_]*ID$": {
+    "id": "m-sdr-manager-id",
+    "name": "SDR_MANAGER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*MANAGER[\\s_]*NAME$": {
+    "id": "m-sdr-manager-name",
+    "name": "SDR_MANAGER_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*ROLE$": {
+    "id": "m-sdr-role",
+    "name": "SDR_ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR[\\s_]*COUNTRY$": {
+    "id": "m-sdr-country",
+    "name": "SDR_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP[\\s_]*COUNTRY$": {
+    "id": "m-rep-country",
+    "name": "REP_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW[\\s_]*COUNTRY$": {
+    "id": "m-cw-country",
+    "name": "CW_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CLEAN[\\s_]*COUNTRY$": {
+    "id": "m-clean-country",
+    "name": "CLEAN_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER[\\s_]*ROLE[\\s_]*OFFICIAL[\\s_]*TITLE$": {
+    "id": "m-owner-role-official-title",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW[\\s_]*OWNER[\\s_]*ROLE[\\s_]*OFFICIAL[\\s_]*TITLE$": {
+    "id": "m-cw-owner-role-official-title",
+    "name": "CW_OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SFDC[\\s_]*COMMISSION$": {
+    "id": "m-sfdc-commission",
+    "name": "SFDC_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DASHPASS[\\s_]*COMMISSION$": {
+    "id": "m-dashpass-commission",
+    "name": "DASHPASS_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPPORTUNITY[\\s_]*NAME$": {
+    "id": "m-opportunity-name",
+    "name": "OPPORTUNITY_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OPP[\\s_]*TYPE$": {
+    "id": "m-opp-type",
+    "name": "OPP_TYPE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACCOUNT[\\s_]*NAME$": {
+    "id": "m-account-name",
+    "name": "ACCOUNT_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STORE[\\s_]*NAME$": {
+    "id": "m-store-name",
+    "name": "STORE_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?BUSINESS[\\s_]*NAME$": {
+    "id": "m-business-name",
+    "name": "BUSINESS_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DECK[\\s_]*RANK$": {
+    "id": "m-deck-rank",
+    "name": "DECK_RANK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRIMARY[\\s_]*VERTICAL$": {
+    "id": "m-primary-vertical",
+    "name": "PRIMARY_VERTICAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STARTING[\\s_]*POINT[\\s_]*ID$": {
+    "id": "m-starting-point-id",
+    "name": "STARTING_POINT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?STARTING[\\s_]*POINT$": {
+    "id": "m-starting-point",
+    "name": "STARTING_POINT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SUBMARKET[\\s_]*ID$": {
+    "id": "m-submarket-id",
+    "name": "SUBMARKET_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TOP[\\s_]*MX$": {
+    "id": "m-top-mx",
+    "name": "TOP_MX"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MARKET[\\s_]*MAKER$": {
+    "id": "m-market-maker",
+    "name": "MARKET_MAKER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*GNC$": {
+    "id": "m-is-gnc",
+    "name": "IS_GNC"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*DASHPASS$": {
+    "id": "m-is-dashpass",
+    "name": "IS_DASHPASS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*PICKUP$": {
+    "id": "m-is-pickup",
+    "name": "IS_PICKUP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*STOREFRONT$": {
+    "id": "m-is-storefront",
+    "name": "IS_STOREFRONT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*ALCOHOL$": {
+    "id": "m-is-alcohol",
+    "name": "IS_ALCOHOL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*TRIAL$": {
+    "id": "m-is-trial",
+    "name": "IS_TRIAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*PROMO$": {
+    "id": "m-is-promo",
+    "name": "IS_PROMO"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*ADS$": {
+    "id": "m-is-ads",
+    "name": "IS_ADS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?IS[\\s_]*ADS[\\s_]*PROMOS$": {
+    "id": "m-is-ads-promos",
+    "name": "IS_ADS_PROMOS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PACKAGE[\\s_]*SOLD$": {
+    "id": "m-package-sold",
+    "name": "PACKAGE_SOLD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INCREMENTAL[\\s_]*SIGN[\\s_]*TAM$": {
+    "id": "m-incremental-sign-tam",
+    "name": "INCREMENTAL_SIGN_TAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?HISTORICAL[\\s_]*DELAY[\\s_]*REASONS[\\s_]*CUSTOMIZED$": {
+    "id": "m-historical-delay-reasons-customized",
+    "name": "HISTORICAL_DELAY_REASONS_CUSTOMIZED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LEAD[\\s_]*LIST[\\s_]*CUSTOMIZED$": {
+    "id": "m-lead-list-customized",
+    "name": "LEAD_LIST_CUSTOMIZED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TRIAL[\\s_]*PERIOD$": {
+    "id": "m-trial-period",
+    "name": "TRIAL_PERIOD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TOP[\\s_]*MX[\\s_]*SIGNING[\\s_]*BONUS[\\s_]*APPROVAL[\\s_]*THRESHOLD$": {
+    "id": "m-top-mx-signing-bonus-approval-threshold",
+    "name": "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACTIVATION[\\s_]*BONUS[\\s_]*AMOUNT$": {
+    "id": "m-activation-bonus-amount",
+    "name": "ACTIVATION_BONUS_AMOUNT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRODUCT[\\s_]*LIST$": {
+    "id": "m-product-list",
+    "name": "PRODUCT_LIST"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SFDC[\\s_]*SOURCE$": {
+    "id": "m-sfdc-source",
+    "name": "SFDC_SOURCE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?LAST[\\s_]*ETL[\\s_]*RUN$": {
+    "id": "m-last-etl-run",
+    "name": "LAST_ETL_RUN"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*GOAL[\\s_]*ACTIVATIONS$": {
+    "id": "m-week-goal-activations",
+    "name": "WEEK_GOAL_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE[\\s_]*ACTIVATIONS$": {
+    "id": "m-role-activations",
+    "name": "ROLE_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACTIVATION[\\s_]*GOAL$": {
+    "id": "m-activation-goal",
+    "name": "ACTIVATION_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QUARTER[\\s_]*YEAR$": {
+    "id": "m-quarter-year",
+    "name": "QUARTER_YEAR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY[\\s_]*2$": {
+    "id": "m-country-2",
+    "name": "COUNTRY_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY[\\s_]*3$": {
+    "id": "m-country-3",
+    "name": "COUNTRY_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?DAYS[\\s_]*OFF$": {
+    "id": "m-days-off",
+    "name": "DAYS_OFF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?OWNER[\\s_]*ROLE[\\s_]*OFFICIAL[\\s_]*TITLE[\\s_]*2$": {
+    "id": "m-owner-role-official-title-2",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*2$": {
+    "id": "m-qtr-2",
+    "name": "QTR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*2$": {
+    "id": "m-qtr-yr-2",
+    "name": "QTR_YR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?REP[\\s_]*RANK$": {
+    "id": "m-rep-rank",
+    "name": "REP_RANK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES[\\s_]*MANAGER$": {
+    "id": "m-sales-manager",
+    "name": "SALES_MANAGER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SALES[\\s_]*OWNER[\\s_]*2$": {
+    "id": "m-sales-owner-2",
+    "name": "SALES_OWNER_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?USER[\\s_]*ID$": {
+    "id": "m-user-id",
+    "name": "USER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*OF[\\s_]*2$": {
+    "id": "m-week-of-2",
+    "name": "WEEK_OF_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?YR[\\s_]*2$": {
+    "id": "m-yr-2",
+    "name": "YR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?PRODUCT[\\s_]*GOAL$": {
+    "id": "m-product-goal",
+    "name": "PRODUCT_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*PG$": {
+    "id": "m-qtr-yr-pg",
+    "name": "QTR_YR_PG"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*GOAL$": {
+    "id": "m-week-goal",
+    "name": "WEEK_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*GOAL[\\s_]*SP$": {
+    "id": "m-week-goal-sp",
+    "name": "WEEK_GOAL_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE[\\s_]*GOAL$": {
+    "id": "m-initiative-goal",
+    "name": "INITIATIVE_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*SP$": {
+    "id": "m-qtr-yr-sp",
+    "name": "QTR_YR_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE[\\s_]*SP$": {
+    "id": "m-role-sp",
+    "name": "ROLE_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*3$": {
+    "id": "m-qtr-3",
+    "name": "QTR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?YR[\\s_]*3$": {
+    "id": "m-yr-3",
+    "name": "YR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*3$": {
+    "id": "m-qtr-yr-3",
+    "name": "QTR_YR_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY[\\s_]*4$": {
+    "id": "m-country-4",
+    "name": "COUNTRY_4"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE[\\s_]*2$": {
+    "id": "m-role-2",
+    "name": "ROLE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?NARR[\\s_]*2$": {
+    "id": "m-narr-2",
+    "name": "NARR_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW[\\s_]*WEEK[\\s_]*2$": {
+    "id": "m-cw-week-2",
+    "name": "CW_WEEK_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WORKING[\\s_]*DAYS$": {
+    "id": "m-working-days",
+    "name": "WORKING_DAYS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?AHC[\\s_]*GOAL$": {
+    "id": "m-ahc-goal",
+    "name": "AHC_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CLOSE[\\s_]*PHASING$": {
+    "id": "m-close-phasing",
+    "name": "CLOSE_PHASING"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*OF[\\s_]*3$": {
+    "id": "m-week-of-3",
+    "name": "WEEK_OF_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*GOAL[\\s_]*SP[\\s_]*2$": {
+    "id": "m-week-goal-sp-2",
+    "name": "WEEK_GOAL_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE[\\s_]*2$": {
+    "id": "m-initiative-2",
+    "name": "INITIATIVE_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE[\\s_]*GOAL[\\s_]*2$": {
+    "id": "m-initiative-goal-2",
+    "name": "INITIATIVE_GOAL_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*SP[\\s_]*2$": {
+    "id": "m-qtr-yr-sp-2",
+    "name": "QTR_YR_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ROLE[\\s_]*SP[\\s_]*2$": {
+    "id": "m-role-sp-2",
+    "name": "ROLE_SP_2"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WEEK[\\s_]*GOAL[\\s_]*SP[\\s_]*3$": {
+    "id": "m-week-goal-sp-3",
+    "name": "WEEK_GOAL_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE[\\s_]*3$": {
+    "id": "m-initiative-3",
+    "name": "INITIATIVE_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?INITIATIVE[\\s_]*GOAL[\\s_]*3$": {
+    "id": "m-initiative-goal-3",
+    "name": "INITIATIVE_GOAL_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR[\\s_]*YR[\\s_]*SP[\\s_]*3$": {
+    "id": "m-qtr-yr-sp-3",
+    "name": "QTR_YR_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?MERCHANT[\\s_]*CLOSE[\\s_]*DATE$": {
+    "id": "m-merchant-close-date",
+    "name": "MERCHANT_CLOSE_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Account\\ Name$": {
+    "id": "m-account-name",
+    "name": "ACCOUNT_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Activation\\ Goal$": {
+    "id": "m-activation-goal",
+    "name": "ACTIVATION_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Active\\ HC\\ \\-\\ Goal$": {
+    "id": "m-ahc-goal",
+    "name": "AHC_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Based\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-based",
+    "name": "BASED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Based$": {
+    "id": "m-based",
+    "name": "BASED"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Business\\ Id$": {
+    "id": "m-business-id",
+    "name": "BUSINESS_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Clean\\ Country$": {
+    "id": "m-clean-country",
+    "name": "CLEAN_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Signs\\ \\-\\ Goal$": {
+    "id": "m-closes",
+    "name": "CLOSES"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Close\\ Phasing$": {
+    "id": "m-close-phasing",
+    "name": "CLOSE_PHASING"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?COUNTRY\\ Activations$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Country\\ \\(Presales\\ Activations\\)$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Country\\ \\(Presales\\ Active\\ Hc\\)$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Country\\ \\(Presale\\ Manager\\ Goals\\)$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Country$": {
+    "id": "m-country",
+    "name": "COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?CW\\ Country$": {
+    "id": "m-cw-country",
+    "name": "CW_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Cw\\ Owner\\ Role\\ Official\\ Title$": {
+    "id": "m-cw-owner-role-official-title",
+    "name": "CW_OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Cw\\ Week$": {
+    "id": "m-cw-week",
+    "name": "CW_WEEK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Regional\\ v\\ Strategic\\ v\\ OS\\ v\\ IS$": {
+    "id": "m-cw-owner-role-official-title",
+    "name": "CW_OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Dashpass\\ Commission$": {
+    "id": "m-dashpass-commission",
+    "name": "DASHPASS_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Days\\ Off$": {
+    "id": "m-days-off",
+    "name": "DAYS_OFF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Deck\\ Rank$": {
+    "id": "m-deck-rank",
+    "name": "DECK_RANK"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Full\\ Name$": {
+    "id": "m-full-name",
+    "name": "FULL_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?TAM$": {
+    "id": "m-incremental-sign-tam",
+    "name": "INCREMENTAL_SIGN_TAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Initiative_SP_Copy$": {
+    "id": "m-initiative",
+    "name": "INITIATIVE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Initiative$": {
+    "id": "m-initiative",
+    "name": "INITIATIVE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Initiative_Goal_Copy$": {
+    "id": "m-initiative-goal",
+    "name": "INITIATIVE_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Initiative\\ Goal$": {
+    "id": "m-initiative-goal",
+    "name": "INITIATIVE_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Ads$": {
+    "id": "m-is-ads",
+    "name": "IS_ADS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Ads\\ \\&amp;\\ Promos$": {
+    "id": "m-is-ads-promos",
+    "name": "IS_ADS_PROMOS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Is\\ Alcohol$": {
+    "id": "m-is-alcohol",
+    "name": "IS_ALCOHOL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Dashpass$": {
+    "id": "m-is-dashpass",
+    "name": "IS_DASHPASS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Pickup$": {
+    "id": "m-is-pickup",
+    "name": "IS_PICKUP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Promos$": {
+    "id": "m-is-promo",
+    "name": "IS_PROMO"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Storefront$": {
+    "id": "m-is-storefront",
+    "name": "IS_STOREFRONT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Lead\\ Id$": {
+    "id": "m-lead-id",
+    "name": "LEAD_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Manager\\ Name$": {
+    "id": "m-manager-name",
+    "name": "MANAGER_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Activation\\ Date$": {
+    "id": "m-merchant-activation-date",
+    "name": "MERCHANT_ACTIVATION_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Merchant\\ Close\\ Date$": {
+    "id": "m-merchant-close-date",
+    "name": "MERCHANT_CLOSE_DATE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Ntam$": {
+    "id": "m-ntam",
+    "name": "NTAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Opportunity\\ Id$": {
+    "id": "m-opportunity-id",
+    "name": "OPPORTUNITY_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Org\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-org",
+    "name": "ORG"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role\\ $": {
+    "id": "m-owner-role-official-title",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Current\\ Role$": {
+    "id": "m-owner-role-official-title",
+    "name": "OWNER_ROLE_OFFICIAL_TITLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Product$": {
+    "id": "m-product",
+    "name": "PRODUCT"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Qtr\\ \\(Presale\\ Manager\\ Goals\\)$": {
+    "id": "m-qtr",
+    "name": "QTR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Qtr\\ Yr\\ \\(Presales\\ Mx\\ Holdouts\\)$": {
+    "id": "m-qtr-yr",
+    "name": "QTR_YR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Qtr\\ Yr\\ \\(Presale\\ Manager\\ Goals\\)$": {
+    "id": "m-qtr-yr",
+    "name": "QTR_YR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Qtr\\ Yr\\ Pg\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-qtr-yr-pg",
+    "name": "QTR_YR_PG"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?QTR_YR_Copy$": {
+    "id": "m-qtr-yr-sp",
+    "name": "QTR_YR_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Qtr\\ Yr\\ Sp$": {
+    "id": "m-qtr-yr-sp",
+    "name": "QTR_YR_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Quarter\\ Year$": {
+    "id": "m-quarter-year",
+    "name": "QUARTER_YEAR"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Rep\\ Country$": {
+    "id": "m-rep-country",
+    "name": "REP_COUNTRY"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role\\ \\(Presale\\ Product\\ Goals\\)$": {
+    "id": "m-role",
+    "name": "ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-role",
+    "name": "ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role$": {
+    "id": "m-role",
+    "name": "ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role\\ Activations$": {
+    "id": "m-role-activations",
+    "name": "ROLE_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Role_SP_Copy$": {
+    "id": "m-role-sp-3",
+    "name": "ROLE_SP_3"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Team\\ by\\ Org$": {
+    "id": "m-role",
+    "name": "ROLE"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Sales\\ Manager$": {
+    "id": "m-sales-manager",
+    "name": "SALES_MANAGER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Sales\\ Owner\\ $": {
+    "id": "m-sales-owner",
+    "name": "SALES_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Sales\\ Owner$": {
+    "id": "m-sales-owner",
+    "name": "SALES_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Sales\\ Owner\\ Id$": {
+    "id": "m-sales-owner-id",
+    "name": "SALES_OWNER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?SDR$": {
+    "id": "m-sdr-owner",
+    "name": "SDR_OWNER"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Commission\\ Rate$": {
+    "id": "m-sfdc-commission",
+    "name": "SFDC_COMMISSION"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?ACCOUNT_ID$": {
+    "id": "m-store-account-id",
+    "name": "STORE_ACCOUNT_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Store\\ Id\\ \\(Presales\\ 6Mo\\ Gov\\)$": {
+    "id": "m-store-id",
+    "name": "STORE_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Store\\ Id\\ \\(Presales\\ Mx\\ Holdouts\\)$": {
+    "id": "m-store-id",
+    "name": "STORE_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Store\\ Id\\ \\(Presales\\ Photo\\ Attach\\)$": {
+    "id": "m-store-id",
+    "name": "STORE_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Store\\ Name$": {
+    "id": "m-store-name",
+    "name": "STORE_NAME"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Submarket$": {
+    "id": "m-submarket",
+    "name": "SUBMARKET"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Target\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-target",
+    "name": "TARGET"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Target$": {
+    "id": "m-target",
+    "name": "TARGET"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Team\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-team",
+    "name": "TEAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Team$": {
+    "id": "m-team",
+    "name": "TEAM"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Goal\\ \\(Presale\\ Product\\ Goals1\\)$": {
+    "id": "m-week-goal",
+    "name": "WEEK_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Goal$": {
+    "id": "m-week-goal",
+    "name": "WEEK_GOAL"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Goal\\ Activations$": {
+    "id": "m-week-goal-activations",
+    "name": "WEEK_GOAL_ACTIVATIONS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week_SP_Copy$": {
+    "id": "m-week-goal-sp",
+    "name": "WEEK_GOAL_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Goal\\ Sp$": {
+    "id": "m-week-goal-sp",
+    "name": "WEEK_GOAL_SP"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week$": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Of\\ \\(Presales\\ Active\\ Hc\\)$": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ $": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Week\\ Of\\ CW$": {
+    "id": "m-week-of",
+    "name": "WEEK_OF"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Working\\ Days$": {
+    "id": "m-working-days",
+    "name": "WORKING_DAYS"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?WO\\ ID$": {
+    "id": "m-work-order-id",
+    "name": "WORK_ORDER_ID"
+  },
+  "(?i)^(?:(?:sum|avg|average|min|max|median|distinct count|count) of |(?:avg|sum|min|max|med|cnt|ctd)\\.\\s*|(?:second|minute|hour|day|week|month|quarter|year) of )?Yr\\ \\(Presale\\ Manager\\ Goals\\)$": {
+    "id": "m-yr",
+    "name": "YR"
+  }
+}

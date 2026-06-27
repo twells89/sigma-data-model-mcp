@@ -1,0 +1,967 @@
+{
+  "name": "PRESALES_CW_LEVEL (TABLEAU.PRESALES_CW_LEVEL) (TABLEAU)",
+  "schemaVersion": 1,
+  "pages": [
+    {
+      "id": "j8Q384FrIH",
+      "name": "Page 1",
+      "elements": [
+        {
+          "kind": "control",
+          "controlId": "Deck-Rank-Signs-Vs-%-Param",
+          "id": "glYRoErCamcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Inside-Toggle-Param",
+          "id": "Vj34ya0pE4con",
+          "controlType": "number-range"
+        },
+        {
+          "kind": "control",
+          "controlId": "Quarter-of-Cw-Param",
+          "id": "sEfCkgyNsAcon",
+          "controlType": "date-range",
+          "mode": "last",
+          "value": 90,
+          "unit": "day",
+          "includeToday": true
+        },
+        {
+          "kind": "control",
+          "controlId": "Multiple-Measure-Name-Selection",
+          "id": "HgYaw0u8Edcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Attainment-Detail",
+          "id": "YD4boxKNSDcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Mgr-Toggle-Param",
+          "id": "vbri1YNaFdcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Sgl-Nav-Param",
+          "id": "NxhgbJR8jQcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Selection-Param",
+          "id": "m2wBwcgXzGcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Can-Switch-Medals-and-Tiers-Param",
+          "id": "sfzkBepaghcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Mx-Metric-Param",
+          "id": "ZbCnL6rJddcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Drill-down-Level",
+          "id": "veZB6dlK86con",
+          "controlType": "number-range"
+        },
+        {
+          "kind": "control",
+          "controlId": "Mx-Health-Sheet-Toggle",
+          "id": "U9tIC4ihIIcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Sort-by",
+          "id": "94L0BOvWBxcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Activations-Country",
+          "id": "EmhhcmWsPUcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Input",
+          "id": "FAfEGUDG6jcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Number-of-Weeks",
+          "id": "qdSPWLS6YTcon",
+          "controlType": "number-range"
+        },
+        {
+          "kind": "control",
+          "controlId": "Qtd-Select-Week",
+          "id": "3aB1NDEtHgcon",
+          "controlType": "date-range",
+          "mode": "last",
+          "value": 90,
+          "unit": "day",
+          "includeToday": true
+        },
+        {
+          "kind": "control",
+          "controlId": "Qtd-Select-Quarter",
+          "id": "Cr9nBQrOPccon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Product-Param",
+          "id": "vfd3wqaTUHcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Signs-V-Goals-Param",
+          "id": "ktOp3kdxJYcon",
+          "controlType": "text",
+          "mode": "contains"
+        },
+        {
+          "kind": "control",
+          "controlId": "Signs-Goals-Toggle-Param-Week",
+          "id": "m24mg4WokZcon",
+          "controlType": "date-range",
+          "mode": "last",
+          "value": 90,
+          "unit": "day",
+          "includeToday": true
+        },
+        {
+          "kind": "control",
+          "controlId": "Product-Color-Param",
+          "id": "XUmkzxLZbMcon",
+          "controlType": "number-range"
+        },
+        {
+          "id": "G0uxTEfUET",
+          "name": "presales_cw_level",
+          "kind": "table",
+          "source": {
+            "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+            "kind": "sql",
+            "statement": "WITH __f AS (\nselect \nMERCHANT_CLOSE_DATE,\nWEEK_OF,\nCW_WEEK,\nQTR,\nYR,\nQTR_YR,\nREADINESS_CHECK_COMPLETE_DATE,\nMERCHANT_ACTIVATION_DATE,\nMX_ONBOARDING_LINK_SENT_DATE,\nOPPORTUNITY_ID,\nSTORE_ACCOUNT_ID,\nBUSINESS_ACCOUNT_ID,\nLEAD_ID,\nWORK_ORDER_ID,\nWORK_ORDER_NUMBER,\nSTORE_ID,\nBUSINESS_ID,\nPROVISIONING_STATUS,\nSALES_OWNER_ID,\nSALES_OWNER,\nFULL_NAME,\nMANAGER_NAME,\nREP_ROLE,\nOWNER_TEAM,\nOWNER_ORG_FOCUS,\nREP_SEGMENT,\nSDR_OWNER,\nSDR_ID,\nSDR_MANAGER_ID,\nSDR_MANAGER_NAME,\nSDR_ROLE,\nSDR_COUNTRY,\nREP_COUNTRY,\nCW_COUNTRY,\nCLEAN_COUNTRY,\nOWNER_ROLE_OFFICIAL_TITLE,\nCW_OWNER_ROLE_OFFICIAL_TITLE,\nSFDC_COMMISSION,\nDASHPASS_COMMISSION,\nNARR,\nOPPORTUNITY_NAME,\nOPP_TYPE,\nACCOUNT_NAME,\nSTORE_NAME,\nBUSINESS_NAME,\nDECK_RANK,\nPRIMARY_VERTICAL,\nCOUNTRY,\nSTARTING_POINT_ID,\nSTARTING_POINT,\nSUBMARKET,\nSUBMARKET_ID,\nTOP_MX,\nMARKET_MAKER,\nIS_GNC,\nIS_DASHPASS,\nIS_PICKUP,\nIS_STOREFRONT,\nIS_ALCOHOL,\nIS_TRIAL,\nIS_PROMO,\nIS_ADS,\nIS_ADS_PROMOS,\nPACKAGE_SOLD,\nNTAM,\nINCREMENTAL_SIGN_TAM,\nHISTORICAL_DELAY_REASONS_CUSTOMIZED,\nLEAD_LIST_CUSTOMIZED,\nTRIAL_PERIOD,\nTOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD,\nACTIVATION_BONUS_AMOUNT,\nPRODUCT_LIST,\nREGION,\nTIER,\nSFDC_SOURCE,\nLAST_ETL_RUN\nfrom REDACTED_DB.static.presales_cw_level\n),\n__s0 AS (\n  SELECT\n    \"ROLE_ACTIVATIONS\" AS \"ROLE_ACTIVATIONS\",\n    \"COUNTRY\" AS \"COUNTRY\",\n    MAX(\"WEEK_GOAL_ACTIVATIONS\") AS \"WEEK_GOAL_ACTIVATIONS\",\n    SUM(\"ACTIVATION_GOAL\") AS \"ACTIVATION_GOAL\",\n    MAX(\"QUARTER_YEAR\") AS \"QUARTER_YEAR\"\n  FROM (\nSELECT *\nFROM REDACTED_DB.static.activations_goals_presales \"ACTIVATIONS_GOALS_PRESALES\"\n) \"__src_0\"\n  GROUP BY \"ROLE_ACTIVATIONS\", \"COUNTRY\"\n),\n__s1 AS (\n  SELECT\n    \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AS \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\",\n    \"QTR_YR (PRESALES_ACTIVE_HC)\" AS \"QTR_YR (PRESALES_ACTIVE_HC)\",\n    MAX(\"COUNTRY (PRESALES_ACTIVE_HC)\") AS \"COUNTRY (PRESALES_ACTIVE_HC)\",\n    SUM(\"DAYS_OFF\") AS \"DAYS_OFF\",\n    SUM(\"HC\") AS \"HC\",\n    MAX(\"QTR (PRESALES_ACTIVE_HC)\") AS \"QTR (PRESALES_ACTIVE_HC)\",\n    MAX(\"REP_RANK\") AS \"REP_RANK\",\n    MAX(\"SALES_MANAGER\") AS \"SALES_MANAGER\",\n    MAX(\"SALES_OWNER (PRESALES_ACTIVE_HC)\") AS \"SALES_OWNER (PRESALES_ACTIVE_HC)\",\n    MAX(\"USER_ID\") AS \"USER_ID\",\n    MAX(\"WEEK_OF (PRESALES_ACTIVE_HC)\") AS \"WEEK_OF (PRESALES_ACTIVE_HC)\",\n    SUM(\"YR (PRESALES_ACTIVE_HC)\") AS \"YR (PRESALES_ACTIVE_HC)\"\n  FROM (\nwith final as (\nselect \n    case \n        when rep_segment = 'CAN SMB Sales' then 'Canada' \n        when rep_segment not in ('AUS SMB Sales','CAN SMB Sales','NZ SMB Sales','ANZ SMB Sales') then 'United States' \n        else null \n    end as country, \n    days_off,\n    days_worked/iff(working_days=0,null,working_days) as hc,\n    role_title as OWNER_ROLE_OFFICIAL_TITLE,\n    'Q'||quarter(to_date(week)) as qtr,\n        year(to_date(week)) as yr,\n        qtr||'-'||right(yr,2) as qtr_yr,\n    null as rep_rank,\n    null as SALES_MANAGER,\n    rep_name as sales_owner,\n    ddmx_id as user_id,\n    week as week_of\nfrom REDACTED_DB.public.sales_analytics_bis\nwhere country is not null\n)\nSELECT \"PRESALES_ACTIVE_HC\".\"COUNTRY\" AS \"COUNTRY (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"DAYS_OFF\" AS \"DAYS_OFF\",\n  \"PRESALES_ACTIVE_HC\".\"HC\" AS \"HC\",\n  \"PRESALES_ACTIVE_HC\".\"OWNER_ROLE_OFFICIAL_TITLE\" AS \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"QTR\" AS \"QTR (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"QTR_YR\" AS \"QTR_YR (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"REP_RANK\" AS \"REP_RANK\",\n  \"PRESALES_ACTIVE_HC\".\"SALES_MANAGER\" AS \"SALES_MANAGER\",\n  \"PRESALES_ACTIVE_HC\".\"SALES_OWNER\" AS \"SALES_OWNER (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"USER_ID\" AS \"USER_ID\",\n  \"PRESALES_ACTIVE_HC\".\"WEEK_OF\" AS \"WEEK_OF (PRESALES_ACTIVE_HC)\",\n  \"PRESALES_ACTIVE_HC\".\"YR\" AS \"YR (PRESALES_ACTIVE_HC)\"\nFROM final \"PRESALES_ACTIVE_HC\"\n) \"__src_1\"\n  GROUP BY \"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\", \"QTR_YR (PRESALES_ACTIVE_HC)\"\n),\n__s2 AS (\n  SELECT\n    \"WEEK_GOAL\" AS \"WEEK_GOAL\",\n    \"ROLE (PRESALE_PRODUCT_GOALS)\" AS \"ROLE (PRESALE_PRODUCT_GOALS)\",\n    MAX(\"BASED\") AS \"BASED\",\n    MAX(\"ORG\") AS \"ORG\",\n    MAX(\"PRODUCT\") AS \"PRODUCT\",\n    SUM(\"PRODUCT_GOAL\") AS \"PRODUCT_GOAL\",\n    MAX(\"QTR_YR_PG\") AS \"QTR_YR_PG\",\n    MAX(\"TARGET\") AS \"TARGET\",\n    MAX(\"TEAM\") AS \"TEAM\"\n  FROM (\nSELECT \"PRESALE_PRODUCT_GOALS\".\"BASED\" AS \"BASED\",\n  \"PRESALE_PRODUCT_GOALS\".\"ORG\" AS \"ORG\",\n  \"PRESALE_PRODUCT_GOALS\".\"PRODUCT\" AS \"PRODUCT\",\n  \"PRESALE_PRODUCT_GOALS\".\"PRODUCT_GOAL\" AS \"PRODUCT_GOAL\",\n  \"PRESALE_PRODUCT_GOALS\".\"QTR_YR_PG\" AS \"QTR_YR_PG\",\n  \"PRESALE_PRODUCT_GOALS\".\"ROLE\" AS \"ROLE (PRESALE_PRODUCT_GOALS)\",\n  \"PRESALE_PRODUCT_GOALS\".\"TARGET\" AS \"TARGET\",\n  \"PRESALE_PRODUCT_GOALS\".\"TEAM\" AS \"TEAM\",\n  (CASE WHEN (NOT (CAST(TO_TIMESTAMP(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\", 'MM/DD/YYYY') AS DATE) IS NULL)) THEN CAST(TO_TIMESTAMP(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\", 'MM/DD/YYYY') AS DATE) WHEN (NOT (TRY_CAST(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\" AS DATE) IS NULL)) THEN TRY_CAST(\"PRESALE_PRODUCT_GOALS\".\"WEEK_GOAL\" AS DATE) ELSE NULL END) AS \"WEEK_GOAL\"\nFROM REDACTED_DB.\"STATIC\".\"PRESALE_PRODUCT_GOALS\" \"PRESALE_PRODUCT_GOALS\"\n) \"__src_2\"\n  GROUP BY \"WEEK_GOAL\", \"ROLE (PRESALE_PRODUCT_GOALS)\"\n),\n__s3 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nSELECT *\nFROM REDACTED_DB.static.presale_special_projects_goals\n) \"__src_3\"\n  GROUP BY \"ROLE_SP\"\n),\n__s4 AS (\n  SELECT\n    \"CW_WEEK\" AS \"CW_WEEK\",\n    \"ROLE\" AS \"ROLE\",\n    \"QTR_YR\" AS \"QTR_YR\",\n    \"COUNTRY\" AS \"COUNTRY\",\n    MAX(\"QTR\") AS \"QTR\",\n    SUM(\"YR\") AS \"YR\",\n    SUM(\"CLOSES\") AS \"CLOSES\",\n    SUM(\"NARR\") AS \"NARR\",\n    SUM(\"WORKING_DAYS\") AS \"WORKING_DAYS\",\n    SUM(\"AHC_GOAL\") AS \"AHC_GOAL\",\n    SUM(\"CLOSE_PHASING\") AS \"CLOSE_PHASING\",\n    MAX(\"WEEK_OF\") AS \"WEEK_OF\"\n  FROM (\nselect * from REDACTED_DB.static.presale_weekly_goals\n) \"__src_4\"\n  GROUP BY \"CW_WEEK\", \"ROLE\", \"QTR_YR\", \"COUNTRY\"\n),\n__s5 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nselect * from REDACTED_DB.static.presale_special_projects_goals\n) \"__src_5\"\n  GROUP BY \"ROLE_SP\"\n),\n__s6 AS (\n  SELECT\n    \"ROLE_SP\" AS \"ROLE_SP\",\n    MAX(\"WEEK_GOAL_SP\") AS \"WEEK_GOAL_SP\",\n    MAX(\"INITIATIVE\") AS \"INITIATIVE\",\n    SUM(\"INITIATIVE_GOAL\") AS \"INITIATIVE_GOAL\",\n    MAX(\"QTR_YR_SP\") AS \"QTR_YR_SP\"\n  FROM (\nselect * from REDACTED_DB.static.presale_special_projects_goals\n) \"__src_6\"\n  GROUP BY \"ROLE_SP\"\n)\nSELECT\n  __f.\"MERCHANT_CLOSE_DATE\" AS \"MERCHANT_CLOSE_DATE\",\n  __f.\"WEEK_OF\" AS \"WEEK_OF\",\n  __f.\"CW_WEEK\" AS \"CW_WEEK\",\n  __f.\"QTR\" AS \"QTR\",\n  __f.\"YR\" AS \"YR\",\n  __f.\"QTR_YR\" AS \"QTR_YR\",\n  __f.\"READINESS_CHECK_COMPLETE_DATE\" AS \"READINESS_CHECK_COMPLETE_DATE\",\n  __f.\"MERCHANT_ACTIVATION_DATE\" AS \"MERCHANT_ACTIVATION_DATE\",\n  __f.\"MX_ONBOARDING_LINK_SENT_DATE\" AS \"MX_ONBOARDING_LINK_SENT_DATE\",\n  __f.\"OPPORTUNITY_ID\" AS \"OPPORTUNITY_ID\",\n  __f.\"STORE_ACCOUNT_ID\" AS \"STORE_ACCOUNT_ID\",\n  __f.\"BUSINESS_ACCOUNT_ID\" AS \"BUSINESS_ACCOUNT_ID\",\n  __f.\"LEAD_ID\" AS \"LEAD_ID\",\n  __f.\"WORK_ORDER_ID\" AS \"WORK_ORDER_ID\",\n  __f.\"WORK_ORDER_NUMBER\" AS \"WORK_ORDER_NUMBER\",\n  __f.\"STORE_ID\" AS \"STORE_ID\",\n  __f.\"BUSINESS_ID\" AS \"BUSINESS_ID\",\n  __f.\"PROVISIONING_STATUS\" AS \"PROVISIONING_STATUS\",\n  __f.\"SALES_OWNER_ID\" AS \"SALES_OWNER_ID\",\n  __f.\"SALES_OWNER\" AS \"SALES_OWNER\",\n  __f.\"FULL_NAME\" AS \"FULL_NAME\",\n  __f.\"MANAGER_NAME\" AS \"MANAGER_NAME\",\n  __f.\"REP_ROLE\" AS \"REP_ROLE\",\n  __f.\"OWNER_TEAM\" AS \"OWNER_TEAM\",\n  __f.\"OWNER_ORG_FOCUS\" AS \"OWNER_ORG_FOCUS\",\n  __f.\"REP_SEGMENT\" AS \"REP_SEGMENT\",\n  __f.\"SDR_OWNER\" AS \"SDR_OWNER\",\n  __f.\"SDR_ID\" AS \"SDR_ID\",\n  __f.\"SDR_MANAGER_ID\" AS \"SDR_MANAGER_ID\",\n  __f.\"SDR_MANAGER_NAME\" AS \"SDR_MANAGER_NAME\",\n  __f.\"SDR_ROLE\" AS \"SDR_ROLE\",\n  __f.\"SDR_COUNTRY\" AS \"SDR_COUNTRY\",\n  __f.\"REP_COUNTRY\" AS \"REP_COUNTRY\",\n  __f.\"CW_COUNTRY\" AS \"CW_COUNTRY\",\n  __f.\"CLEAN_COUNTRY\" AS \"CLEAN_COUNTRY\",\n  __f.\"OWNER_ROLE_OFFICIAL_TITLE\" AS \"OWNER_ROLE_OFFICIAL_TITLE\",\n  __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" AS \"CW_OWNER_ROLE_OFFICIAL_TITLE\",\n  __f.\"SFDC_COMMISSION\" AS \"SFDC_COMMISSION\",\n  __f.\"DASHPASS_COMMISSION\" AS \"DASHPASS_COMMISSION\",\n  __f.\"NARR\" AS \"NARR\",\n  __f.\"OPPORTUNITY_NAME\" AS \"OPPORTUNITY_NAME\",\n  __f.\"OPP_TYPE\" AS \"OPP_TYPE\",\n  __f.\"ACCOUNT_NAME\" AS \"ACCOUNT_NAME\",\n  __f.\"STORE_NAME\" AS \"STORE_NAME\",\n  __f.\"BUSINESS_NAME\" AS \"BUSINESS_NAME\",\n  __f.\"DECK_RANK\" AS \"DECK_RANK\",\n  __f.\"PRIMARY_VERTICAL\" AS \"PRIMARY_VERTICAL\",\n  __f.\"COUNTRY\" AS \"COUNTRY\",\n  __f.\"STARTING_POINT_ID\" AS \"STARTING_POINT_ID\",\n  __f.\"STARTING_POINT\" AS \"STARTING_POINT\",\n  __f.\"SUBMARKET\" AS \"SUBMARKET\",\n  __f.\"SUBMARKET_ID\" AS \"SUBMARKET_ID\",\n  __f.\"TOP_MX\" AS \"TOP_MX\",\n  __f.\"MARKET_MAKER\" AS \"MARKET_MAKER\",\n  __f.\"IS_GNC\" AS \"IS_GNC\",\n  __f.\"IS_DASHPASS\" AS \"IS_DASHPASS\",\n  __f.\"IS_PICKUP\" AS \"IS_PICKUP\",\n  __f.\"IS_STOREFRONT\" AS \"IS_STOREFRONT\",\n  __f.\"IS_ALCOHOL\" AS \"IS_ALCOHOL\",\n  __f.\"IS_TRIAL\" AS \"IS_TRIAL\",\n  __f.\"IS_PROMO\" AS \"IS_PROMO\",\n  __f.\"IS_ADS\" AS \"IS_ADS\",\n  __f.\"IS_ADS_PROMOS\" AS \"IS_ADS_PROMOS\",\n  __f.\"PACKAGE_SOLD\" AS \"PACKAGE_SOLD\",\n  __f.\"NTAM\" AS \"NTAM\",\n  __f.\"INCREMENTAL_SIGN_TAM\" AS \"INCREMENTAL_SIGN_TAM\",\n  __f.\"HISTORICAL_DELAY_REASONS_CUSTOMIZED\" AS \"HISTORICAL_DELAY_REASONS_CUSTOMIZED\",\n  __f.\"LEAD_LIST_CUSTOMIZED\" AS \"LEAD_LIST_CUSTOMIZED\",\n  __f.\"TRIAL_PERIOD\" AS \"TRIAL_PERIOD\",\n  __f.\"TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD\" AS \"TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD\",\n  __f.\"ACTIVATION_BONUS_AMOUNT\" AS \"ACTIVATION_BONUS_AMOUNT\",\n  __f.\"PRODUCT_LIST\" AS \"PRODUCT_LIST\",\n  __f.\"REGION\" AS \"REGION\",\n  __f.\"TIER\" AS \"TIER\",\n  __f.\"SFDC_SOURCE\" AS \"SFDC_SOURCE\",\n  __f.\"LAST_ETL_RUN\" AS \"LAST_ETL_RUN\",\n  __s0.\"WEEK_GOAL_ACTIVATIONS\" AS \"WEEK_GOAL_ACTIVATIONS\",\n  __s0.\"ROLE_ACTIVATIONS\" AS \"ROLE_ACTIVATIONS\",\n  __s0.\"ACTIVATION_GOAL\" AS \"ACTIVATION_GOAL\",\n  __s0.\"QUARTER_YEAR\" AS \"QUARTER_YEAR\",\n  __s0.\"COUNTRY\" AS \"COUNTRY_2\",\n  __s1.\"COUNTRY (PRESALES_ACTIVE_HC)\" AS \"COUNTRY_3\",\n  __s1.\"DAYS_OFF\" AS \"DAYS_OFF\",\n  __s1.\"HC\" AS \"HC\",\n  __s1.\"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AS \"OWNER_ROLE_OFFICIAL_TITLE_2\",\n  __s1.\"QTR (PRESALES_ACTIVE_HC)\" AS \"QTR_2\",\n  __s1.\"QTR_YR (PRESALES_ACTIVE_HC)\" AS \"QTR_YR_2\",\n  __s1.\"REP_RANK\" AS \"REP_RANK\",\n  __s1.\"SALES_MANAGER\" AS \"SALES_MANAGER\",\n  __s1.\"SALES_OWNER (PRESALES_ACTIVE_HC)\" AS \"SALES_OWNER_2\",\n  __s1.\"USER_ID\" AS \"USER_ID\",\n  __s1.\"WEEK_OF (PRESALES_ACTIVE_HC)\" AS \"WEEK_OF_2\",\n  __s1.\"YR (PRESALES_ACTIVE_HC)\" AS \"YR_2\",\n  __s2.\"BASED\" AS \"BASED\",\n  __s2.\"ORG\" AS \"ORG\",\n  __s2.\"PRODUCT\" AS \"PRODUCT\",\n  __s2.\"PRODUCT_GOAL\" AS \"PRODUCT_GOAL\",\n  __s2.\"QTR_YR_PG\" AS \"QTR_YR_PG\",\n  __s2.\"ROLE (PRESALE_PRODUCT_GOALS)\" AS \"ROLE\",\n  __s2.\"TARGET\" AS \"TARGET\",\n  __s2.\"TEAM\" AS \"TEAM\",\n  __s2.\"WEEK_GOAL\" AS \"WEEK_GOAL\",\n  __s3.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP\",\n  __s3.\"INITIATIVE\" AS \"INITIATIVE\",\n  __s3.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL\",\n  __s3.\"QTR_YR_SP\" AS \"QTR_YR_SP\",\n  __s3.\"ROLE_SP\" AS \"ROLE_SP\",\n  __s4.\"QTR\" AS \"QTR_3\",\n  __s4.\"YR\" AS \"YR_3\",\n  __s4.\"QTR_YR\" AS \"QTR_YR_3\",\n  __s4.\"COUNTRY\" AS \"COUNTRY_4\",\n  __s4.\"ROLE\" AS \"ROLE_2\",\n  __s4.\"CLOSES\" AS \"CLOSES\",\n  __s4.\"NARR\" AS \"NARR_2\",\n  __s4.\"CW_WEEK\" AS \"CW_WEEK_2\",\n  __s4.\"WORKING_DAYS\" AS \"WORKING_DAYS\",\n  __s4.\"AHC_GOAL\" AS \"AHC_GOAL\",\n  __s4.\"CLOSE_PHASING\" AS \"CLOSE_PHASING\",\n  __s4.\"WEEK_OF\" AS \"WEEK_OF_3\",\n  __s5.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP_2\",\n  __s5.\"INITIATIVE\" AS \"INITIATIVE_2\",\n  __s5.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL_2\",\n  __s5.\"QTR_YR_SP\" AS \"QTR_YR_SP_2\",\n  __s5.\"ROLE_SP\" AS \"ROLE_SP_2\",\n  __s6.\"WEEK_GOAL_SP\" AS \"WEEK_GOAL_SP_3\",\n  __s6.\"INITIATIVE\" AS \"INITIATIVE_3\",\n  __s6.\"INITIATIVE_GOAL\" AS \"INITIATIVE_GOAL_3\",\n  __s6.\"QTR_YR_SP\" AS \"QTR_YR_SP_3\",\n  __s6.\"ROLE_SP\" AS \"ROLE_SP_3\"\nFROM __f\nLEFT JOIN __s0 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s0.\"ROLE_ACTIVATIONS\" AND __f.\"CW_COUNTRY\" = __s0.\"COUNTRY\"\nLEFT JOIN __s1 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s1.\"OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)\" AND __f.\"QTR_YR\" = __s1.\"QTR_YR (PRESALES_ACTIVE_HC)\"\nLEFT JOIN __s2 ON __f.\"WEEK_OF\" = __s2.\"WEEK_GOAL\" AND __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s2.\"ROLE (PRESALE_PRODUCT_GOALS)\"\nLEFT JOIN __s3 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s3.\"ROLE_SP\"\nLEFT JOIN __s4 ON __f.\"CW_WEEK\" = __s4.\"CW_WEEK\" AND __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s4.\"ROLE\" AND __f.\"QTR_YR\" = __s4.\"QTR_YR\" AND __f.\"CW_COUNTRY\" = __s4.\"COUNTRY\"\nLEFT JOIN __s5 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s5.\"ROLE_SP\"\nLEFT JOIN __s6 ON __f.\"CW_OWNER_ROLE_OFFICIAL_TITLE\" = __s6.\"ROLE_SP\""
+          },
+          "columns": [
+            {
+              "id": "inode-CyHPZIJbphGOqHKK204CLh/MERCHANT_CLOSE_DATE",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Custom SQL/MERCHANT_CLOSE_DATE]"
+            },
+            {
+              "id": "inode-jcvmOGjiZLPT9JoHGeIRj7/WEEK_OF",
+              "name": "WEEK_OF",
+              "formula": "[Custom SQL/WEEK_OF]"
+            },
+            {
+              "id": "inode-aY7RpFaDhvNtPQ14P1Dkqr/CW_WEEK",
+              "name": "CW_WEEK",
+              "formula": "[Custom SQL/CW_WEEK]"
+            },
+            {
+              "id": "inode-YqmQRGHNkHoFMSpEw8VP8e/QTR",
+              "name": "QTR",
+              "formula": "[Custom SQL/QTR]"
+            },
+            {
+              "id": "inode-oXl69RV5yK7af4hF67wDWn/YR",
+              "name": "YR",
+              "formula": "[Custom SQL/YR]"
+            },
+            {
+              "id": "inode-qFyC4o85MR90liHYlssQcN/QTR_YR",
+              "name": "QTR_YR",
+              "formula": "[Custom SQL/QTR_YR]"
+            },
+            {
+              "id": "inode-KioEPz8REDD5RVBjnyWuZH/READINESS_CHECK_COMPLETE_DATE",
+              "name": "READINESS_CHECK_COMPLETE_DATE",
+              "formula": "[Custom SQL/READINESS_CHECK_COMPLETE_DATE]"
+            },
+            {
+              "id": "inode-vDMyoV2tPANpwDeklchulE/MERCHANT_ACTIVATION_DATE",
+              "name": "MERCHANT_ACTIVATION_DATE",
+              "formula": "[Custom SQL/MERCHANT_ACTIVATION_DATE]"
+            },
+            {
+              "id": "inode-r1hoFCw8049w2u5AwWjUyk/MX_ONBOARDING_LINK_SENT_DATE",
+              "name": "MX_ONBOARDING_LINK_SENT_DATE",
+              "formula": "[Custom SQL/MX_ONBOARDING_LINK_SENT_DATE]"
+            },
+            {
+              "id": "inode-IhkWIdmLrs8hMqcRM0bctE/OPPORTUNITY_ID",
+              "name": "OPPORTUNITY_ID",
+              "formula": "[Custom SQL/OPPORTUNITY_ID]"
+            },
+            {
+              "id": "inode-BM92nYDmGGf8x3NUVTZmSy/STORE_ACCOUNT_ID",
+              "name": "STORE_ACCOUNT_ID",
+              "formula": "[Custom SQL/STORE_ACCOUNT_ID]"
+            },
+            {
+              "id": "inode-IM7muYuUkpEdg0l9mCgJMh/BUSINESS_ACCOUNT_ID",
+              "name": "BUSINESS_ACCOUNT_ID",
+              "formula": "[Custom SQL/BUSINESS_ACCOUNT_ID]"
+            },
+            {
+              "id": "inode-HbbCfcZykyhaPbv59CfIt7/LEAD_ID",
+              "name": "LEAD_ID",
+              "formula": "[Custom SQL/LEAD_ID]"
+            },
+            {
+              "id": "inode-jmxWfpIGBriEb8k8ri8jaM/WORK_ORDER_ID",
+              "name": "WORK_ORDER_ID",
+              "formula": "[Custom SQL/WORK_ORDER_ID]"
+            },
+            {
+              "id": "inode-Mw9L7oDONDM83WB6W1Chg7/WORK_ORDER_NUMBER",
+              "name": "WORK_ORDER_NUMBER",
+              "formula": "[Custom SQL/WORK_ORDER_NUMBER]"
+            },
+            {
+              "id": "inode-5mpybU9vBnfZTLBcdOCi3b/STORE_ID",
+              "name": "STORE_ID",
+              "formula": "[Custom SQL/STORE_ID]"
+            },
+            {
+              "id": "inode-agfEzQOdOekkcmwtKn5zwu/BUSINESS_ID",
+              "name": "BUSINESS_ID",
+              "formula": "[Custom SQL/BUSINESS_ID]"
+            },
+            {
+              "id": "inode-0TzxTOqSv2fJiNxdFHFeu4/PROVISIONING_STATUS",
+              "name": "PROVISIONING_STATUS",
+              "formula": "[Custom SQL/PROVISIONING_STATUS]"
+            },
+            {
+              "id": "inode-PJ9hveWIOkAS3FypuO7T8v/SALES_OWNER_ID",
+              "name": "SALES_OWNER_ID",
+              "formula": "[Custom SQL/SALES_OWNER_ID]"
+            },
+            {
+              "id": "inode-Vhu5Xyf5qoru3Mn9X46GvB/SALES_OWNER",
+              "name": "SALES_OWNER",
+              "formula": "[Custom SQL/SALES_OWNER]"
+            },
+            {
+              "id": "inode-9ZsAlcXyGdk8H7n2QhOvPf/FULL_NAME",
+              "name": "FULL_NAME",
+              "formula": "[Custom SQL/FULL_NAME]"
+            },
+            {
+              "id": "inode-0couyvEolzKAMESyKeWtMS/MANAGER_NAME",
+              "name": "MANAGER_NAME",
+              "formula": "[Custom SQL/MANAGER_NAME]"
+            },
+            {
+              "id": "inode-mHP3xVbUhkhpibV4LlrvFZ/REP_ROLE",
+              "name": "REP_ROLE",
+              "formula": "[Custom SQL/REP_ROLE]"
+            },
+            {
+              "id": "inode-0sr5smSE2drgOwEybvmLuh/OWNER_TEAM",
+              "name": "OWNER_TEAM",
+              "formula": "[Custom SQL/OWNER_TEAM]"
+            },
+            {
+              "id": "inode-MtEkyAqqtUK7G1lhe96HfR/OWNER_ORG_FOCUS",
+              "name": "OWNER_ORG_FOCUS",
+              "formula": "[Custom SQL/OWNER_ORG_FOCUS]"
+            },
+            {
+              "id": "inode-Ga7rYs97dsES4D6zxNWo3C/REP_SEGMENT",
+              "name": "REP_SEGMENT",
+              "formula": "[Custom SQL/REP_SEGMENT]"
+            },
+            {
+              "id": "inode-15oSkK73S51z5oKO4PxIqZ/SDR_OWNER",
+              "name": "SDR_OWNER",
+              "formula": "[Custom SQL/SDR_OWNER]"
+            },
+            {
+              "id": "inode-Kh1N7jgL5bgZ1IJr9T8zxY/SDR_ID",
+              "name": "SDR_ID",
+              "formula": "[Custom SQL/SDR_ID]"
+            },
+            {
+              "id": "inode-wnm7PZ2v0lJ0kZkzi3C9Ss/SDR_MANAGER_ID",
+              "name": "SDR_MANAGER_ID",
+              "formula": "[Custom SQL/SDR_MANAGER_ID]"
+            },
+            {
+              "id": "inode-3IgdRx5GYjcfWlaaz975ar/SDR_MANAGER_NAME",
+              "name": "SDR_MANAGER_NAME",
+              "formula": "[Custom SQL/SDR_MANAGER_NAME]"
+            },
+            {
+              "id": "inode-D2euaX69Fe0Hcik36VT9yT/SDR_ROLE",
+              "name": "SDR_ROLE",
+              "formula": "[Custom SQL/SDR_ROLE]"
+            },
+            {
+              "id": "inode-SCdAhQeZ0ssSJSeDENzHMc/SDR_COUNTRY",
+              "name": "SDR_COUNTRY",
+              "formula": "[Custom SQL/SDR_COUNTRY]"
+            },
+            {
+              "id": "inode-1lQmxPo9iJurur30uRxZ28/REP_COUNTRY",
+              "name": "REP_COUNTRY",
+              "formula": "[Custom SQL/REP_COUNTRY]"
+            },
+            {
+              "id": "inode-UTNixdkdBzt5oMmaM9sQTj/CW_COUNTRY",
+              "name": "CW_COUNTRY",
+              "formula": "[Custom SQL/CW_COUNTRY]"
+            },
+            {
+              "id": "inode-TkuqN89V3hpWQmhasV2Aam/CLEAN_COUNTRY",
+              "name": "CLEAN_COUNTRY",
+              "formula": "[Custom SQL/CLEAN_COUNTRY]"
+            },
+            {
+              "id": "inode-L3Bfaq7mY1Cpjl2t2z3f89/OWNER_ROLE_OFFICIAL_TITLE",
+              "name": "OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Custom SQL/OWNER_ROLE_OFFICIAL_TITLE]"
+            },
+            {
+              "id": "inode-hePZGXjZcgQDxIt94njeFS/CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Custom SQL/CW_OWNER_ROLE_OFFICIAL_TITLE]"
+            },
+            {
+              "id": "inode-PsN58AUM2Mr28gmk9FuU5p/SFDC_COMMISSION",
+              "name": "SFDC_COMMISSION",
+              "formula": "[Custom SQL/SFDC_COMMISSION]"
+            },
+            {
+              "id": "inode-xoYB8JludHeum838t76MqC/DASHPASS_COMMISSION",
+              "name": "DASHPASS_COMMISSION",
+              "formula": "[Custom SQL/DASHPASS_COMMISSION]"
+            },
+            {
+              "id": "inode-bKSH2E15O3u14jyejt5muF/NARR",
+              "name": "NARR",
+              "formula": "[Custom SQL/NARR]"
+            },
+            {
+              "id": "inode-tvhU0IhfvvZeFG6f223h1m/OPPORTUNITY_NAME",
+              "name": "OPPORTUNITY_NAME",
+              "formula": "[Custom SQL/OPPORTUNITY_NAME]"
+            },
+            {
+              "id": "inode-OvG2ytfWejJMcpqRbrt8SF/OPP_TYPE",
+              "name": "OPP_TYPE",
+              "formula": "[Custom SQL/OPP_TYPE]"
+            },
+            {
+              "id": "inode-CYp1jdFhQEW4SU1qyWOIqM/ACCOUNT_NAME",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Custom SQL/ACCOUNT_NAME]"
+            },
+            {
+              "id": "inode-ZwgXfopJP74EDVwfY2UAMD/STORE_NAME",
+              "name": "STORE_NAME",
+              "formula": "[Custom SQL/STORE_NAME]"
+            },
+            {
+              "id": "inode-RStrIAGfmwuQIznSIQTYRN/BUSINESS_NAME",
+              "name": "BUSINESS_NAME",
+              "formula": "[Custom SQL/BUSINESS_NAME]"
+            },
+            {
+              "id": "inode-720NWO1GrSFNvo4Pw7ZONm/DECK_RANK",
+              "name": "DECK_RANK",
+              "formula": "[Custom SQL/DECK_RANK]"
+            },
+            {
+              "id": "inode-3hBh0LJh5CLKPAV93ARTbq/PRIMARY_VERTICAL",
+              "name": "PRIMARY_VERTICAL",
+              "formula": "[Custom SQL/PRIMARY_VERTICAL]"
+            },
+            {
+              "id": "inode-b0e6rxeocWuUsDoXjdVdFH/COUNTRY",
+              "name": "COUNTRY",
+              "formula": "[Custom SQL/COUNTRY]"
+            },
+            {
+              "id": "inode-730rCIdSfnzACvGpd7aB3o/STARTING_POINT_ID",
+              "name": "STARTING_POINT_ID",
+              "formula": "[Custom SQL/STARTING_POINT_ID]"
+            },
+            {
+              "id": "inode-N2uI0FsYcYh4R6Rqh0kxHT/STARTING_POINT",
+              "name": "STARTING_POINT",
+              "formula": "[Custom SQL/STARTING_POINT]"
+            },
+            {
+              "id": "inode-XTbZpiC8dbPRa5UilRMMzB/SUBMARKET",
+              "name": "SUBMARKET",
+              "formula": "[Custom SQL/SUBMARKET]"
+            },
+            {
+              "id": "inode-1ZZXu7LzNjQai2qiwTsBd9/SUBMARKET_ID",
+              "name": "SUBMARKET_ID",
+              "formula": "[Custom SQL/SUBMARKET_ID]"
+            },
+            {
+              "id": "inode-21QXTPEJpNVT6fonLg5hzB/TOP_MX",
+              "name": "TOP_MX",
+              "formula": "[Custom SQL/TOP_MX]"
+            },
+            {
+              "id": "inode-jaOGrkhLVYsTxEWtq7e9WZ/MARKET_MAKER",
+              "name": "MARKET_MAKER",
+              "formula": "[Custom SQL/MARKET_MAKER]"
+            },
+            {
+              "id": "inode-mKnlsdyrpA1X5R3Xx88UNk/IS_GNC",
+              "name": "IS_GNC",
+              "formula": "[Custom SQL/IS_GNC]"
+            },
+            {
+              "id": "inode-lgVcLMclLyK9zPIQ8FvQOZ/IS_DASHPASS",
+              "name": "IS_DASHPASS",
+              "formula": "[Custom SQL/IS_DASHPASS]"
+            },
+            {
+              "id": "inode-27MTQ3UbOiKagHCteIRBWB/IS_PICKUP",
+              "name": "IS_PICKUP",
+              "formula": "[Custom SQL/IS_PICKUP]"
+            },
+            {
+              "id": "inode-mOsg2e7x8DAXEZz673ufSb/IS_STOREFRONT",
+              "name": "IS_STOREFRONT",
+              "formula": "[Custom SQL/IS_STOREFRONT]"
+            },
+            {
+              "id": "inode-GRb3qcEbT0HSWf82nOoIsY/IS_ALCOHOL",
+              "name": "IS_ALCOHOL",
+              "formula": "[Custom SQL/IS_ALCOHOL]"
+            },
+            {
+              "id": "inode-u8x4NsWkmxyEF4qp6aJkjx/IS_TRIAL",
+              "name": "IS_TRIAL",
+              "formula": "[Custom SQL/IS_TRIAL]"
+            },
+            {
+              "id": "inode-1dPcSVGvXBcFTkQewUULDb/IS_PROMO",
+              "name": "IS_PROMO",
+              "formula": "[Custom SQL/IS_PROMO]"
+            },
+            {
+              "id": "inode-Q0bfUPMNudgHDdceY4i8zi/IS_ADS",
+              "name": "IS_ADS",
+              "formula": "[Custom SQL/IS_ADS]"
+            },
+            {
+              "id": "inode-LVSW4thFOsbywGjizxovFJ/IS_ADS_PROMOS",
+              "name": "IS_ADS_PROMOS",
+              "formula": "[Custom SQL/IS_ADS_PROMOS]"
+            },
+            {
+              "id": "inode-84vxnfXg89kiE1dqfLrHWe/PACKAGE_SOLD",
+              "name": "PACKAGE_SOLD",
+              "formula": "[Custom SQL/PACKAGE_SOLD]"
+            },
+            {
+              "id": "inode-4W2GDQcsCGCtl3JvlvSZFN/NTAM",
+              "name": "NTAM",
+              "formula": "[Custom SQL/NTAM]"
+            },
+            {
+              "id": "inode-jBByPuMr6IAWrtN0siiNzI/INCREMENTAL_SIGN_TAM",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "[Custom SQL/INCREMENTAL_SIGN_TAM]"
+            },
+            {
+              "id": "inode-zBC8aj9oruaSL9a5ubqajr/HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+              "name": "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+              "formula": "[Custom SQL/HISTORICAL_DELAY_REASONS_CUSTOMIZED]"
+            },
+            {
+              "id": "inode-AD8b9VmVztp6nWxUCFfTKV/LEAD_LIST_CUSTOMIZED",
+              "name": "LEAD_LIST_CUSTOMIZED",
+              "formula": "[Custom SQL/LEAD_LIST_CUSTOMIZED]"
+            },
+            {
+              "id": "inode-YBnu8pyEymCVPycAwuPh1u/TRIAL_PERIOD",
+              "name": "TRIAL_PERIOD",
+              "formula": "[Custom SQL/TRIAL_PERIOD]"
+            },
+            {
+              "id": "inode-TEcRTYuToO5n0ribFiCcc0/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+              "name": "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+              "formula": "[Custom SQL/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD]"
+            },
+            {
+              "id": "inode-LgybyvWTWhPYgeF6800JE6/ACTIVATION_BONUS_AMOUNT",
+              "name": "ACTIVATION_BONUS_AMOUNT",
+              "formula": "[Custom SQL/ACTIVATION_BONUS_AMOUNT]"
+            },
+            {
+              "id": "inode-KqGgrWO1ZC97sj7UTjfAhL/PRODUCT_LIST",
+              "name": "PRODUCT_LIST",
+              "formula": "[Custom SQL/PRODUCT_LIST]"
+            },
+            {
+              "id": "inode-t3WPdcNOR8Onml9cUC1S0M/REGION",
+              "name": "REGION",
+              "formula": "[Custom SQL/REGION]"
+            },
+            {
+              "id": "inode-tkNT3ytkhlptWXlZFE8gGb/TIER",
+              "name": "TIER",
+              "formula": "[Custom SQL/TIER]"
+            },
+            {
+              "id": "inode-tQXIeDohSrgKjo1CsBve8n/SFDC_SOURCE",
+              "name": "SFDC_SOURCE",
+              "formula": "[Custom SQL/SFDC_SOURCE]"
+            },
+            {
+              "id": "inode-rmQ3o1N5Z2MH6q1sRWe6Xb/LAST_ETL_RUN",
+              "name": "LAST_ETL_RUN",
+              "formula": "[Custom SQL/LAST_ETL_RUN]"
+            },
+            {
+              "id": "inode-R9xyreuNri0lcWX93i1xnr/WEEK_GOAL_ACTIVATIONS",
+              "name": "WEEK_GOAL_ACTIVATIONS",
+              "formula": "[Custom SQL/WEEK_GOAL_ACTIVATIONS]"
+            },
+            {
+              "id": "inode-kLOW8A0iznTPPs04gyH4d2/ROLE_ACTIVATIONS",
+              "name": "ROLE_ACTIVATIONS",
+              "formula": "[Custom SQL/ROLE_ACTIVATIONS]"
+            },
+            {
+              "id": "inode-WiyXGvUWKaO1PyLhjc5PTS/ACTIVATION_GOAL",
+              "name": "ACTIVATION_GOAL",
+              "formula": "[Custom SQL/ACTIVATION_GOAL]"
+            },
+            {
+              "id": "inode-1CUztxjqMQOCcRg0L3bAml/QUARTER_YEAR",
+              "name": "QUARTER_YEAR",
+              "formula": "[Custom SQL/QUARTER_YEAR]"
+            },
+            {
+              "id": "inode-3EuH0KclfxTd1Y6cBADrqZ/COUNTRY",
+              "name": "COUNTRY_2",
+              "formula": "[Custom SQL/COUNTRY_2]"
+            },
+            {
+              "id": "inode-lr41ki0MpAyWlT7V4gN0bN/COUNTRY (PRESALES_ACTIVE_HC)",
+              "name": "COUNTRY_3",
+              "formula": "[Custom SQL/COUNTRY_3]"
+            },
+            {
+              "id": "inode-RMmVhOy73BnFcLPgEDovVn/DAYS_OFF",
+              "name": "DAYS_OFF",
+              "formula": "[Custom SQL/DAYS_OFF]"
+            },
+            {
+              "id": "inode-kQXvNHNSDL9GFagltSaItm/HC",
+              "name": "HC",
+              "formula": "[Custom SQL/HC]"
+            },
+            {
+              "id": "inode-xUluVELDXqPb4ArfcKzIOT/OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)",
+              "name": "OWNER_ROLE_OFFICIAL_TITLE_2",
+              "formula": "[Custom SQL/OWNER_ROLE_OFFICIAL_TITLE_2]"
+            },
+            {
+              "id": "inode-7X5fcVvhxfEAXXKmyB4lMu/QTR (PRESALES_ACTIVE_HC)",
+              "name": "QTR_2",
+              "formula": "[Custom SQL/QTR_2]"
+            },
+            {
+              "id": "inode-74EvQjbaaywZo3MmWFopzf/QTR_YR (PRESALES_ACTIVE_HC)",
+              "name": "QTR_YR_2",
+              "formula": "[Custom SQL/QTR_YR_2]"
+            },
+            {
+              "id": "inode-AwvCSKccvvN5vlH89xxLZU/REP_RANK",
+              "name": "REP_RANK",
+              "formula": "[Custom SQL/REP_RANK]"
+            },
+            {
+              "id": "inode-7AALvadTlgSkEJolFxLnhr/SALES_MANAGER",
+              "name": "SALES_MANAGER",
+              "formula": "[Custom SQL/SALES_MANAGER]"
+            },
+            {
+              "id": "inode-4EVeJ50EagpLILfPWfE2Rq/SALES_OWNER (PRESALES_ACTIVE_HC)",
+              "name": "SALES_OWNER_2",
+              "formula": "[Custom SQL/SALES_OWNER_2]"
+            },
+            {
+              "id": "inode-IClDfq97hNEBV855UOO41p/USER_ID",
+              "name": "USER_ID",
+              "formula": "[Custom SQL/USER_ID]"
+            },
+            {
+              "id": "inode-B93d2I2BoQoqFhYFZDB2uo/WEEK_OF (PRESALES_ACTIVE_HC)",
+              "name": "WEEK_OF_2",
+              "formula": "[Custom SQL/WEEK_OF_2]"
+            },
+            {
+              "id": "inode-vKwIDYyyoitC1ZhMxbBLNg/YR (PRESALES_ACTIVE_HC)",
+              "name": "YR_2",
+              "formula": "[Custom SQL/YR_2]"
+            },
+            {
+              "id": "inode-fzfd7lnlrFdYS0ZAxierMS/BASED",
+              "name": "BASED",
+              "formula": "[Custom SQL/BASED]"
+            },
+            {
+              "id": "inode-lXnsHstfKUptK3uj1j3TKn/ORG",
+              "name": "ORG",
+              "formula": "[Custom SQL/ORG]"
+            },
+            {
+              "id": "inode-of9DHyFNmGdBcCVfK3ybNS/PRODUCT",
+              "name": "PRODUCT",
+              "formula": "[Custom SQL/PRODUCT]"
+            },
+            {
+              "id": "inode-6me4FeTGqzb4wawEPjfvHN/PRODUCT_GOAL",
+              "name": "PRODUCT_GOAL",
+              "formula": "[Custom SQL/PRODUCT_GOAL]"
+            },
+            {
+              "id": "inode-3Ca1uqhmWsXgKmQZS2m0QN/QTR_YR_PG",
+              "name": "QTR_YR_PG",
+              "formula": "[Custom SQL/QTR_YR_PG]"
+            },
+            {
+              "id": "inode-zrn9AgHUx8wYpuPLDmdDRy/ROLE (PRESALE_PRODUCT_GOALS)",
+              "name": "ROLE",
+              "formula": "[Custom SQL/ROLE]"
+            },
+            {
+              "id": "inode-4s03FLyTR9LihG3JtRaXXu/TARGET",
+              "name": "TARGET",
+              "formula": "[Custom SQL/TARGET]"
+            },
+            {
+              "id": "inode-5iGYXbNVQak1PHDtuuLL0M/TEAM",
+              "name": "TEAM",
+              "formula": "[Custom SQL/TEAM]"
+            },
+            {
+              "id": "inode-eNNxNQ8hX8W01FvGievzhW/WEEK_GOAL",
+              "name": "WEEK_GOAL",
+              "formula": "[Custom SQL/WEEK_GOAL]"
+            },
+            {
+              "id": "inode-N1fZreTewpouU25skWgki3/WEEK_GOAL_SP",
+              "name": "WEEK_GOAL_SP",
+              "formula": "[Custom SQL/WEEK_GOAL_SP]"
+            },
+            {
+              "id": "inode-2yGW0h64FcsyEVL8zSiqYP/INITIATIVE",
+              "name": "INITIATIVE",
+              "formula": "[Custom SQL/INITIATIVE]"
+            },
+            {
+              "id": "inode-VGBQHpHCj20ipEuM2ogTVf/INITIATIVE_GOAL",
+              "name": "INITIATIVE_GOAL",
+              "formula": "[Custom SQL/INITIATIVE_GOAL]"
+            },
+            {
+              "id": "inode-tidAS0w1tyX6b5jlfY02hf/QTR_YR_SP",
+              "name": "QTR_YR_SP",
+              "formula": "[Custom SQL/QTR_YR_SP]"
+            },
+            {
+              "id": "inode-ELK9MK7YzKhp8nrGocVZMw/ROLE_SP",
+              "name": "ROLE_SP",
+              "formula": "[Custom SQL/ROLE_SP]"
+            },
+            {
+              "id": "inode-rcOcQ7RRpuTMWUBD27JKNT/QTR",
+              "name": "QTR_3",
+              "formula": "[Custom SQL/QTR_3]"
+            },
+            {
+              "id": "inode-xXMNNKxhKtx2vw94x6uM4A/YR",
+              "name": "YR_3",
+              "formula": "[Custom SQL/YR_3]"
+            },
+            {
+              "id": "inode-GXgGqwjSCLeLWwCRN0kGJO/QTR_YR",
+              "name": "QTR_YR_3",
+              "formula": "[Custom SQL/QTR_YR_3]"
+            },
+            {
+              "id": "inode-U30JxoYIYMJT1Z6NzoWd4r/COUNTRY",
+              "name": "COUNTRY_4",
+              "formula": "[Custom SQL/COUNTRY_4]"
+            },
+            {
+              "id": "inode-LmyKg84xW17K7PzzLIqYdG/ROLE",
+              "name": "ROLE_2",
+              "formula": "[Custom SQL/ROLE_2]"
+            },
+            {
+              "id": "inode-35LnTtjfDZMsnfxH5Thqxr/CLOSES",
+              "name": "CLOSES",
+              "formula": "[Custom SQL/CLOSES]"
+            },
+            {
+              "id": "inode-66BZ0cIEHorYkJ2GA4QRdy/NARR",
+              "name": "NARR_2",
+              "formula": "[Custom SQL/NARR_2]"
+            },
+            {
+              "id": "inode-CONKAYV89IHrLEX9SFyN08/CW_WEEK",
+              "name": "CW_WEEK_2",
+              "formula": "[Custom SQL/CW_WEEK_2]"
+            },
+            {
+              "id": "inode-IJWLBNqn0jOBuX2t1APyls/WORKING_DAYS",
+              "name": "WORKING_DAYS",
+              "formula": "[Custom SQL/WORKING_DAYS]"
+            },
+            {
+              "id": "inode-NMguRd218xKVQyrIW9BkP6/AHC_GOAL",
+              "name": "AHC_GOAL",
+              "formula": "[Custom SQL/AHC_GOAL]"
+            },
+            {
+              "id": "inode-6IUiF0QVMimLZiOuE41gGD/CLOSE_PHASING",
+              "name": "CLOSE_PHASING",
+              "formula": "[Custom SQL/CLOSE_PHASING]"
+            },
+            {
+              "id": "inode-KseJxwi4GCb5Ul6A8KofuT/WEEK_OF",
+              "name": "WEEK_OF_3",
+              "formula": "[Custom SQL/WEEK_OF_3]"
+            },
+            {
+              "id": "inode-VGW0zRycXdNJbf3r6uFUY6/WEEK_GOAL_SP",
+              "name": "WEEK_GOAL_SP_2",
+              "formula": "[Custom SQL/WEEK_GOAL_SP_2]"
+            },
+            {
+              "id": "inode-cHU3b0brmJdLeTAOdoqOyL/INITIATIVE",
+              "name": "INITIATIVE_2",
+              "formula": "[Custom SQL/INITIATIVE_2]"
+            },
+            {
+              "id": "inode-soTNDjeVs1ni1dzwXqbgaG/INITIATIVE_GOAL",
+              "name": "INITIATIVE_GOAL_2",
+              "formula": "[Custom SQL/INITIATIVE_GOAL_2]"
+            },
+            {
+              "id": "inode-7MXRhjDL7h3P1tPnKWseiQ/QTR_YR_SP",
+              "name": "QTR_YR_SP_2",
+              "formula": "[Custom SQL/QTR_YR_SP_2]"
+            },
+            {
+              "id": "inode-6elSG28uB4v7PJmNIEmnZX/ROLE_SP",
+              "name": "ROLE_SP_2",
+              "formula": "[Custom SQL/ROLE_SP_2]"
+            },
+            {
+              "id": "inode-VRKC79nb7kbYTnFYZu9hkT/WEEK_GOAL_SP",
+              "name": "WEEK_GOAL_SP_3",
+              "formula": "[Custom SQL/WEEK_GOAL_SP_3]"
+            },
+            {
+              "id": "inode-d28UUAK6hYpGqiriK8fG20/INITIATIVE",
+              "name": "INITIATIVE_3",
+              "formula": "[Custom SQL/INITIATIVE_3]"
+            },
+            {
+              "id": "inode-SueGv0GdUW2ZdwMmxofxxh/INITIATIVE_GOAL",
+              "name": "INITIATIVE_GOAL_3",
+              "formula": "[Custom SQL/INITIATIVE_GOAL_3]"
+            },
+            {
+              "id": "inode-rKsb1OmUpenkD76MieC5oc/QTR_YR_SP",
+              "name": "QTR_YR_SP_3",
+              "formula": "[Custom SQL/QTR_YR_SP_3]"
+            },
+            {
+              "id": "inode-kFxYHUNvSQHCnOTyj1aLPo/ROLE_SP",
+              "name": "ROLE_SP_3",
+              "formula": "[Custom SQL/ROLE_SP_3]"
+            }
+          ],
+          "order": [
+            "inode-CyHPZIJbphGOqHKK204CLh/MERCHANT_CLOSE_DATE",
+            "inode-jcvmOGjiZLPT9JoHGeIRj7/WEEK_OF",
+            "inode-aY7RpFaDhvNtPQ14P1Dkqr/CW_WEEK",
+            "inode-YqmQRGHNkHoFMSpEw8VP8e/QTR",
+            "inode-oXl69RV5yK7af4hF67wDWn/YR",
+            "inode-qFyC4o85MR90liHYlssQcN/QTR_YR",
+            "inode-KioEPz8REDD5RVBjnyWuZH/READINESS_CHECK_COMPLETE_DATE",
+            "inode-vDMyoV2tPANpwDeklchulE/MERCHANT_ACTIVATION_DATE",
+            "inode-r1hoFCw8049w2u5AwWjUyk/MX_ONBOARDING_LINK_SENT_DATE",
+            "inode-IhkWIdmLrs8hMqcRM0bctE/OPPORTUNITY_ID",
+            "inode-BM92nYDmGGf8x3NUVTZmSy/STORE_ACCOUNT_ID",
+            "inode-IM7muYuUkpEdg0l9mCgJMh/BUSINESS_ACCOUNT_ID",
+            "inode-HbbCfcZykyhaPbv59CfIt7/LEAD_ID",
+            "inode-jmxWfpIGBriEb8k8ri8jaM/WORK_ORDER_ID",
+            "inode-Mw9L7oDONDM83WB6W1Chg7/WORK_ORDER_NUMBER",
+            "inode-5mpybU9vBnfZTLBcdOCi3b/STORE_ID",
+            "inode-agfEzQOdOekkcmwtKn5zwu/BUSINESS_ID",
+            "inode-0TzxTOqSv2fJiNxdFHFeu4/PROVISIONING_STATUS",
+            "inode-PJ9hveWIOkAS3FypuO7T8v/SALES_OWNER_ID",
+            "inode-Vhu5Xyf5qoru3Mn9X46GvB/SALES_OWNER",
+            "inode-9ZsAlcXyGdk8H7n2QhOvPf/FULL_NAME",
+            "inode-0couyvEolzKAMESyKeWtMS/MANAGER_NAME",
+            "inode-mHP3xVbUhkhpibV4LlrvFZ/REP_ROLE",
+            "inode-0sr5smSE2drgOwEybvmLuh/OWNER_TEAM",
+            "inode-MtEkyAqqtUK7G1lhe96HfR/OWNER_ORG_FOCUS",
+            "inode-Ga7rYs97dsES4D6zxNWo3C/REP_SEGMENT",
+            "inode-15oSkK73S51z5oKO4PxIqZ/SDR_OWNER",
+            "inode-Kh1N7jgL5bgZ1IJr9T8zxY/SDR_ID",
+            "inode-wnm7PZ2v0lJ0kZkzi3C9Ss/SDR_MANAGER_ID",
+            "inode-3IgdRx5GYjcfWlaaz975ar/SDR_MANAGER_NAME",
+            "inode-D2euaX69Fe0Hcik36VT9yT/SDR_ROLE",
+            "inode-SCdAhQeZ0ssSJSeDENzHMc/SDR_COUNTRY",
+            "inode-1lQmxPo9iJurur30uRxZ28/REP_COUNTRY",
+            "inode-UTNixdkdBzt5oMmaM9sQTj/CW_COUNTRY",
+            "inode-TkuqN89V3hpWQmhasV2Aam/CLEAN_COUNTRY",
+            "inode-L3Bfaq7mY1Cpjl2t2z3f89/OWNER_ROLE_OFFICIAL_TITLE",
+            "inode-hePZGXjZcgQDxIt94njeFS/CW_OWNER_ROLE_OFFICIAL_TITLE",
+            "inode-PsN58AUM2Mr28gmk9FuU5p/SFDC_COMMISSION",
+            "inode-xoYB8JludHeum838t76MqC/DASHPASS_COMMISSION",
+            "inode-bKSH2E15O3u14jyejt5muF/NARR",
+            "inode-tvhU0IhfvvZeFG6f223h1m/OPPORTUNITY_NAME",
+            "inode-OvG2ytfWejJMcpqRbrt8SF/OPP_TYPE",
+            "inode-CYp1jdFhQEW4SU1qyWOIqM/ACCOUNT_NAME",
+            "inode-ZwgXfopJP74EDVwfY2UAMD/STORE_NAME",
+            "inode-RStrIAGfmwuQIznSIQTYRN/BUSINESS_NAME",
+            "inode-720NWO1GrSFNvo4Pw7ZONm/DECK_RANK",
+            "inode-3hBh0LJh5CLKPAV93ARTbq/PRIMARY_VERTICAL",
+            "inode-b0e6rxeocWuUsDoXjdVdFH/COUNTRY",
+            "inode-730rCIdSfnzACvGpd7aB3o/STARTING_POINT_ID",
+            "inode-N2uI0FsYcYh4R6Rqh0kxHT/STARTING_POINT",
+            "inode-XTbZpiC8dbPRa5UilRMMzB/SUBMARKET",
+            "inode-1ZZXu7LzNjQai2qiwTsBd9/SUBMARKET_ID",
+            "inode-21QXTPEJpNVT6fonLg5hzB/TOP_MX",
+            "inode-jaOGrkhLVYsTxEWtq7e9WZ/MARKET_MAKER",
+            "inode-mKnlsdyrpA1X5R3Xx88UNk/IS_GNC",
+            "inode-lgVcLMclLyK9zPIQ8FvQOZ/IS_DASHPASS",
+            "inode-27MTQ3UbOiKagHCteIRBWB/IS_PICKUP",
+            "inode-mOsg2e7x8DAXEZz673ufSb/IS_STOREFRONT",
+            "inode-GRb3qcEbT0HSWf82nOoIsY/IS_ALCOHOL",
+            "inode-u8x4NsWkmxyEF4qp6aJkjx/IS_TRIAL",
+            "inode-1dPcSVGvXBcFTkQewUULDb/IS_PROMO",
+            "inode-Q0bfUPMNudgHDdceY4i8zi/IS_ADS",
+            "inode-LVSW4thFOsbywGjizxovFJ/IS_ADS_PROMOS",
+            "inode-84vxnfXg89kiE1dqfLrHWe/PACKAGE_SOLD",
+            "inode-4W2GDQcsCGCtl3JvlvSZFN/NTAM",
+            "inode-jBByPuMr6IAWrtN0siiNzI/INCREMENTAL_SIGN_TAM",
+            "inode-zBC8aj9oruaSL9a5ubqajr/HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+            "inode-AD8b9VmVztp6nWxUCFfTKV/LEAD_LIST_CUSTOMIZED",
+            "inode-YBnu8pyEymCVPycAwuPh1u/TRIAL_PERIOD",
+            "inode-TEcRTYuToO5n0ribFiCcc0/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+            "inode-LgybyvWTWhPYgeF6800JE6/ACTIVATION_BONUS_AMOUNT",
+            "inode-KqGgrWO1ZC97sj7UTjfAhL/PRODUCT_LIST",
+            "inode-t3WPdcNOR8Onml9cUC1S0M/REGION",
+            "inode-tkNT3ytkhlptWXlZFE8gGb/TIER",
+            "inode-tQXIeDohSrgKjo1CsBve8n/SFDC_SOURCE",
+            "inode-rmQ3o1N5Z2MH6q1sRWe6Xb/LAST_ETL_RUN",
+            "inode-R9xyreuNri0lcWX93i1xnr/WEEK_GOAL_ACTIVATIONS",
+            "inode-kLOW8A0iznTPPs04gyH4d2/ROLE_ACTIVATIONS",
+            "inode-WiyXGvUWKaO1PyLhjc5PTS/ACTIVATION_GOAL",
+            "inode-1CUztxjqMQOCcRg0L3bAml/QUARTER_YEAR",
+            "inode-3EuH0KclfxTd1Y6cBADrqZ/COUNTRY",
+            "inode-lr41ki0MpAyWlT7V4gN0bN/COUNTRY (PRESALES_ACTIVE_HC)",
+            "inode-RMmVhOy73BnFcLPgEDovVn/DAYS_OFF",
+            "inode-kQXvNHNSDL9GFagltSaItm/HC",
+            "inode-xUluVELDXqPb4ArfcKzIOT/OWNER_ROLE_OFFICIAL_TITLE (PRESALES_ACTIVE_HC)",
+            "inode-7X5fcVvhxfEAXXKmyB4lMu/QTR (PRESALES_ACTIVE_HC)",
+            "inode-74EvQjbaaywZo3MmWFopzf/QTR_YR (PRESALES_ACTIVE_HC)",
+            "inode-AwvCSKccvvN5vlH89xxLZU/REP_RANK",
+            "inode-7AALvadTlgSkEJolFxLnhr/SALES_MANAGER",
+            "inode-4EVeJ50EagpLILfPWfE2Rq/SALES_OWNER (PRESALES_ACTIVE_HC)",
+            "inode-IClDfq97hNEBV855UOO41p/USER_ID",
+            "inode-B93d2I2BoQoqFhYFZDB2uo/WEEK_OF (PRESALES_ACTIVE_HC)",
+            "inode-vKwIDYyyoitC1ZhMxbBLNg/YR (PRESALES_ACTIVE_HC)",
+            "inode-fzfd7lnlrFdYS0ZAxierMS/BASED",
+            "inode-lXnsHstfKUptK3uj1j3TKn/ORG",
+            "inode-of9DHyFNmGdBcCVfK3ybNS/PRODUCT",
+            "inode-6me4FeTGqzb4wawEPjfvHN/PRODUCT_GOAL",
+            "inode-3Ca1uqhmWsXgKmQZS2m0QN/QTR_YR_PG",
+            "inode-zrn9AgHUx8wYpuPLDmdDRy/ROLE (PRESALE_PRODUCT_GOALS)",
+            "inode-4s03FLyTR9LihG3JtRaXXu/TARGET",
+            "inode-5iGYXbNVQak1PHDtuuLL0M/TEAM",
+            "inode-eNNxNQ8hX8W01FvGievzhW/WEEK_GOAL",
+            "inode-N1fZreTewpouU25skWgki3/WEEK_GOAL_SP",
+            "inode-2yGW0h64FcsyEVL8zSiqYP/INITIATIVE",
+            "inode-VGBQHpHCj20ipEuM2ogTVf/INITIATIVE_GOAL",
+            "inode-tidAS0w1tyX6b5jlfY02hf/QTR_YR_SP",
+            "inode-ELK9MK7YzKhp8nrGocVZMw/ROLE_SP",
+            "inode-rcOcQ7RRpuTMWUBD27JKNT/QTR",
+            "inode-xXMNNKxhKtx2vw94x6uM4A/YR",
+            "inode-GXgGqwjSCLeLWwCRN0kGJO/QTR_YR",
+            "inode-U30JxoYIYMJT1Z6NzoWd4r/COUNTRY",
+            "inode-LmyKg84xW17K7PzzLIqYdG/ROLE",
+            "inode-35LnTtjfDZMsnfxH5Thqxr/CLOSES",
+            "inode-66BZ0cIEHorYkJ2GA4QRdy/NARR",
+            "inode-CONKAYV89IHrLEX9SFyN08/CW_WEEK",
+            "inode-IJWLBNqn0jOBuX2t1APyls/WORKING_DAYS",
+            "inode-NMguRd218xKVQyrIW9BkP6/AHC_GOAL",
+            "inode-6IUiF0QVMimLZiOuE41gGD/CLOSE_PHASING",
+            "inode-KseJxwi4GCb5Ul6A8KofuT/WEEK_OF",
+            "inode-VGW0zRycXdNJbf3r6uFUY6/WEEK_GOAL_SP",
+            "inode-cHU3b0brmJdLeTAOdoqOyL/INITIATIVE",
+            "inode-soTNDjeVs1ni1dzwXqbgaG/INITIATIVE_GOAL",
+            "inode-7MXRhjDL7h3P1tPnKWseiQ/QTR_YR_SP",
+            "inode-6elSG28uB4v7PJmNIEmnZX/ROLE_SP",
+            "inode-VRKC79nb7kbYTnFYZu9hkT/WEEK_GOAL_SP",
+            "inode-d28UUAK6hYpGqiriK8fG20/INITIATIVE",
+            "inode-SueGv0GdUW2ZdwMmxofxxh/INITIATIVE_GOAL",
+            "inode-rKsb1OmUpenkD76MieC5oc/QTR_YR_SP",
+            "inode-kFxYHUNvSQHCnOTyj1aLPo/ROLE_SP"
+          ],
+          "metrics": [
+            {
+              "id": "7ZJXWGQuh0",
+              "formula": "Sum(If([Role] = \"Self Serve\", [Closes], null))",
+              "name": "SSMO Signs - Goals"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "folderId": "57e59735-86b9-40b0-b029-217205406f57"
+}
