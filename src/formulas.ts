@@ -5,6 +5,210 @@
 
 import { sigmaDisplayName } from './sigma-ids.js';
 
+/**
+ * Decode numeric XML character references (&#10;, &#9;, &#xNN;) plus the five
+ * predefined named entities. fast-xml-parser (v4) decodes the named entities in
+ * attribute values but leaves NUMERIC references literal, so Tableau formula
+ * attributes arrive carrying raw `&#10;` newline tokens that break a calc column
+ * (the literal token is parsed as broken syntax). Idempotent on already-decoded
+ * text. Trusted first-party input — no expansion-bomb concern.
+ */
+export function decodeXmlEntities(s: string): string {
+  if (!s || s.indexOf('&') === -1) return s;
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Strip Tableau `//` line comments (to end-of-line) WITHOUT touching `//` that
+ * appears inside a string literal — Tableau formulas embed URLs ("https://…").
+ * String-aware single pass tracking single/double quote state. Tableau has no
+ * block comments in calc fields, so only `//` is handled.
+ */
+export function stripLineComments(s: string): string {
+  if (!s || s.indexOf('//') === -1) return s;
+  let out = '', inS = false, inD = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inS) { out += c; if (c === "'") inS = false; continue; }
+    if (inD) { out += c; if (c === '"') inD = false; continue; }
+    if (c === "'") { inS = true; out += c; continue; }
+    if (c === '"') { inD = true; out += c; continue; }
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; if (i < s.length) out += '\n'; continue; }
+    out += c;
+  }
+  return out;
+}
+
+/**
+ * Convert Tableau `[Field] IN (a, b, c)` / `NOT IN (...)` to a Sigma boolean
+ * chain (Sigma has no IN operator — it silently errors the column / blanks the
+ * chart). `IN` → `([F] = a or [F] = b …)`; `NOT IN` → `([F] <> a and [F] <> b …)`.
+ * The left operand is the bracket-ref (or simple token) immediately preceding
+ * the keyword; values are split on top-level commas so quoted strings with
+ * commas survive. Leaves the expression untouched when the operand can't be
+ * isolated (defensive — never emit a half-rewrite).
+ */
+export function tableauInToSigma(formula: string): string {
+  const re = /(\[[^\]]+\]|[A-Za-z_][\w]*)\s+(not\s+)?in\s*\(/gi;
+  let f = formula, guard = 0;
+  for (let m = re.exec(f); m && guard < 200; m = re.exec(f), guard++) {
+    const operand = m[1];
+    const isNot = !!m[2];
+    const open = m.index + m[0].length - 1; // index of '('
+    // find matching close paren
+    let depth = 0, close = -1;
+    for (let i = open; i < f.length; i++) {
+      if (f[i] === '(') depth++;
+      else if (f[i] === ')') { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close === -1) break;
+    const inner = f.slice(open + 1, close);
+    // split on top-level commas (respect quotes + nested parens)
+    const parts: string[] = []; let buf = '', d = 0, sq = false, dq = false;
+    for (const ch of inner) {
+      if (sq) { buf += ch; if (ch === "'") sq = false; continue; }
+      if (dq) { buf += ch; if (ch === '"') dq = false; continue; }
+      if (ch === "'") { sq = true; buf += ch; continue; }
+      if (ch === '"') { dq = true; buf += ch; continue; }
+      if (ch === '(') { d++; buf += ch; continue; }
+      if (ch === ')') { d--; buf += ch; continue; }
+      if (ch === ',' && d === 0) { parts.push(buf.trim()); buf = ''; continue; }
+      buf += ch;
+    }
+    if (buf.trim()) parts.push(buf.trim());
+    if (!parts.length) continue;
+    const op = isNot ? '<>' : '=';
+    const join = isNot ? ' and ' : ' or ';
+    const chain = '(' + parts.map(p => `${operand} ${op} ${p}`).join(join) + ')';
+    f = f.slice(0, m.index) + chain + f.slice(close + 1);
+    re.lastIndex = m.index + chain.length;
+  }
+  return f;
+}
+
+/**
+ * Convert Tableau text concatenation (`a + b`) to Sigma's `&` operator. Tableau
+ * overloads `+` for both numeric addition and string concatenation; Sigma uses
+ * `&` (or Concat) for text and `+` for numbers ONLY — a text `+` errors the
+ * column. We rewrite a `+` to `&` when an adjacent operand is text-producing: a
+ * string literal, a text-returning function (Coalesce/Text/Left/…), or — when an
+ * `isTextRef` resolver is supplied by the converter (which knows column types) —
+ * a reference to a text column. Numeric `+` is left untouched. Iterates so a
+ * whole chain (`"a" + [x] + "b"`) converts in one call.
+ */
+const _TEXT_FN_RE = /(?:Coalesce|Concat|Text|Left|Right|Mid|Substring|Substr|Upper|Lower|Trim|Replace|MonthName|WeekdayName|DateName|Proper)$/i;
+function _isTextOperand(op: string, isTextRef?: (name: string) => boolean): boolean {
+  let s = op.trim();
+  // Unwrap balanced outer parens: `([CW_COUNTRY])` → `[CW_COUNTRY]`.
+  while (/^\(.*\)$/s.test(s)) {
+    let depth = 0, ok = true;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') depth++;
+      else if (s[i] === ')') { depth--; if (depth === 0 && i < s.length - 1) { ok = false; break; } }
+    }
+    if (!ok || depth !== 0) break;
+    s = s.slice(1, -1).trim();
+  }
+  if (!s) return false;
+  if (/^"(?:[^"\\]|\\.)*"$/.test(s) || /^'(?:[^'\\]|\\.)*'$/.test(s)) return true;   // string literal
+  const ref = s.match(/^\[([^\]\/]+)\]$/);
+  if (ref) return isTextRef ? isTextRef(ref[1]) : false;                              // column ref (type-gated)
+  const fn = s.match(/^([A-Za-z_]+)\s*\(.*\)$/s);                                     // Func(...)
+  if (fn && _TEXT_FN_RE.test(fn[1])) return true;
+  return false;
+}
+export function tableauTextConcatToSigma(formula: string, isTextRef?: (name: string) => boolean): string {
+  if (!formula || formula.indexOf('+') === -1) return formula;
+  // Extract the operand immediately to one side of `+` at position i: a balanced
+  // (...)/Func(...) group, a [ref], a "string", or a bare token. dir -1 = left.
+  const grab = (s: string, i: number, dir: number): string => {
+    let j = i;
+    while (j >= 0 && j < s.length && /\s/.test(s[j])) j += dir;
+    if (j < 0 || j >= s.length) return '';
+    // balanced paren/bracket/string ending (left) or starting (right)
+    const close = dir < 0 ? s[j] : '';
+    if (dir < 0 && (close === ')' || close === ']')) {
+      const open = close === ')' ? '(' : '[', cl = close;
+      let depth = 0, k = j;
+      for (; k >= 0; k--) { if (s[k] === cl) depth++; else if (s[k] === open) { depth--; if (depth === 0) break; } }
+      // include a leading function name
+      let f = k; while (f - 1 >= 0 && /[A-Za-z0-9_]/.test(s[f - 1])) f--;
+      return s.slice(f, j + 1);
+    }
+    if (dir > 0 && (s[j] === '(' || s[j] === '[')) {
+      const open = s[j], cl = open === '(' ? ')' : ']';
+      let depth = 0, k = j;
+      for (; k < s.length; k++) { if (s[k] === open) depth++; else if (s[k] === cl) { depth--; if (depth === 0) break; } }
+      return s.slice(j, k + 1);
+    }
+    if (s[j] === '"' || s[j] === "'") {
+      const q = s[j]; let k = j + dir;
+      while (k >= 0 && k < s.length && s[k] !== q) k += dir;
+      return dir < 0 ? s.slice(k, j + 1) : s.slice(j, k + 1);
+    }
+    // bare token
+    let k = j;
+    while (k >= 0 && k < s.length && /[A-Za-z0-9_.]/.test(s[k])) k += dir;
+    return dir < 0 ? s.slice(k + 1, j + 1) : s.slice(j, k);
+  };
+  let f = formula, changed = true, guard = 0;
+  while (changed && guard++ < 500) {
+    changed = false;
+    for (let i = 0; i < f.length; i++) {
+      if (f[i] !== '+') continue;
+      const left = grab(f, i - 1, -1), right = grab(f, i + 1, +1);
+      if (_isTextOperand(left, isTextRef) || _isTextOperand(right, isTextRef)) {
+        f = f.slice(0, i) + '&' + f.slice(i + 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return f;
+}
+
+/**
+ * Parse a Tableau parameter-driven measure/dimension picker —
+ *   `case [Parameters].[Param N] when 'Signs' then [A] when 'TAM' then sum([B]) [else [C]] end`
+ * — into the Sigma-native equivalent: a control-driven Switch. Returns the param
+ * name, the case map, and a ready Switch formula `Switch([<controlId>], "Signs",
+ * <transA>, "TAM", <transB>, [<transElse>])`. Each result expression is run through
+ * tableauFormulaToSigma; metric references ([Signs - Actuals]) are LEFT intact for
+ * the build layer to inline against the posted model. Returns null if the formula
+ * isn't a parameter case-switch. This is the n4pi.8 measure-picker re-architecture.
+ */
+export function tableauParamSwitchToSigma(
+  formula: string,
+  controlId: string,
+  warnings?: string[],
+): { paramName: string; controlId: string; cases: { when: string; then: string }[]; elseExpr: string | null; switchFormula: string } | null {
+  const f = decodeXmlEntities(stripLineComments(formula)).trim();
+  const head = f.match(/^case\s+\[Parameters?\]\s*\.\s*\[([^\]]+)\]\s+([\s\S]*?)\s*end\s*$/i);
+  if (!head) return null;
+  const paramName = head[1];
+  const body = head[2];
+  const cases: { when: string; then: string }[] = [];
+  // `when <quoted-literal> then <result up to next when/else/end-of-body>`
+  const pairRe = /\bwhen\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s+then\s+([\s\S]*?)(?=\s*\bwhen\b|\s*\belse\b|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pairRe.exec(body))) {
+    const whenVal = m[1].slice(1, -1).replace(/\\(.)/g, '$1');   // strip quotes + unescape
+    const thenSig = tableauFormulaToSigma(m[2].trim(), warnings);
+    cases.push({ when: whenVal, then: thenSig });
+  }
+  if (!cases.length) return null;
+  const elseM = body.match(/\belse\s+([\s\S]*?)$/i);
+  const elseExpr = elseM ? tableauFormulaToSigma(elseM[1].trim(), warnings) : null;
+  const parts = cases.map(c => `"${c.when}", ${c.then}`).join(', ');
+  const switchFormula = `Switch([${controlId}], ${parts}${elseExpr ? `, ${elseExpr}` : ''})`;
+  return { paramName, controlId, cases, elseExpr, switchFormula };
+}
+
 /** Convert bare ALL_CAPS SQL identifier to Sigma display-name column ref [Title Case] */
 export function lookColRef(identifier: string): string {
   return `[${sigmaDisplayName(identifier)}]`;
@@ -301,6 +505,40 @@ export const SIGMA_CHART_ONLY_WINDOW_RE =
 export const TABLEAU_TABLE_CALC_TOKEN_RE =
   /\b(?:WINDOW_[A-Z]+|RUNNING_[A-Z]+|LOOKUP|PREVIOUS_VALUE|RANK(?:_[A-Z]+)?|INDEX|SIZE|TOTAL|FIRST|LAST)\s*\(/;
 
+/** Case-INSENSITIVE subset of the table-calc tokens whose names no Sigma function
+ *  shares — so a lowercase `running_sum(` / `window_sum(` (some .twb files store
+ *  table calcs lower-case) is still caught. Kept separate from the case-sensitive
+ *  regex above so ambiguous names (Rank/Lookup/First/Last/Index/Total) don't
+ *  false-positive on legitimately-converted Sigma output. */
+export const TABLEAU_TABLE_CALC_TOKEN_CI_RE =
+  /\b(?:WINDOW_[A-Za-z]+|RUNNING_[A-Za-z]+|PREVIOUS_VALUE)\s*\(/i;
+
+/** A leftover Level-of-Detail expression embedded inside a larger formula —
+ *  `{ FIXED [d] : agg }`, `{ INCLUDE … }`, `{ EXCLUDE … }`. The top-level LOD
+ *  path converts a whole-formula LOD, but a NESTED one survives translation and
+ *  would silently break the column in a DM. */
+export const TABLEAU_LOD_LEFTOVER_RE = /\{\s*(?:FIXED|INCLUDE|EXCLUDE)\b/i;
+
+/** True when a (already-translated) formula still carries an untranslatable
+ *  table-calc / LOD / no-equivalent fragment that must NOT be emitted as a DM
+ *  calc column or metric (it silently errors there). Routes to workbookPatterns /
+ *  loud-skip instead. Covers leftover comment markers the translator emits for
+ *  un-mappable constructs. */
+export function formulaHasUntranslatableFragment(f: string): boolean {
+  if (!f) return false;
+  if (TABLEAU_LOD_LEFTOVER_RE.test(f)
+    || TABLEAU_TABLE_CALC_TOKEN_RE.test(f)
+    || TABLEAU_TABLE_CALC_TOKEN_CI_RE.test(f)
+    || /\/\*\s*(?:LOD|table calc|no Sigma equivalent)/.test(f)) return true;
+  // Leftover SQL CASE syntax (Sigma has no CASE/WHEN/THEN/END — only If/Switch).
+  // A `then`/`end`/`when` keyword surviving translation means tableauCaseToSigma
+  // could not claim a (often malformed/nested) CASE; emitting it errors the column.
+  // Mask string literals + [bracket refs] first so a column/value containing those
+  // letters (e.g. [Month End], "trend") never false-positives.
+  const masked = f.replace(/"[^"]*"|'[^']*'|\[[^\]]*\]/g, ' ');
+  return /\b(?:then|end|when)\b/i.test(masked);
+}
+
 const _TC_AGG_MAP: Record<string, string> = {
   SUM: 'Sum', AVG: 'Avg', MIN: 'Min', MAX: 'Max', COUNT: 'Count',
   COUNTD: 'CountDistinct', MEDIAN: 'Median', STDEV: 'StdDev', VAR: 'Variance',
@@ -479,7 +717,9 @@ function tableauCaseToSigma(f: string): string {
 /** Convert a Tableau calculated field formula to Sigma formula syntax */
 export function tableauFormulaToSigma(formula: string, warnings?: string[]): string {
   if (!formula || !formula.trim()) return '';
-  let f = formula.trim();
+  // Decode numeric XML entities (fxp leaves &#10; literal) and strip //comments
+  // BEFORE any pattern matching, so the rest of the translator sees clean text.
+  let f = stripLineComments(decodeXmlEntities(formula)).trim();
 
   // LOD expressions
   if (/^\s*\{/.test(f)) {
@@ -535,6 +775,10 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   // ATTR([x]) → just [x]
   f = f.replace(/\bATTR\s*\(([^)]+)\)/gi, '$1');
 
+  // [Field] IN (…) → or-chain (Sigma has no IN operator). Run before If/CASE
+  // lowering so an `If([X] in (…), …)` condition is already a boolean chain.
+  f = tableauInToSigma(f);
+
   f = tableauIfToSigma(f);
   f = f.replace(/\bIIF\s*\(/gi, 'If(');
   f = tableauCaseToSigma(f);
@@ -566,6 +810,9 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     }
   });
   f = f.replace(/\bDATETRUNC\s*\(\s*'([^']+)'\s*,/gi, 'DateTrunc("$1",');
+  // Tableau DATETRUNC('week', date, 'monday') carries a start-of-week 3rd arg that
+  // Sigma's DateTrunc (unit, date) has no slot for — strip the weekday literal.
+  f = f.replace(/,\s*["'](?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)["']\s*\)/gi, ')');
   f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
   f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
 
@@ -609,6 +856,10 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
     return '[' + sigmaDisplayName(colName) + ']';
   });
+
+  // Tableau text concat `+` → Sigma `&` (literal / text-function operands only;
+  // the converter re-runs this with column-type info for ref-only chains).
+  f = tableauTextConcatToSigma(f);
 
   // Loud (never silent) flag for table-calc tokens embedded inside larger
   // expressions that the anchored mapper could not claim — the leftover token
