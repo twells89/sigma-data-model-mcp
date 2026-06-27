@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook version='18.1'>
+  <datasources>
+    <datasource caption='Sales' inline='true' name='federated.sales01' version='18.1'>
+      <connection class='snowflake' dbname='CSA' schema='TJ' server='x.snowflakecomputing.com'>
+        <relation name='BLEND_SALES' table='[CSA].[TJ].[BLEND_SALES]' type='table' />
+        <metadata-records>
+          <metadata-record class='column'>
+            <remote-name>REGION</remote-name><local-name>[Region]</local-name>
+            <parent-name>[BLEND_SALES]</parent-name><local-type>string</local-type>
+          </metadata-record>
+          <metadata-record class='measure'>
+            <remote-name>SALES</remote-name><local-name>[Sales]</local-name>
+            <parent-name>[BLEND_SALES]</parent-name><local-type>real</local-type><aggregation>Sum</aggregation>
+          </metadata-record>
+        </metadata-records>
+      </connection>
+      <column caption='Sales vs Target' datatype='real' name='[Calculation_diff01]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([Sales])-SUM([federated.targets02].[Sales Target])' />
+      </column>
+      <column caption='Running Sales' datatype='real' name='[Calc_RunSales]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='RUNNING_SUM(SUM([Sales]))' />
+      </column>
+      <column caption='Pct Of Total Sales' datatype='real' name='[Calc_PctTot]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([Sales]) / TOTAL(SUM([Sales]))' />
+      </column>
+    </datasource>
+    <datasource caption='Targets' inline='true' name='federated.targets02' version='18.1'>
+      <connection class='snowflake' dbname='CSA' schema='TJ' server='x.snowflakecomputing.com'>
+        <relation name='BLEND_TARGETS' table='[CSA].[TJ].[BLEND_TARGETS]' type='table' />
+        <metadata-records>
+          <metadata-record class='column'>
+            <remote-name>REGION</remote-name><local-name>[Region]</local-name>
+            <parent-name>[BLEND_TARGETS]</parent-name><local-type>string</local-type>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>QUARTER</remote-name><local-name>[Quarter]</local-name>
+            <parent-name>[BLEND_TARGETS]</parent-name><local-type>string</local-type>
+          </metadata-record>
+          <metadata-record class='measure'>
+            <remote-name>SALES_TARGET</remote-name><local-name>[Sales Target]</local-name>
+            <parent-name>[BLEND_TARGETS]</parent-name><local-type>integer</local-type><aggregation>Sum</aggregation>
+          </metadata-record>
+        </metadata-records>
+      </connection>
+    </datasource>
+  </datasources>
+  <datasource-relationships>
+    <datasource-relationship source='federated.sales01' target='federated.targets02'>
+      <column-mapping>
+        <map key='[federated.sales01].[none:Region:nk]' value='[federated.targets02].[none:Region:nk]' />
+      </column-mapping>
+    </datasource-relationship>
+  </datasource-relationships>
+  <worksheets>
+    <worksheet name='Sales vs Target by Region'>
+      <table><view>
+        <datasources>
+          <datasource caption='Sales' name='federated.sales01' />
+          <datasource caption='Targets' name='federated.targets02' />
+        </datasources>
+      </view></table>
+    </worksheet>
+  </worksheets>
+</workbook>

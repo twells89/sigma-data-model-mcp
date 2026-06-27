@@ -1262,7 +1262,35 @@ export function convertTableauToSigma(
   // build ONE merged model (secondary pre-grouped to link grain, many-to-one
   // lookup) instead of silently converting only the first datasource.
   const blendResult = tryBuildBlendModel(parsed, datasources, dbOverride, schOverride, connectionId || '<CONNECTION_ID>');
-  if (blendResult) return blendResult;
+  if (blendResult) {
+    // The blend path returns BEFORE the single-datasource calc/pattern processor
+    // below, so a NATIVE-blend workbook never emits its param measure-pickers,
+    // window/LOD/percent-of-total chart-context patterns or RLS (bead y9rd.7 —
+    // empirically: 0 workbookPatterns on a blend that carries them). Re-run the
+    // single-DS path on a blend-stripped copy (tryBuildBlendModel then returns
+    // null → the full calc processor runs) and merge its workbookPatterns +
+    // security into the blend result. Best-effort: harvesting must never fail
+    // the blend conversion. Mirrors the synth-twb-e2e two-pass workaround,
+    // internalized so every caller benefits.
+    try {
+      const stripped = xmlContent.replace(/<datasource-relationships>[\s\S]*?<\/datasource-relationships>/g, '');
+      if (stripped !== xmlContent) {
+        const single = convertTableauToSigma(stripped, options);
+        // Harvested patterns reference the discarded single-DS model's elements;
+        // drop stale element pointers (they don't exist in the blend model).
+        const harvest = (single.workbookPatterns || []).map(({ elementId, elementName, ...rest }: any) => rest);
+        const base = blendResult.workbookPatterns || [];
+        const merged = [...base, ...harvest.filter((p: any) => !base.some(b => b.name === p.name && b.kind === p.kind))];
+        if (merged.length) blendResult.workbookPatterns = merged;
+        // NB: RLS/security harvesting is intentionally NOT merged here — a single-DS
+        // security rule's elementId points at the discarded model, and applying RLS
+        // to the right blend element is a separate element-targeting concern.
+        const n = merged.length - base.length;
+        if (n > 0) blendResult.warnings.push(`ℹ Native-blend workbook: recovered ${n} chart-context pattern(s) (param-switch/window/LOD/percent-of-total) from the primary datasource that the blend path would otherwise drop — reported in result.workbookPatterns (bead y9rd.7).`);
+      }
+    } catch { /* harvesting is best-effort — never block the blend conversion */ }
+    return blendResult;
+  }
 
   const dsIdx = Math.min(datasourceIndex, datasources.length - 1);
   const ds = datasources[dsIdx];
