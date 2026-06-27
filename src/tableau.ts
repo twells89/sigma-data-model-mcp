@@ -742,11 +742,37 @@ export function collapseCustomSqlBlend(
     ctes.push(`${cte} AS (\n  SELECT\n${subSel.join(',\n')}\n  FROM (\n${sec.source.statement}\n) ${_qid(`__src_${i}`)}\n  GROUP BY ${grpBy}\n)`);
     joins.push(`LEFT JOIN ${cte} ON ` +
       keyPairs.map((p: any) => `__f.${_qid(p.factSql)} = ${cte}.${_qid(p.secSql)}`).join(' AND '));
+    // DE-FAN secondary MEASURES (fan-out fix): the CTE aggregates each secondary
+    // to its link grain (one row per key), but the LEFT JOIN re-broadcasts that
+    // single value onto EVERY fact row in the link group — so Sum([secondary
+    // measure]) over a cell would multiply by the fact-row count (a coarse-grain
+    // goal/target/budget reads ~0 against fact-grain revenue). Spread each
+    // numeric secondary measure evenly across its link-group rows
+    // (value / COUNT(*) OVER (PARTITION BY link keys)) so Sum restores exactly
+    // one per-group value at any display grain ⊇ the link grain — the canonical
+    // Sigma blend semantic (memory: sigma-blend-pattern). Keys and text/dim
+    // columns (MAX-aggregated) pass through unchanged so grouping/display works.
+    const partitionExpr = keyPairs.length
+      ? `PARTITION BY ${keyPairs.map((p: any) => `__f.${_qid(p.factSql)}`).join(', ')}`
+      : '';
+    let deFanned = 0;
     // Emit ALL secondary columns — including the join keys (available in the CTE
     // at link grain). Tableau worksheets group by the secondary's key field
     // (e.g. "Role" → the goal table's ROLE), so dropping it leaves those chart
     // refs unresolvable even though the value equals the fact-side key.
-    for (const c of (sec.columns || [])) emit(`${cte}.${_qid(sqlName(c.id))}`, c);
+    for (const c of (sec.columns || [])) {
+      const sn = sqlName(c.id);
+      const isKey = keySecNames.has(sn);
+      const isMeasure = !isKey && _isNumericType(colTypeById[c.id]);
+      const ref = (isMeasure && partitionExpr)
+        ? `${cte}.${_qid(sn)} / NULLIF(COUNT(*) OVER (${partitionExpr}), 0)`
+        : `${cte}.${_qid(sn)}`;
+      if (isMeasure && partitionExpr) deFanned++;
+      emit(ref, c);
+    }
+    if (deFanned > 0) {
+      warnings.push(`ℹ Blend secondary "${sec.name || cte}": ${deFanned} measure(s) de-fanned (value ÷ link-group row count) so Sum aggregates once per link key — coarse-grain goal/target measures now read correctly against fact-grain measures.`);
+    }
   });
 
   const statement =
