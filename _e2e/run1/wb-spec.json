@@ -14,14 +14,14 @@
           "visibleAsSource": false,
           "source": {
             "kind": "data-model",
-            "dataModelId": "de5c14ff-09f1-4ca0-ad94-b8af68875ccc",
-            "elementId": "PpM3C8ylhg"
+            "dataModelId": "0afc947d-9f0e-4557-b7ea-a70607ca0248",
+            "elementId": "NixMfFN5--"
           },
           "columns": [
             {
-              "id": "m-qtr-yr-sp-3",
-              "name": "QTR_YR_SP_3",
-              "formula": "[presales_cw_level/QTR_YR_SP_3]"
+              "id": "m-role-sp-3",
+              "name": "ROLE_SP_3",
+              "formula": "[presales_cw_level/ROLE_SP_3]"
             },
             {
               "id": "m-week-of",
@@ -404,6 +404,11 @@
               "formula": "[presales_cw_level/WEEK_GOAL_ACTIVATIONS]"
             },
             {
+              "id": "m-role-activations",
+              "name": "ROLE_ACTIVATIONS",
+              "formula": "[presales_cw_level/ROLE_ACTIVATIONS]"
+            },
+            {
               "id": "m-activation-goal",
               "name": "ACTIVATION_GOAL",
               "formula": "[presales_cw_level/ACTIVATION_GOAL]"
@@ -419,6 +424,11 @@
               "formula": "[presales_cw_level/COUNTRY_2]"
             },
             {
+              "id": "m-country-3",
+              "name": "COUNTRY_3",
+              "formula": "[presales_cw_level/COUNTRY_3]"
+            },
+            {
               "id": "m-days-off",
               "name": "DAYS_OFF",
               "formula": "[presales_cw_level/DAYS_OFF]"
@@ -429,9 +439,19 @@
               "formula": "[presales_cw_level/HC]"
             },
             {
+              "id": "m-owner-role-official-title-2",
+              "name": "OWNER_ROLE_OFFICIAL_TITLE_2",
+              "formula": "[presales_cw_level/OWNER_ROLE_OFFICIAL_TITLE_2]"
+            },
+            {
               "id": "m-qtr-2",
               "name": "QTR_2",
               "formula": "[presales_cw_level/QTR_2]"
+            },
+            {
+              "id": "m-qtr-yr-2",
+              "name": "QTR_YR_2",
+              "formula": "[presales_cw_level/QTR_YR_2]"
             },
             {
               "id": "m-rep-rank",
@@ -489,6 +509,11 @@
               "formula": "[presales_cw_level/QTR_YR_PG]"
             },
             {
+              "id": "m-role",
+              "name": "ROLE",
+              "formula": "[presales_cw_level/ROLE]"
+            },
+            {
               "id": "m-target",
               "name": "TARGET",
               "formula": "[presales_cw_level/TARGET]"
@@ -497,6 +522,11 @@
               "id": "m-team",
               "name": "TEAM",
               "formula": "[presales_cw_level/TEAM]"
+            },
+            {
+              "id": "m-week-goal",
+              "name": "WEEK_GOAL",
+              "formula": "[presales_cw_level/WEEK_GOAL]"
             },
             {
               "id": "m-week-goal-sp",
@@ -519,6 +549,11 @@
               "formula": "[presales_cw_level/QTR_YR_SP]"
             },
             {
+              "id": "m-role-sp",
+              "name": "ROLE_SP",
+              "formula": "[presales_cw_level/ROLE_SP]"
+            },
+            {
               "id": "m-qtr-3",
               "name": "QTR_3",
               "formula": "[presales_cw_level/QTR_3]"
@@ -529,6 +564,21 @@
               "formula": "[presales_cw_level/YR_3]"
             },
             {
+              "id": "m-qtr-yr-3",
+              "name": "QTR_YR_3",
+              "formula": "[presales_cw_level/QTR_YR_3]"
+            },
+            {
+              "id": "m-country-4",
+              "name": "COUNTRY_4",
+              "formula": "[presales_cw_level/COUNTRY_4]"
+            },
+            {
+              "id": "m-role-2",
+              "name": "ROLE_2",
+              "formula": "[presales_cw_level/ROLE_2]"
+            },
+            {
               "id": "m-closes",
               "name": "CLOSES",
               "formula": "[presales_cw_level/CLOSES]"
@@ -537,6 +587,11 @@
               "id": "m-narr-2",
               "name": "NARR_2",
               "formula": "[presales_cw_level/NARR_2]"
+            },
+            {
+              "id": "m-cw-week-2",
+              "name": "CW_WEEK_2",
+              "formula": "[presales_cw_level/CW_WEEK_2]"
             },
             {
               "id": "m-working-days",
@@ -579,6 +634,11 @@
               "formula": "[presales_cw_level/QTR_YR_SP_2]"
             },
             {
+              "id": "m-role-sp-2",
+              "name": "ROLE_SP_2",
+              "formula": "[presales_cw_level/ROLE_SP_2]"
+            },
+            {
               "id": "m-week-goal-sp-3",
               "name": "WEEK_GOAL_SP_3",
               "formula": "[presales_cw_level/WEEK_GOAL_SP_3]"
@@ -594,13 +654,18 @@
               "formula": "[presales_cw_level/INITIATIVE_GOAL_3]"
             },
             {
+              "id": "m-qtr-yr-sp-3",
+              "name": "QTR_YR_SP_3",
+              "formula": "[presales_cw_level/QTR_YR_SP_3]"
+            },
+            {
               "id": "m-merchant-close-date",
               "name": "MERCHANT_CLOSE_DATE",
               "formula": "[presales_cw_level/MERCHANT_CLOSE_DATE]"
             }
           ],
           "order": [
-            "m-qtr-yr-sp-3",
+            "m-role-sp-3",
             "m-week-of",
             "m-cw-week",
             "m-qtr",
@@ -677,12 +742,16 @@
             "m-sfdc-source",
             "m-last-etl-run",
             "m-week-goal-activations",
+            "m-role-activations",
             "m-activation-goal",
             "m-quarter-year",
             "m-country-2",
+            "m-country-3",
             "m-days-off",
             "m-hc",
+            "m-owner-role-official-title-2",
             "m-qtr-2",
+            "m-qtr-yr-2",
             "m-rep-rank",
             "m-sales-manager",
             "m-sales-owner-2",
@@ -694,16 +763,23 @@
             "m-product",
             "m-product-goal",
             "m-qtr-yr-pg",
+            "m-role",
             "m-target",
             "m-team",
+            "m-week-goal",
             "m-week-goal-sp",
             "m-initiative",
             "m-initiative-goal",
             "m-qtr-yr-sp",
+            "m-role-sp",
             "m-qtr-3",
             "m-yr-3",
+            "m-qtr-yr-3",
+            "m-country-4",
+            "m-role-2",
             "m-closes",
             "m-narr-2",
+            "m-cw-week-2",
             "m-working-days",
             "m-ahc-goal",
             "m-close-phasing",
@@ -712,9 +788,11 @@
             "m-initiative-2",
             "m-initiative-goal-2",
             "m-qtr-yr-sp-2",
+            "m-role-sp-2",
             "m-week-goal-sp-3",
             "m-initiative-3",
             "m-initiative-goal-3",
+            "m-qtr-yr-sp-3",
             "m-merchant-close-date"
           ]
         }
@@ -728,189 +806,6 @@
           "id": "title-activations",
           "kind": "text",
           "body": "# <span style=\"color: #FFFFFF\">Activations</span>"
-        },
-        {
-          "id": "el-total-org-_activations",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-total-org-_activations-row-activations-by-team",
-              "name": "Activations by Team",
-              "formula": "[Master/Activations by Team]"
-            },
-            {
-              "id": "p-el-total-org-_activations-row-role-activations",
-              "name": "Role Activations",
-              "formula": "[Master/Role Activations]"
-            },
-            {
-              "id": "p-el-total-org-_activations-col-week-goal-activations",
-              "name": "Week Goal Activations",
-              "formula": "[Master/Week Goal Activations]"
-            },
-            {
-              "id": "p-el-total-org-_activations-value-activation_goal",
-              "name": "ACTIVATION_GOAL",
-              "formula": "Sum([Master/ACTIVATION_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-total-org-_activations-value-calculation_6190408836544167938",
-              "name": "Activation Goal (via param)",
-              "formula": "Sum([Master/Calculation_6190408836544167938])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-total-org-_activations-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.1f",
-                "currencySymbol": "$"
-              }
-            }
-          ],
-          "values": [
-            "p-el-total-org-_activations-value-activation_goal",
-            "p-el-total-org-_activations-value-calculation_6190408836544167938",
-            "p-el-total-org-_activations-value-incremental_sign_tam"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-total-org-_activations-row-activations-by-team"
-            },
-            {
-              "id": "p-el-total-org-_activations-row-role-activations"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-total-org-_activations-col-week-goal-activations"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-top-mx-activations",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-top-mx-activations-row-team-top-mx-activations-tracking",
-              "name": "Team - Top Mx Activations Tracking",
-              "formula": "[Master/Team - Top Mx Activations Tracking]"
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-row-role_sp-custom-sql-query2-",
-              "name": "ROLE_SP (Custom SQL Query2)",
-              "formula": "[Master/ROLE_SP (Custom SQL Query2)]"
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-col-week_goal_sp-custom-sql-query2-",
-              "name": "WEEK_GOAL_SP (Custom SQL Query2)",
-              "formula": "[Master/WEEK_GOAL_SP (Custom SQL Query2)]"
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-value-top-mx-copy-_4245346387502661635",
-              "name": "Top Mx (copy)_4245346387502661635",
-              "formula": "Sum([Master/Top Mx (copy)_4245346387502661635])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-value-top-mx-goal-copy-_4245346387502661636",
-              "name": "Top Mx Goal (copy)_4245346387502661636",
-              "formula": "Sum([Master/Top Mx Goal (copy)_4245346387502661636])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-selection-top-mx-activations-value-calculation_3783938539825639424",
-            "p-el-selection-top-mx-activations-value-top-mx-copy-_4245346387502661635",
-            "p-el-selection-top-mx-activations-value-top-mx-goal-copy-_4245346387502661636"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-top-mx-activations-row-team-top-mx-activations-tracking"
-            },
-            {
-              "id": "p-el-selection-top-mx-activations-row-role_sp-custom-sql-query2-"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-top-mx-activations-col-week_goal_sp-custom-sql-query2-"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-tiers-activations",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-tiers-activations-row-t4-5-activations-by-team",
-              "name": "T4-5 Activations by Team",
-              "formula": "[Master/T4-5 Activations by Team]"
-            },
-            {
-              "id": "p-el-selection-tiers-activations-row-role_sp-custom-sql-query2-",
-              "name": "ROLE_SP (Custom SQL Query2)",
-              "formula": "[Master/ROLE_SP (Custom SQL Query2)]"
-            },
-            {
-              "id": "p-el-selection-tiers-activations-col-week_goal_sp-custom-sql-query2-",
-              "name": "WEEK_GOAL_SP (Custom SQL Query2)",
-              "formula": "[Master/WEEK_GOAL_SP (Custom SQL Query2)]"
-            }
-          ],
-          "values": [],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-tiers-activations-row-t4-5-activations-by-team"
-            },
-            {
-              "id": "p-el-selection-tiers-activations-row-role_sp-custom-sql-query2-"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-tiers-activations-col-week_goal_sp-custom-sql-query2-"
-            }
-          ]
         }
       ]
     },
@@ -922,226 +817,6 @@
           "id": "title-activations-details",
           "kind": "text",
           "body": "# <span style=\"color: #FFFFFF\">Activations Details</span>"
-        },
-        {
-          "id": "el-activations-deep-dive",
-          "kind": "pivot-table",
-          "name": "Activations Deep Dive",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-activations-deep-dive-row-activation_week",
-              "name": "Activation_Week",
-              "formula": "[Master/Activation_Week]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-activation-date",
-              "name": "Activation Date",
-              "formula": "[Master/Activation Date]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-store_id",
-              "name": "STORE_ID",
-              "formula": "[Master/STORE_ID]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-wo-number",
-              "name": "WO Number",
-              "formula": "[Master/WO Number]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-sales-owner-copy-",
-              "name": "Sales Owner (copy)",
-              "formula": "[Master/Sales Owner (copy)]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-calculation_6622965475636920323",
-              "name": "Top Mx",
-              "formula": "Sum([Master/Calculation_6622965475636920323])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-is_alcohol",
-              "name": "IS_ALCOHOL",
-              "formula": "Sum([Master/IS_ALCOHOL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-is_dashpass",
-              "name": "IS_DASHPASS",
-              "formula": "Sum([Master/IS_DASHPASS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-is_holdout",
-              "name": "IS_HOLDOUT",
-              "formula": "Sum([Master/IS_HOLDOUT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-is_pickup",
-              "name": "IS_PICKUP",
-              "formula": "Sum([Master/IS_PICKUP])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-is_storefront",
-              "name": "IS_STOREFRONT",
-              "formula": "Sum([Master/IS_STOREFRONT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-ntam",
-              "name": "NTAM",
-              "formula": "Sum([Master/NTAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-value-top-mx-copy-_5850457434446196736",
-              "name": "Top Mx (copy)_5850457434446196736",
-              "formula": "Sum([Master/Top Mx (copy)_5850457434446196736])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-activations-deep-dive-value-calculation_6622965475636920323",
-            "p-el-activations-deep-dive-value-incremental_sign_tam",
-            "p-el-activations-deep-dive-value-is_alcohol",
-            "p-el-activations-deep-dive-value-is_dashpass",
-            "p-el-activations-deep-dive-value-is_holdout",
-            "p-el-activations-deep-dive-value-is_pickup",
-            "p-el-activations-deep-dive-value-is_storefront",
-            "p-el-activations-deep-dive-value-ntam",
-            "p-el-activations-deep-dive-value-sfdc_commission",
-            "p-el-activations-deep-dive-value-top-mx-copy-_5850457434446196736"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-activations-deep-dive-row-activation_week"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-activation-date"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-account-name"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-store_id"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-wo-id"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-wo-number"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-opp-url"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-deck-rank"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-sales-owner-copy-"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-cw-owner-role-official-title"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-cw-country"
-            },
-            {
-              "id": "p-el-activations-deep-dive-row-manager-name"
-            }
-          ],
-          "columnsBy": []
         }
       ]
     },
@@ -1170,13 +845,13 @@
             },
             {
               "id": "p-el-avg-days-off-by-team-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-avg-days-off-by-team-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-avg-days-off-by-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-avg-days-off-by-team-value-calculation_6492009266119520260",
@@ -1211,90 +886,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-avg-days-off-by-team-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-bis-calculation-detail",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-bis-calculation-detail-row-vendor-v-onshore",
-              "name": "Vendor v Onshore",
-              "formula": "[Master/Vendor v Onshore]"
-            },
-            {
-              "id": "p-el-bis-calculation-detail-col-week-of-presales-active-hc-",
-              "name": "Week Of (Presales Active Hc)",
-              "formula": "[Master/Week Of (Presales Active Hc)]"
-            },
-            {
-              "id": "p-el-bis-calculation-detail-value-working_days",
-              "name": "WORKING_DAYS",
-              "formula": "Avg([Master/WORKING_DAYS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-bis-calculation-detail-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-bis-calculation-detail-value-days_off",
-              "name": "DAYS_OFF",
-              "formula": "Sum([Master/DAYS_OFF])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-bis-calculation-detail-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-bis-calculation-detail-value-calculation_2692871136769552388",
-              "name": "sum([Days Off])/avg([Working Days])",
-              "formula": "Sum([Master/DAYS_OFF])/Avg([Master/WORKING_DAYS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-bis-calculation-detail-value-working_days",
-            "p-el-bis-calculation-detail-value-ahc_goal",
-            "p-el-bis-calculation-detail-value-days_off",
-            "p-el-bis-calculation-detail-value-hc",
-            "p-el-bis-calculation-detail-value-calculation_2692871136769552388"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-bis-calculation-detail-row-vendor-v-onshore"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-bis-calculation-detail-col-week-of-presales-active-hc-"
+              "id": "p-el-avg-days-off-by-team-col-week_of"
             }
           ]
         }
@@ -1308,474 +900,6 @@
           "id": "title-cw-deep-dive",
           "kind": "text",
           "body": "# <span style=\"color: #FFFFFF\">CW Deep Dive</span>"
-        },
-        {
-          "id": "el-cw-view",
-          "kind": "pivot-table",
-          "name": "CW View",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-cw-view-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-cw-view-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-cw-view-row-calculation_573927491580395521-nk-1",
-              "name": "Calculation_573927491580395521:nk:1",
-              "formula": "[Master/Calculation_573927491580395521:nk:1]"
-            },
-            {
-              "id": "p-el-cw-view-row-account_id",
-              "name": "ACCOUNT_ID",
-              "formula": "[Master/ACCOUNT_ID]"
-            },
-            {
-              "id": "p-el-cw-view-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
-            },
-            {
-              "id": "p-el-cw-view-row-store_id",
-              "name": "STORE_ID",
-              "formula": "[Master/STORE_ID]"
-            },
-            {
-              "id": "p-el-cw-view-row-wo-number",
-              "name": "WO Number",
-              "formula": "[Master/WO Number]"
-            },
-            {
-              "id": "p-el-cw-view-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
-            },
-            {
-              "id": "p-el-cw-view-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-cw-view-row-opportunity-id",
-              "name": "Opportunity Id",
-              "formula": "[Master/Opportunity Id]"
-            },
-            {
-              "id": "p-el-cw-view-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-cw-view-row-sales-owner-copy-",
-              "name": "Sales Owner (copy)",
-              "formula": "[Master/Sales Owner (copy)]"
-            },
-            {
-              "id": "p-el-cw-view-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-cw-view-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-cw-view-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-cw-view-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
-            },
-            {
-              "id": "p-el-cw-view-row-top-mx",
-              "name": "Top Mx",
-              "formula": "[Master/Top Mx]"
-            },
-            {
-              "id": "p-el-cw-view-row-tier",
-              "name": "TIER",
-              "formula": "[Master/TIER]"
-            },
-            {
-              "id": "p-el-cw-view-row-sp-top-mx-copy-_5850457434446196736",
-              "name": "SP: Top Mx (copy)_5850457434446196736",
-              "formula": "[Master/SP: Top Mx (copy)_5850457434446196736]"
-            },
-            {
-              "id": "p-el-cw-view-value-calculation_6622965475636920323",
-              "name": "Top Mx",
-              "formula": "Sum([Master/Calculation_6622965475636920323])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-is_dashpass",
-              "name": "IS_DASHPASS",
-              "formula": "Sum([Master/IS_DASHPASS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-is_pickup",
-              "name": "IS_PICKUP",
-              "formula": "Sum([Master/IS_PICKUP])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-is_storefront",
-              "name": "IS_STOREFRONT",
-              "formula": "Sum([Master/IS_STOREFRONT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-top-mx-copy-_5850457434446196736",
-              "name": "Top Mx (copy)_5850457434446196736",
-              "formula": "Sum([Master/Top Mx (copy)_5850457434446196736])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-value-tier-copy-_4245346387496407042",
-              "name": "TIER (copy)_4245346387496407042",
-              "formula": "Sum([Master/TIER (copy)_4245346387496407042])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-cw-view-value-calculation_6622965475636920323",
-            "p-el-cw-view-value-incremental_sign_tam",
-            "p-el-cw-view-value-is_dashpass",
-            "p-el-cw-view-value-is_pickup",
-            "p-el-cw-view-value-is_storefront",
-            "p-el-cw-view-value-sfdc_commission",
-            "p-el-cw-view-value-top-mx-copy-_5850457434446196736",
-            "p-el-cw-view-value-tier-copy-_4245346387496407042"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-cw-view-row-week-of-cw"
-            },
-            {
-              "id": "p-el-cw-view-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-cw-view-row-calculation_573927491580395521-nk-1"
-            },
-            {
-              "id": "p-el-cw-view-row-account_id"
-            },
-            {
-              "id": "p-el-cw-view-row-account-name"
-            },
-            {
-              "id": "p-el-cw-view-row-store_id"
-            },
-            {
-              "id": "p-el-cw-view-row-wo-number"
-            },
-            {
-              "id": "p-el-cw-view-row-wo-id"
-            },
-            {
-              "id": "p-el-cw-view-row-opp-url"
-            },
-            {
-              "id": "p-el-cw-view-row-opportunity-id"
-            },
-            {
-              "id": "p-el-cw-view-row-deck-rank"
-            },
-            {
-              "id": "p-el-cw-view-row-sales-owner-copy-"
-            },
-            {
-              "id": "p-el-cw-view-row-cw-owner-role-official-title"
-            },
-            {
-              "id": "p-el-cw-view-row-cw-country"
-            },
-            {
-              "id": "p-el-cw-view-row-manager-name"
-            },
-            {
-              "id": "p-el-cw-view-row-sdr"
-            },
-            {
-              "id": "p-el-cw-view-row-top-mx"
-            },
-            {
-              "id": "p-el-cw-view-row-tier"
-            },
-            {
-              "id": "p-el-cw-view-row-sp-top-mx-copy-_5850457434446196736"
-            }
-          ],
-          "columnsBy": []
-        },
-        {
-          "id": "el-activations-deep-dive-cw-deep-dive",
-          "kind": "pivot-table",
-          "name": "Activations Deep Dive",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation_week",
-              "name": "Activation_Week",
-              "formula": "[Master/Activation_Week]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation-date",
-              "name": "Activation Date",
-              "formula": "[Master/Activation Date]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-store_id",
-              "name": "STORE_ID",
-              "formula": "[Master/STORE_ID]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-number",
-              "name": "WO Number",
-              "formula": "[Master/WO Number]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-sales-owner-copy-",
-              "name": "Sales Owner (copy)",
-              "formula": "[Master/Sales Owner (copy)]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-calculation_6622965475636920323",
-              "name": "Top Mx",
-              "formula": "Sum([Master/Calculation_6622965475636920323])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-is_alcohol",
-              "name": "IS_ALCOHOL",
-              "formula": "Sum([Master/IS_ALCOHOL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-is_dashpass",
-              "name": "IS_DASHPASS",
-              "formula": "Sum([Master/IS_DASHPASS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-is_holdout",
-              "name": "IS_HOLDOUT",
-              "formula": "Sum([Master/IS_HOLDOUT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-is_pickup",
-              "name": "IS_PICKUP",
-              "formula": "Sum([Master/IS_PICKUP])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-is_storefront",
-              "name": "IS_STOREFRONT",
-              "formula": "Sum([Master/IS_STOREFRONT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-ntam",
-              "name": "NTAM",
-              "formula": "Sum([Master/NTAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-value-top-mx-copy-_5850457434446196736",
-              "name": "Top Mx (copy)_5850457434446196736",
-              "formula": "Sum([Master/Top Mx (copy)_5850457434446196736])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-activations-deep-dive-cw-deep-dive-value-calculation_6622965475636920323",
-            "p-el-activations-deep-dive-cw-deep-dive-value-incremental_sign_tam",
-            "p-el-activations-deep-dive-cw-deep-dive-value-is_alcohol",
-            "p-el-activations-deep-dive-cw-deep-dive-value-is_dashpass",
-            "p-el-activations-deep-dive-cw-deep-dive-value-is_holdout",
-            "p-el-activations-deep-dive-cw-deep-dive-value-is_pickup",
-            "p-el-activations-deep-dive-cw-deep-dive-value-is_storefront",
-            "p-el-activations-deep-dive-cw-deep-dive-value-ntam",
-            "p-el-activations-deep-dive-cw-deep-dive-value-sfdc_commission",
-            "p-el-activations-deep-dive-cw-deep-dive-value-top-mx-copy-_5850457434446196736"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation_week"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation-date"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account-name"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-store_id"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-id"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-number"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-opp-url"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck-rank"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-sales-owner-copy-"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-owner-role-official-title"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-country"
-            },
-            {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager-name"
-            }
-          ],
-          "columnsBy": []
         }
       ]
     },
@@ -1802,208 +926,11 @@
               "Total Signs",
               "\\% of Signs"
             ],
-            "labels": []
+            "labels": [
+
+            ]
           },
           "value": "\\% of Signs"
-        },
-        {
-          "id": "el-can-sml",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-sml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-can-sml-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-sml-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-can-sml-value-sfdc_commission",
-            "p-el-can-sml-value-ahc_goal",
-            "p-el-can-sml-value-closes",
-            "p-el-can-sml-value-hc",
-            "p-el-can-sml-value-incremental_sign_tam",
-            "p-el-can-sml-value-link_implemented",
-            "p-el-can-sml-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-can-sml-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-can-inside-by-role",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-inside-by-role-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
-            },
-            {
-              "id": "p-el-can-inside-by-role-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-by-role-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-can-inside-by-role-value-sfdc_commission",
-            "p-el-can-inside-by-role-value-ahc_goal",
-            "p-el-can-inside-by-role-value-closes",
-            "p-el-can-inside-by-role-value-hc",
-            "p-el-can-inside-by-role-value-incremental_sign_tam",
-            "p-el-can-inside-by-role-value-link_implemented",
-            "p-el-can-inside-by-role-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-can-inside-by-role-row-role"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-can-inside-by-role-col-week"
-            }
-          ]
         },
         {
           "id": "el-can-inbound-vendor",
@@ -2016,13 +943,13 @@
           "columns": [
             {
               "id": "p-el-can-inbound-vendor-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-can-inbound-vendor-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-inbound-vendor-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-inbound-vendor-value-sfdc_commission",
@@ -2085,7 +1012,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-inbound-vendor-col-week"
+              "id": "p-el-can-inbound-vendor-col-week_of"
             }
           ]
         },
@@ -2099,9 +1026,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-ssmo-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-ssmo-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-ssmo-value-sfdc_commission",
@@ -2177,1179 +1104,12 @@
             "p-el-can-ssmo-value-narr",
             "p-el-can-ssmo-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-can-ssmo-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-can-ml",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-ml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-can-ml-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-ml-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-can-ml-value-sfdc_commission",
-            "p-el-can-ml-value-ahc_goal",
-            "p-el-can-ml-value-closes",
-            "p-el-can-ml-value-hc",
-            "p-el-can-ml-value-incremental_sign_tam",
-            "p-el-can-ml-value-link_implemented",
-            "p-el-can-ml-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-can-ml-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-canada-outside-overall-medal",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-canada-outside-overall-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-              "name": "Deck Rank Param Calc (copy)_1252141487239774209",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Bronze' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-              "name": "Medal Rank: Bronze Calc (copy) (copy)_1252141487242088454",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Gold' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487242072069",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Silver' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-              "name": "Medal Rank: Silver Calc (copy) (copy)_1252141487242268680",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Tin' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487242256391",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Platinum' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-medal-value-medal-rank-tin-calc-copy-_1252141487244546057",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487244546057",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([MEDAL_RANK]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-medal_rank",
-              "name": "MEDAL_RANK",
-              "formula": "[Master/MEDAL_RANK]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-canada-outside-overall-medal-value-sfdc_commission",
-            "p-el-canada-outside-overall-medal-value-ahc_goal",
-            "p-el-canada-outside-overall-medal-value-closes",
-            "p-el-canada-outside-overall-medal-value-hc",
-            "p-el-canada-outside-overall-medal-value-incremental_sign_tam",
-            "p-el-canada-outside-overall-medal-value-link_implemented",
-            "p-el-canada-outside-overall-medal-value-calculation_3783938539825639424",
-            "p-el-canada-outside-overall-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-            "p-el-canada-outside-overall-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-            "p-el-canada-outside-overall-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-            "p-el-canada-outside-overall-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-            "p-el-canada-outside-overall-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-            "p-el-canada-outside-overall-medal-value-medal-rank-tin-calc-copy-_1252141487244546057"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-canada-outside-overall-medal-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-canada-outside-overall-tiers",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-canada-outside-overall-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487245320202",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 1') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-medal-rank-null-copy-_1252141487245320207",
-              "name": "Medal Rank: Null (copy)_1252141487245320207",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 5') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-              "name": "Medal Rank: Platinum Calc (copy)_1252141487245320206",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 4') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487245320204",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 3') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487245320205",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 2') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-outside-overall-tiers-value-tiers-5-calc-copy-_1252141487247577104",
-              "name": "Tiers 5 Calc (copy)_1252141487247577104",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([Calculation_1252141487240110082]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-calculation_1252141487240110082",
-              "name": "Calculation_1252141487240110082",
-              "formula": "[Master/Calculation_1252141487240110082]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-canada-outside-overall-tiers-value-sfdc_commission",
-            "p-el-canada-outside-overall-tiers-value-ahc_goal",
-            "p-el-canada-outside-overall-tiers-value-closes",
-            "p-el-canada-outside-overall-tiers-value-hc",
-            "p-el-canada-outside-overall-tiers-value-incremental_sign_tam",
-            "p-el-canada-outside-overall-tiers-value-link_implemented",
-            "p-el-canada-outside-overall-tiers-value-calculation_3783938539825639424",
-            "p-el-canada-outside-overall-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-            "p-el-canada-outside-overall-tiers-value-medal-rank-null-copy-_1252141487245320207",
-            "p-el-canada-outside-overall-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-            "p-el-canada-outside-overall-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-            "p-el-canada-outside-overall-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-            "p-el-canada-outside-overall-tiers-value-tiers-5-calc-copy-_1252141487247577104"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-canada-outside-overall-tiers-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-canada-total-org-medal",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-canada-total-org-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-              "name": "Deck Rank Param Calc (copy)_1252141487239774209",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Bronze' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-              "name": "Medal Rank: Bronze Calc (copy) (copy)_1252141487242088454",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Gold' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487242072069",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Silver' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-              "name": "Medal Rank: Silver Calc (copy) (copy)_1252141487242268680",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Tin' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487242256391",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Platinum' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-medal-value-medal-rank-tin-calc-copy-_1252141487244546057",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487244546057",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([MEDAL_RANK]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-medal_rank",
-              "name": "MEDAL_RANK",
-              "formula": "[Master/MEDAL_RANK]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-canada-total-org-medal-value-sfdc_commission",
-            "p-el-canada-total-org-medal-value-closes",
-            "p-el-canada-total-org-medal-value-incremental_sign_tam",
-            "p-el-canada-total-org-medal-value-calculation_3783938539825639424",
-            "p-el-canada-total-org-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-            "p-el-canada-total-org-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-            "p-el-canada-total-org-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-            "p-el-canada-total-org-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-            "p-el-canada-total-org-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-            "p-el-canada-total-org-medal-value-medal-rank-tin-calc-copy-_1252141487244546057"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-canada-total-org-medal-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-canada-total-org-tiers",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-canada-total-org-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487245320202",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 1') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-medal-rank-null-copy-_1252141487245320207",
-              "name": "Medal Rank: Null (copy)_1252141487245320207",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 5') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-              "name": "Medal Rank: Platinum Calc (copy)_1252141487245320206",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 4') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487245320204",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 3') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487245320205",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 2') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-canada-total-org-tiers-value-tiers-5-calc-copy-_1252141487247577104",
-              "name": "Tiers 5 Calc (copy)_1252141487247577104",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([Calculation_1252141487240110082]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-calculation_1252141487240110082",
-              "name": "Calculation_1252141487240110082",
-              "formula": "[Master/Calculation_1252141487240110082]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-canada-total-org-tiers-value-sfdc_commission",
-            "p-el-canada-total-org-tiers-value-closes",
-            "p-el-canada-total-org-tiers-value-incremental_sign_tam",
-            "p-el-canada-total-org-tiers-value-calculation_3783938539825639424",
-            "p-el-canada-total-org-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-            "p-el-canada-total-org-tiers-value-medal-rank-null-copy-_1252141487245320207",
-            "p-el-canada-total-org-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-            "p-el-canada-total-org-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-            "p-el-canada-total-org-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-            "p-el-canada-total-org-tiers-value-tiers-5-calc-copy-_1252141487247577104"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-canada-total-org-tiers-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-can-inside-overall-medal",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-inside-overall-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-              "name": "Deck Rank Param Calc (copy)_1252141487239774209",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Bronze' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-              "name": "Medal Rank: Bronze Calc (copy) (copy)_1252141487242088454",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Gold' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487242072069",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Silver' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-              "name": "Medal Rank: Silver Calc (copy) (copy)_1252141487242268680",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Tin' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487242256391",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and [MEDAL_RANK] = 'Platinum' then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-medal-value-medal-rank-tin-calc-copy-_1252141487244546057",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487244546057",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([MEDAL_RANK]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-medal_rank",
-              "name": "MEDAL_RANK",
-              "formula": "[Master/MEDAL_RANK]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-can-inside-overall-medal-value-sfdc_commission",
-            "p-el-can-inside-overall-medal-value-ahc_goal",
-            "p-el-can-inside-overall-medal-value-closes",
-            "p-el-can-inside-overall-medal-value-hc",
-            "p-el-can-inside-overall-medal-value-incremental_sign_tam",
-            "p-el-can-inside-overall-medal-value-link_implemented",
-            "p-el-can-inside-overall-medal-value-calculation_3783938539825639424",
-            "p-el-can-inside-overall-medal-value-deck-rank-param-calc-copy-_1252141487239774209",
-            "p-el-can-inside-overall-medal-value-medal-rank-bronze-calc-copy-copy-_1252141487242088454",
-            "p-el-can-inside-overall-medal-value-medal-rank-bronze-calc-copy-_1252141487242072069",
-            "p-el-can-inside-overall-medal-value-medal-rank-silver-calc-copy-copy-_1252141487242268680",
-            "p-el-can-inside-overall-medal-value-medal-rank-silver-calc-copy-_1252141487242256391",
-            "p-el-can-inside-overall-medal-value-medal-rank-tin-calc-copy-_1252141487244546057"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-can-inside-overall-medal-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-can-inside-overall-tiers",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-inside-overall-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.1%"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-link_implemented",
-              "name": "LINK_IMPLEMENTED",
-              "formula": "Sum([Master/LINK_IMPLEMENTED])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-              "name": "Medal Rank: Bronze Calc (copy)_1252141487245320202",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 1') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-medal-rank-null-copy-_1252141487245320207",
-              "name": "Medal Rank: Null (copy)_1252141487245320207",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 5') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-              "name": "Medal Rank: Platinum Calc (copy)_1252141487245320206",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 4') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-              "name": "Medal Rank: Silver Calc (copy)_1252141487245320204",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 3') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-              "name": "Medal Rank: Tin Calc (copy)_1252141487245320205",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and REGEXP_MATCH([Calculation_1252141487240110082], 'TIER 2') then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-inside-overall-tiers-value-tiers-5-calc-copy-_1252141487247577104",
-              "name": "Tiers 5 Calc (copy)_1252141487247577104",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-canada-only-view], \"% of Signs\", -(CountDistinct(if [Parameters].[Deck Rank Signs vs % Param] = '% of Signs' and isnull([Calculation_1252141487240110082]) then [STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-parameters",
-              "name": "Parameters",
-              "formula": "[Master/Parameters]"
-            },
-            {
-              "id": "pvsw-deck-rank-signs-vs-param",
-              "name": "Deck Rank Signs vs % Param",
-              "formula": "[Master/Deck Rank Signs vs % Param]"
-            },
-            {
-              "id": "pvsw-calculation_1252141487240110082",
-              "name": "Calculation_1252141487240110082",
-              "formula": "[Master/Calculation_1252141487240110082]"
-            },
-            {
-              "id": "pvsw-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "[Master/STORE_ACCOUNT_ID]"
-            }
-          ],
-          "values": [
-            "p-el-can-inside-overall-tiers-value-sfdc_commission",
-            "p-el-can-inside-overall-tiers-value-ahc_goal",
-            "p-el-can-inside-overall-tiers-value-closes",
-            "p-el-can-inside-overall-tiers-value-hc",
-            "p-el-can-inside-overall-tiers-value-incremental_sign_tam",
-            "p-el-can-inside-overall-tiers-value-link_implemented",
-            "p-el-can-inside-overall-tiers-value-calculation_3783938539825639424",
-            "p-el-can-inside-overall-tiers-value-medal-rank-bronze-calc-copy-_1252141487245320202",
-            "p-el-can-inside-overall-tiers-value-medal-rank-null-copy-_1252141487245320207",
-            "p-el-can-inside-overall-tiers-value-medal-rank-platinum-calc-copy-_1252141487245320206",
-            "p-el-can-inside-overall-tiers-value-medal-rank-silver-calc-copy-_1252141487245320204",
-            "p-el-can-inside-overall-tiers-value-medal-rank-tin-calc-copy-_1252141487245320205",
-            "p-el-can-inside-overall-tiers-value-tiers-5-calc-copy-_1252141487247577104"
-          ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-can-inside-overall-tiers-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-mcdonald-s",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-mcdonald-s-row-can-special-roles",
-              "name": "CAN Special Roles",
-              "formula": "[Master/CAN Special Roles]"
-            },
-            {
-              "id": "p-el-mcdonald-s-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-mcdonald-s-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-mcdonald-s-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-mcdonald-s-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-mcdonald-s-value-narr",
-              "name": "NARR",
-              "formula": "Sum([Master/NARR])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-mcdonald-s-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-mcdonald-s-value-sfdc_commission",
-            "p-el-mcdonald-s-value-hc",
-            "p-el-mcdonald-s-value-incremental_sign_tam",
-            "p-el-mcdonald-s-value-narr",
-            "p-el-mcdonald-s-value-calculation_3783938539825639424"
-          ],
           "rowsBy": [
-            {
-              "id": "p-el-mcdonald-s-row-can-special-roles"
-            }
+
           ],
           "columnsBy": [
             {
-              "id": "p-el-mcdonald-s-col-week-of-cw"
+              "id": "p-el-can-ssmo-col-week_of"
             }
           ]
         },
@@ -3363,9 +1123,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-bde-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-can-bde-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-bde-value-sfdc_commission",
@@ -3422,170 +1182,14 @@
             "p-el-can-bde-value-narr",
             "p-el-can-bde-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-can-bde-col-week-of-cw"
+              "id": "p-el-can-bde-col-week_of"
             }
           ]
-        },
-        {
-          "id": "el-can-cw-detail",
-          "kind": "pivot-table",
-          "name": "CAN CW Detail",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-can-cw-detail-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-full-name",
-              "name": "Full Name",
-              "formula": "[Master/Full Name]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-medal-rank",
-              "name": "Medal Rank",
-              "formula": "[Master/Medal Rank]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-submarket",
-              "name": "SUBMARKET",
-              "formula": "[Master/SUBMARKET]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-primary-campaign-source",
-              "name": "Primary Campaign Source",
-              "formula": "[Master/Primary Campaign Source]"
-            },
-            {
-              "id": "p-el-can-cw-detail-value-is_alcohol",
-              "name": "IS_ALCOHOL",
-              "formula": "Sum([Master/IS_ALCOHOL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-is_dashpass",
-              "name": "IS_DASHPASS",
-              "formula": "Sum([Master/IS_DASHPASS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-is_pickup",
-              "name": "IS_PICKUP",
-              "formula": "Sum([Master/IS_PICKUP])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-is_storefront",
-              "name": "IS_STOREFRONT",
-              "formula": "Sum([Master/IS_STOREFRONT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-narr",
-              "name": "NARR",
-              "formula": "Sum([Master/NARR])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-ntam",
-              "name": "NTAM",
-              "formula": "Sum([Master/NTAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-can-cw-detail-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            }
-          ],
-          "values": [
-            "p-el-can-cw-detail-value-is_alcohol",
-            "p-el-can-cw-detail-value-is_dashpass",
-            "p-el-can-cw-detail-value-is_pickup",
-            "p-el-can-cw-detail-value-is_storefront",
-            "p-el-can-cw-detail-value-narr",
-            "p-el-can-cw-detail-value-ntam",
-            "p-el-can-cw-detail-value-sfdc_commission"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-can-cw-detail-row-week-of-cw"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-manager-name"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-full-name"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-opp-url"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-medal-rank"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-submarket"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-cw-country"
-            },
-            {
-              "id": "p-el-can-cw-detail-row-primary-campaign-source"
-            }
-          ],
-          "columnsBy": []
         }
       ]
     },
@@ -3608,9 +1212,9 @@
           },
           "columns": [
             {
-              "id": "p-el-regional-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-regional-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-regional-overall-value-sfdc_commission",
@@ -3687,10 +1291,12 @@
             "p-el-regional-overall-value-narr",
             "p-el-regional-overall-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-regional-overall-col-week"
+              "id": "p-el-regional-overall-col-week_of"
             }
           ]
         },
@@ -3704,9 +1310,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-ml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-ml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-ml-value-sfdc_commission",
@@ -3783,10 +1389,12 @@
             "p-el-outside-regional-ml-value-narr",
             "p-el-outside-regional-ml-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-ml-col-week"
+              "id": "p-el-outside-regional-ml-col-week_of"
             }
           ]
         },
@@ -3800,9 +1408,9 @@
           },
           "columns": [
             {
-              "id": "p-el-inside-regional-ae-blitz-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-inside-regional-ae-blitz-ae-value-sfdc_commission",
@@ -3879,10 +1487,12 @@
             "p-el-inside-regional-ae-blitz-ae-value-narr",
             "p-el-inside-regional-ae-blitz-ae-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-inside-regional-ae-blitz-ae-col-week"
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of"
             }
           ]
         },
@@ -3896,9 +1506,9 @@
           },
           "columns": [
             {
-              "id": "p-el-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ae-value-sfdc_commission",
@@ -3975,10 +1585,12 @@
             "p-el-ae-value-narr",
             "p-el-ae-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-ae-col-week"
+              "id": "p-el-ae-col-week_of"
             }
           ]
         },
@@ -3992,9 +1604,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-gml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-gml-value-sfdc_commission",
@@ -4081,10 +1693,12 @@
             "p-el-outside-regional-gml-value-narr",
             "p-el-outside-regional-gml-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-gml-col-week"
+              "id": "p-el-outside-regional-gml-col-week_of"
             }
           ]
         },
@@ -4098,9 +1712,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-ml-agml-and-gml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-ml-agml-and-gml-value-sfdc_commission",
@@ -4177,10 +1791,12 @@
             "p-el-outside-regional-ml-agml-and-gml-value-narr",
             "p-el-outside-regional-ml-agml-and-gml-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-ml-agml-and-gml-col-week"
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of"
             }
           ]
         },
@@ -4194,9 +1810,9 @@
           },
           "columns": [
             {
-              "id": "p-el-blitz-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-blitz-ae-value-sfdc_commission",
@@ -4273,10 +1889,12 @@
             "p-el-blitz-ae-value-narr",
             "p-el-blitz-ae-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-blitz-ae-col-week"
+              "id": "p-el-blitz-ae-col-week_of"
             }
           ]
         },
@@ -4290,9 +1908,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-agml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-agml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-agml-value-sfdc_commission",
@@ -4379,10 +1997,12 @@
             "p-el-outside-regional-agml-value-narr",
             "p-el-outside-regional-agml-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-agml-col-week"
+              "id": "p-el-outside-regional-agml-col-week_of"
             }
           ]
         }
@@ -4396,300 +2016,6 @@
           "id": "title-roster-cws",
           "kind": "text",
           "body": "# <span style=\"color: #FFFFFF\">Roster CWs</span>"
-        },
-        {
-          "id": "el-cw-view-roster-cws",
-          "kind": "pivot-table",
-          "name": "CW View",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-cw-view-roster-cws-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-calculation_573927491580395521-nk-1",
-              "name": "Calculation_573927491580395521:nk:1",
-              "formula": "[Master/Calculation_573927491580395521:nk:1]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-account_id",
-              "name": "ACCOUNT_ID",
-              "formula": "[Master/ACCOUNT_ID]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-store_id",
-              "name": "STORE_ID",
-              "formula": "[Master/STORE_ID]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-wo-number",
-              "name": "WO Number",
-              "formula": "[Master/WO Number]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-opportunity-id",
-              "name": "Opportunity Id",
-              "formula": "[Master/Opportunity Id]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sales-owner-copy-",
-              "name": "Sales Owner (copy)",
-              "formula": "[Master/Sales Owner (copy)]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-top-mx",
-              "name": "Top Mx",
-              "formula": "[Master/Top Mx]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-tier",
-              "name": "TIER",
-              "formula": "[Master/TIER]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sp-top-mx-copy-_5850457434446196736",
-              "name": "SP: Top Mx (copy)_5850457434446196736",
-              "formula": "[Master/SP: Top Mx (copy)_5850457434446196736]"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-calculation_6622965475636920323",
-              "name": "Top Mx",
-              "formula": "Sum([Master/Calculation_6622965475636920323])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-is_dashpass",
-              "name": "IS_DASHPASS",
-              "formula": "Sum([Master/IS_DASHPASS])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-is_pickup",
-              "name": "IS_PICKUP",
-              "formula": "Sum([Master/IS_PICKUP])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-is_storefront",
-              "name": "IS_STOREFRONT",
-              "formula": "Sum([Master/IS_STOREFRONT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-top-mx-copy-_5850457434446196736",
-              "name": "Top Mx (copy)_5850457434446196736",
-              "formula": "Sum([Master/Top Mx (copy)_5850457434446196736])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-value-tier-copy-_4245346387496407042",
-              "name": "TIER (copy)_4245346387496407042",
-              "formula": "Sum([Master/TIER (copy)_4245346387496407042])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-cw-view-roster-cws-value-calculation_6622965475636920323",
-            "p-el-cw-view-roster-cws-value-incremental_sign_tam",
-            "p-el-cw-view-roster-cws-value-is_dashpass",
-            "p-el-cw-view-roster-cws-value-is_pickup",
-            "p-el-cw-view-roster-cws-value-is_storefront",
-            "p-el-cw-view-roster-cws-value-sfdc_commission",
-            "p-el-cw-view-roster-cws-value-top-mx-copy-_5850457434446196736",
-            "p-el-cw-view-roster-cws-value-tier-copy-_4245346387496407042"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-cw-view-roster-cws-row-week-of-cw"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-calculation_573927491580395521-nk-1"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-account_id"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-account-name"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-store_id"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-wo-number"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-wo-id"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-opp-url"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-opportunity-id"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-deck-rank"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sales-owner-copy-"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-cw-owner-role-official-title"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-cw-country"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-manager-name"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sdr"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-top-mx"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-tier"
-            },
-            {
-              "id": "p-el-cw-view-roster-cws-row-sp-top-mx-copy-_5850457434446196736"
-            }
-          ],
-          "columnsBy": []
-        },
-        {
-          "id": "el-productivity-per-role-summary",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-productivity-per-role-summary-row-role-title",
-              "name": "Role Title",
-              "formula": "[Master/Role Title]"
-            },
-            {
-              "id": "p-el-productivity-per-role-summary-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "DateTrunc(\"month\", [Master/Merchant Close Date])",
-              "format": {
-                "kind": "datetime",
-                "formatString": "%b %Y"
-              }
-            },
-            {
-              "id": "p-el-productivity-per-role-summary-value-store_account_id",
-              "name": "STORE_ACCOUNT_ID",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-productivity-per-role-summary-value-store_account_id"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-productivity-per-role-summary-row-role-title"
-            },
-            {
-              "id": "p-el-productivity-per-role-summary-row-merchant-close-date"
-            }
-          ],
-          "columnsBy": []
         }
       ]
     },
@@ -4703,195 +2029,6 @@
           "body": "# <span style=\"color: #FFFFFF\">SSMO + Inbound</span>"
         },
         {
-          "id": "el-ssmo-sheet",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-ssmo-sheet-row-clean-combined-country",
-              "name": "Clean Combined Country",
-              "formula": "[Master/Clean Combined Country]"
-            },
-            {
-              "id": "p-el-ssmo-sheet-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-ssmo-sheet-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-ssmo-sheet-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-ssmo-sheet-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.2f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-ssmo-sheet-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-ssmo-sheet-value-sfdc_commission",
-            "p-el-ssmo-sheet-value-closes",
-            "p-el-ssmo-sheet-value-incremental_sign_tam",
-            "p-el-ssmo-sheet-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-ssmo-sheet-row-clean-combined-country"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-ssmo-sheet-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-inbound-vendor",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-inbound-vendor-row-role-goals",
-              "name": "Role Goals",
-              "formula": "[Master/Role Goals]"
-            },
-            {
-              "id": "p-el-inbound-vendor-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-inbound-vendor-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-ahc_goal",
-              "name": "AHC_GOAL",
-              "formula": "Sum([Master/AHC_GOAL])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.0f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-narr",
-              "name": "NARR",
-              "formula": "Sum([Master/NARR])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.1f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-calculation_1656550670929633282",
-              "name": "Signs with SDR",
-              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-inbound-vendor-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-inbound-vendor-value-sfdc_commission",
-            "p-el-inbound-vendor-value-ahc_goal",
-            "p-el-inbound-vendor-value-closes",
-            "p-el-inbound-vendor-value-hc",
-            "p-el-inbound-vendor-value-incremental_sign_tam",
-            "p-el-inbound-vendor-value-narr",
-            "p-el-inbound-vendor-value-calculation_1656550670929633282",
-            "p-el-inbound-vendor-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-inbound-vendor-row-role-goals"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-inbound-vendor-col-week"
-            }
-          ]
-        },
-        {
           "id": "el-ssmo-anz",
           "kind": "pivot-table",
           "name": "Product Color Param",
@@ -4901,14 +2038,14 @@
           },
           "columns": [
             {
-              "id": "p-el-ssmo-anz-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-ssmo-anz-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-ssmo-anz-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-ssmo-anz-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ssmo-anz-value-sfdc_commission",
@@ -4946,86 +2083,12 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-ssmo-anz-row-cw-country"
+              "id": "p-el-ssmo-anz-row-cw_country"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-ssmo-anz-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-ssmo-ib",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-ssmo-ib-row-clean-combined-country",
-              "name": "Clean Combined Country",
-              "formula": "[Master/Clean Combined Country]"
-            },
-            {
-              "id": "p-el-ssmo-ib-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-ssmo-ib-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Avg([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-ssmo-ib-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-ssmo-ib-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.2f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-ssmo-ib-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-ssmo-ib-value-sfdc_commission",
-            "p-el-ssmo-ib-value-closes",
-            "p-el-ssmo-ib-value-incremental_sign_tam",
-            "p-el-ssmo-ib-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-ssmo-ib-row-clean-combined-country"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-ssmo-ib-col-week"
+              "id": "p-el-ssmo-anz-col-week_of"
             }
           ]
         }
@@ -5055,639 +2118,11 @@
               "TAM",
               "TAM per Sign"
             ],
-            "labels": []
+            "labels": [
+
+            ]
           },
           "value": "Signs"
-        },
-        {
-          "id": "el-selection-top-mx-cw",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-top-mx-cw-row-org-top-mx-tracking",
-              "name": "Org - Top Mx Tracking",
-              "formula": "[Master/Org - Top Mx Tracking]"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-row-team-top-mx-tracking",
-              "name": "Team - Top Mx Tracking",
-              "formula": "[Master/Team - Top Mx Tracking]"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-row-role-top-mx-tracking-copy-",
-              "name": "Role - Top Mx Tracking (copy)",
-              "formula": "[Master/Role - Top Mx Tracking (copy)]"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-col-week-goal-sp",
-              "name": "Week Goal Sp",
-              "formula": "[Master/Week Goal Sp]"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-value-whales-copy-_3215429439119798272",
-              "name": "Whales (copy)_3215429439119798272",
-              "formula": "Sum([Master/Whales (copy)_3215429439119798272])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-value-whales-goal-copy-_3215429439120236545",
-              "name": "Whales Goal (copy)_3215429439120236545",
-              "formula": "Sum([Master/Whales Goal (copy)_3215429439120236545])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-selection-top-mx-cw-value-whales-copy-_3215429439119798272",
-            "p-el-selection-top-mx-cw-value-whales-goal-copy-_3215429439120236545"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-top-mx-cw-row-org-top-mx-tracking"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-row-team-top-mx-tracking"
-            },
-            {
-              "id": "p-el-selection-top-mx-cw-row-role-top-mx-tracking-copy-"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-top-mx-cw-col-week-goal-sp"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-tiers",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-tiers-row-org-tier-tracking",
-              "name": "Org - Tier Tracking",
-              "formula": "[Master/Org - Tier Tracking]"
-            },
-            {
-              "id": "p-el-selection-tiers-row-team-tier-activations-tracking",
-              "name": "Team - Tier Activations Tracking",
-              "formula": "[Master/Team - Tier Activations Tracking]"
-            },
-            {
-              "id": "p-el-selection-tiers-col-week_sp_copy",
-              "name": "Week_SP_Copy",
-              "formula": "[Master/Week_SP_Copy]"
-            },
-            {
-              "id": "p-el-selection-tiers-value-top-mx-copy-_5820832199702355969",
-              "name": "Top Mx (copy)_5820832199702355969",
-              "formula": "Sum([Master/Top Mx (copy)_5820832199702355969])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-selection-tiers-value-top-mx-goal-copy-_5820832199702355970",
-              "name": "Top Mx Goal (copy)_5820832199702355970",
-              "formula": "Sum([Master/Top Mx Goal (copy)_5820832199702355970])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-selection-tiers-value-top-mx-copy-_5820832199702355969",
-            "p-el-selection-tiers-value-top-mx-goal-copy-_5820832199702355970"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-tiers-row-org-tier-tracking"
-            },
-            {
-              "id": "p-el-selection-tiers-row-team-tier-activations-tracking"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-tiers-col-week_sp_copy"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-tier-by-role-tbd",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-tier-by-role-tbd-row-tier",
-              "name": "TIER",
-              "formula": "[Master/TIER]"
-            },
-            {
-              "id": "p-el-selection-tier-by-role-tbd-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-selection-tier-by-role-tbd-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-selection-tier-by-role-tbd-value-calculation_1538401536513917038",
-              "name": "Selection Param Filter",
-              "formula": "Switch([ctl-param-selection-param-selection-strategy], 'Signs', [Calculation_3783938539825639424], 'TAM', Sum([INCREMENTAL_SIGN_TAM]), 'TAM per Sign', [Calculation_3783938539858702356])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            },
-            {
-              "id": "pvsw-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "[Master/INCREMENTAL_SIGN_TAM]"
-            },
-            {
-              "id": "pvsw-calculation_3783938539858702356",
-              "name": "Calculation_3783938539858702356",
-              "formula": "[Master/Calculation_3783938539858702356]"
-            }
-          ],
-          "values": [
-            "p-el-selection-tier-by-role-tbd-value-calculation_1538401536513917038"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-tier-by-role-tbd-row-tier"
-            },
-            {
-              "id": "p-el-selection-tier-by-role-tbd-row-cw-owner-role-official-title"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-tier-by-role-tbd-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-market-maker-location",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-market-maker-location-row-market_maker",
-              "name": "MARKET_MAKER",
-              "formula": "[Master/MARKET_MAKER]"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-row-region",
-              "name": "REGION",
-              "formula": "[Master/REGION]"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-row-submarket",
-              "name": "SUBMARKET",
-              "formula": "[Master/SUBMARKET]"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-value-calculation_1538401536513917038",
-              "name": "Selection Param Filter",
-              "formula": "Switch([ctl-param-selection-param-selection-strategy], 'Signs', [Calculation_3783938539825639424], 'TAM', Sum([INCREMENTAL_SIGN_TAM]), 'TAM per Sign', [Calculation_3783938539858702356])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            },
-            {
-              "id": "pvsw-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "[Master/INCREMENTAL_SIGN_TAM]"
-            },
-            {
-              "id": "pvsw-calculation_3783938539858702356",
-              "name": "Calculation_3783938539858702356",
-              "formula": "[Master/Calculation_3783938539858702356]"
-            }
-          ],
-          "values": [
-            "p-el-selection-market-maker-location-value-calculation_1538401536513917038"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-market-maker-location-row-market_maker"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-row-region"
-            },
-            {
-              "id": "p-el-selection-market-maker-location-row-submarket"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-market-maker-location-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-lead-list",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-lead-list-row-primary-campaign-source",
-              "name": "Primary Campaign Source",
-              "formula": "[Master/Primary Campaign Source]"
-            },
-            {
-              "id": "p-el-selection-lead-list-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-selection-lead-list-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-selection-lead-list-value-calculation_1538401536513917038",
-              "name": "Selection Param Filter",
-              "formula": "Switch([ctl-param-selection-param-selection-strategy], 'Signs', [Calculation_3783938539825639424], 'TAM', Sum([INCREMENTAL_SIGN_TAM]), 'TAM per Sign', [Calculation_3783938539858702356])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            },
-            {
-              "id": "pvsw-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "[Master/INCREMENTAL_SIGN_TAM]"
-            },
-            {
-              "id": "pvsw-calculation_3783938539858702356",
-              "name": "Calculation_3783938539858702356",
-              "formula": "[Master/Calculation_3783938539858702356]"
-            }
-          ],
-          "values": [
-            "p-el-selection-lead-list-value-calculation_1538401536513917038"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-lead-list-row-primary-campaign-source"
-            },
-            {
-              "id": "p-el-selection-lead-list-row-cw-owner-role-official-title"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-lead-list-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-aces",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-aces-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-selection-aces-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-selection-aces-value-calculation_1538401536513917038",
-              "name": "Selection Param Filter",
-              "formula": "Switch([ctl-param-selection-param-selection-strategy], 'Signs', [Calculation_3783938539825639424], 'TAM', Sum([INCREMENTAL_SIGN_TAM]), 'TAM per Sign', [Calculation_3783938539858702356])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            },
-            {
-              "id": "pvsw-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "[Master/INCREMENTAL_SIGN_TAM]"
-            },
-            {
-              "id": "pvsw-calculation_3783938539858702356",
-              "name": "Calculation_3783938539858702356",
-              "formula": "[Master/Calculation_3783938539858702356]"
-            }
-          ],
-          "values": [
-            "p-el-selection-aces-value-calculation_1538401536513917038"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-aces-row-cw-owner-role-official-title"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-aces-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-selection-holdouts",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-selection-holdouts-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
-            },
-            {
-              "id": "p-el-selection-holdouts-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "DateAdd(\"day\", 1 - Weekday([Master/Week Of CW]), DateTrunc(\"day\", [Master/Week Of CW]))",
-              "format": {
-                "kind": "datetime",
-                "formatString": "%b %Y"
-              }
-            },
-            {
-              "id": "p-el-selection-holdouts-value-calculation_1538401536513917038",
-              "name": "Selection Param Filter",
-              "formula": "Switch([ctl-param-selection-param-selection-strategy], 'Signs', [Calculation_3783938539825639424], 'TAM', Sum([INCREMENTAL_SIGN_TAM]), 'TAM per Sign', [Calculation_3783938539858702356])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            },
-            {
-              "id": "pvsw-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "[Master/INCREMENTAL_SIGN_TAM]"
-            },
-            {
-              "id": "pvsw-calculation_3783938539858702356",
-              "name": "Calculation_3783938539858702356",
-              "formula": "[Master/Calculation_3783938539858702356]"
-            }
-          ],
-          "values": [
-            "p-el-selection-holdouts-value-calculation_1538401536513917038"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-selection-holdouts-row-cw-owner-role-official-title"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-selection-holdouts-col-week-of-cw"
-            }
-          ]
-        },
-        {
-          "id": "el-cw-view-selection",
-          "kind": "pivot-table",
-          "name": "CW View Selection",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-cw-view-selection-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-calculation_573927491580395521-nk-1",
-              "name": "Calculation_573927491580395521:nk:1",
-              "formula": "[Master/Calculation_573927491580395521:nk:1]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-opp-url",
-              "name": "Opp URL",
-              "formula": "[Master/Opp URL]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-sales-owner",
-              "name": "Sales Owner",
-              "formula": "[Master/Sales Owner]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
-            },
-            {
-              "id": "p-el-cw-view-selection-value-calculation_6622965475636920323",
-              "name": "Top Mx",
-              "formula": "Sum([Master/Calculation_6622965475636920323])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-is_holdout",
-              "name": "IS_HOLDOUT",
-              "formula": "Sum([Master/IS_HOLDOUT])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-sfdc_commission",
-              "name": "SFDC_COMMISSION",
-              "formula": "Sum([Master/SFDC_COMMISSION])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0%"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-top-mx-copy-_5850457434446196736",
-              "name": "Top Mx (copy)_5850457434446196736",
-              "formula": "Sum([Master/Top Mx (copy)_5850457434446196736])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-tier-copy-_4245346387496407042",
-              "name": "TIER (copy)_4245346387496407042",
-              "formula": "Sum([Master/TIER (copy)_4245346387496407042])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cw-view-selection-value-whales-copy-_3215429439119798272",
-              "name": "Whales (copy)_3215429439119798272",
-              "formula": "Sum([Master/Whales (copy)_3215429439119798272])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-cw-view-selection-value-calculation_6622965475636920323",
-            "p-el-cw-view-selection-value-incremental_sign_tam",
-            "p-el-cw-view-selection-value-is_holdout",
-            "p-el-cw-view-selection-value-sfdc_commission",
-            "p-el-cw-view-selection-value-top-mx-copy-_5850457434446196736",
-            "p-el-cw-view-selection-value-tier-copy-_4245346387496407042",
-            "p-el-cw-view-selection-value-whales-copy-_3215429439119798272"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-cw-view-selection-row-week-of-cw"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-merchant-close-date"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-account-name"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-calculation_573927491580395521-nk-1"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-opp-url"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-deck-rank"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-sales-owner"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-role"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-cw-country"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-manager-name"
-            },
-            {
-              "id": "p-el-cw-view-selection-row-sdr"
-            }
-          ],
-          "columnsBy": []
         }
       ]
     },
@@ -5710,9 +2145,9 @@
           },
           "columns": [
             {
-              "id": "p-el-strategic-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-strategic-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-strategic-overall-value-sfdc_commission",
@@ -5778,10 +2213,12 @@
             "p-el-strategic-overall-value-incremental_sign_tam",
             "p-el-strategic-overall-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-strategic-overall-col-week"
+              "id": "p-el-strategic-overall-col-week_of"
             }
           ]
         },
@@ -5795,9 +2232,9 @@
           },
           "columns": [
             {
-              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-sfdc_commission",
@@ -5874,10 +2311,12 @@
             "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-narr",
             "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week"
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of"
             }
           ]
         },
@@ -5891,9 +2330,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-strategic-sml-sgl-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-strategic-sml-sgl-value-sfdc_commission",
@@ -5970,10 +2409,12 @@
             "p-el-outside-strategic-sml-sgl-value-narr",
             "p-el-outside-strategic-sml-sgl-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outside-strategic-sml-sgl-col-week"
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of"
             }
           ]
         },
@@ -5987,9 +2428,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sml-value-sfdc_commission",
@@ -6066,10 +2507,12 @@
             "p-el-sml-value-narr",
             "p-el-sml-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-sml-col-week"
+              "id": "p-el-sml-col-week_of"
             }
           ]
         },
@@ -6083,9 +2526,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-value-sfdc_commission",
@@ -6162,10 +2605,12 @@
             "p-el-sae-value-narr",
             "p-el-sae-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-sae-col-week"
+              "id": "p-el-sae-col-week_of"
             }
           ]
         },
@@ -6179,9 +2624,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-top-mx-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-top-mx-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-top-mx-value-sfdc_commission",
@@ -6258,10 +2703,12 @@
             "p-el-sae-top-mx-value-narr",
             "p-el-sae-top-mx-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-sae-top-mx-col-week"
+              "id": "p-el-sae-top-mx-col-week_of"
             }
           ]
         },
@@ -6275,9 +2722,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sgl-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sgl-value-sfdc_commission",
@@ -6374,10 +2821,12 @@
             "p-el-sgl-value-calculation_3783938539825639424",
             "p-el-sgl-value-calculation_7729232557248155653"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-sgl-col-week"
+              "id": "p-el-sgl-col-week_of"
             }
           ]
         },
@@ -6391,9 +2840,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-inbound-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-inbound-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-inbound-value-sfdc_commission",
@@ -6470,10 +2919,12 @@
             "p-el-sae-inbound-value-narr",
             "p-el-sae-inbound-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-sae-inbound-col-week"
+              "id": "p-el-sae-inbound-col-week_of"
             }
           ]
         }
@@ -6508,9 +2959,9 @@
               "formula": "[Master/SUBMARKET]"
             },
             {
-              "id": "p-el-tam-rep-by-submarket-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-tam-rep-by-submarket-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-tam-rep-by-submarket-value-incremental_sign_tam",
@@ -6555,7 +3006,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-tam-rep-by-submarket-col-week-of-cw"
+              "id": "p-el-tam-rep-by-submarket-col-week_of"
             }
           ]
         },
@@ -6574,9 +3025,9 @@
               "formula": "[Master/REGION]"
             },
             {
-              "id": "p-el-tam-rep-by-submarket-qoq-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "DateTrunc(\"quarter\", [Master/Week Of CW])",
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "DateTrunc(\"quarter\", [Master/WEEK_OF])",
               "format": {
                 "kind": "datetime",
                 "formatString": "%b %Y"
@@ -6622,7 +3073,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-tam-rep-by-submarket-qoq-col-week-of-cw"
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of"
             }
           ]
         }
@@ -6651,107 +3102,11 @@
               "Total Signs",
               "\\% of Signs"
             ],
-            "labels": []
+            "labels": [
+
+            ]
           },
           "value": "\\% of Signs"
-        },
-        {
-          "id": "el-total-org",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-total-org-row-total-org",
-              "name": "Total Org",
-              "formula": "[Master/Total Org]"
-            },
-            {
-              "id": "p-el-total-org-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
-            },
-            {
-              "id": "p-el-total-org-value-closes",
-              "name": "CLOSES",
-              "formula": "Sum([Master/CLOSES])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-total-org-value-hc",
-              "name": "HC",
-              "formula": "Sum([Master/HC])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-total-org-value-incremental_sign_tam",
-              "name": "INCREMENTAL_SIGN_TAM",
-              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.1f",
-                "currencySymbol": "$"
-              }
-            },
-            {
-              "id": "p-el-total-org-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-total-org-value-closes",
-            "p-el-total-org-value-hc",
-            "p-el-total-org-value-incremental_sign_tam",
-            "p-el-total-org-value-calculation_3783938539825639424"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-total-org-row-total-org"
-            }
-          ],
-          "columnsBy": [
-            {
-              "id": "p-el-total-org-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-kpi-smb-weekly-updated",
-          "kind": "kpi-chart",
-          "name": "SMB Weekly UPDATED",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "k-el-kpi-smb-weekly-updated",
-              "name": "Calculation_1538401536361832451",
-              "formula": "Sum([Master/Calculation_1538401536361832451])",
-              "format": {
-                "kind": "number",
-                "formatString": "($,.1f",
-                "currencySymbol": "$"
-              }
-            }
-          ],
-          "value": {
-            "columnId": "k-el-kpi-smb-weekly-updated"
-          }
         },
         {
           "id": "el-kpi-smb-weekly-goals",
@@ -6855,9 +3210,9 @@
           },
           "columns": [
             {
-              "id": "p-el-smb-weekly-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-smb-weekly-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-smb-weekly-value-closes",
@@ -6882,144 +3237,12 @@
             "p-el-smb-weekly-value-closes",
             "p-el-smb-weekly-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
-          "columnsBy": [
-            {
-              "id": "p-el-smb-weekly-col-week"
-            }
-          ]
-        },
-        {
-          "id": "el-cws-rep-ahc",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-cws-rep-ahc-row-vendor-v-onshore",
-              "name": "Vendor v Onshore",
-              "formula": "[Master/Vendor v Onshore]"
-            },
-            {
-              "id": "p-el-cws-rep-ahc-row-inbound-vs-outbound",
-              "name": "Inbound vs Outbound",
-              "formula": "[Master/Inbound vs Outbound]"
-            },
-            {
-              "id": "p-el-cws-rep-ahc-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
-            },
-            {
-              "id": "p-el-cws-rep-ahc-value-calculation_4738279400725786635",
-              "name": "[Signs - Goal]/[Active HC - Goal]",
-              "formula": "Avg([Master/Calculation_4738279400725786635])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cws-rep-ahc-value-calculation_4738279400726106126",
-              "name": "[Signs - Goal]/[Active HC - Goal]",
-              "formula": "Sum([Master/Calculation_4738279400726106126])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            },
-            {
-              "id": "p-el-cws-rep-ahc-value-calculation_3783938539825639424",
-              "name": "Signs - Actuals",
-              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
-              "format": {
-                "kind": "number",
-                "formatString": ",.0f"
-              }
-            }
-          ],
-          "values": [
-            "p-el-cws-rep-ahc-value-calculation_4738279400725786635",
-            "p-el-cws-rep-ahc-value-calculation_4738279400726106126",
-            "p-el-cws-rep-ahc-value-calculation_3783938539825639424"
-          ],
           "rowsBy": [
-            {
-              "id": "p-el-cws-rep-ahc-row-vendor-v-onshore"
-            },
-            {
-              "id": "p-el-cws-rep-ahc-row-inbound-vs-outbound"
-            },
-            {
-              "id": "p-el-cws-rep-ahc-row-role"
-            }
-          ],
-          "columnsBy": []
-        },
-        {
-          "id": "el-deck-rank-by-mgr",
-          "kind": "pivot-table",
-          "name": "Product Color Param",
-          "source": {
-            "kind": "table",
-            "elementId": "master"
-          },
-          "columns": [
-            {
-              "id": "p-el-deck-rank-by-mgr-row-os-v-is",
-              "name": "OS v IS",
-              "formula": "[Master/OS v IS]"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-row-strategic-v-regional-current-role-title-",
-              "name": "Strategic v Regional (Current Role Title)",
-              "formula": "[Master/Strategic v Regional (Current Role Title)]"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-col-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-value-calculation_272115961656373248",
-              "name": "Deck Rank Param Calc",
-              "formula": "Switch([ctl-param-deck-rank-signs-vs-param-total-pre-sale-org], \"Total Signs\", [Calculation_3783938539825639424], \"% of Signs\", [Calculation_3783938539825639424]/window_sum([Calculation_3783938539825639424]))",
-              "format": {
-                "kind": "number",
-                "formatString": ",.2%"
-              }
-            },
-            {
-              "id": "pvsw-calculation_3783938539825639424",
-              "name": "Calculation_3783938539825639424",
-              "formula": "[Master/Calculation_3783938539825639424]"
-            }
-          ],
-          "values": [
-            "p-el-deck-rank-by-mgr-value-calculation_272115961656373248"
-          ],
-          "rowsBy": [
-            {
-              "id": "p-el-deck-rank-by-mgr-row-os-v-is"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-row-strategic-v-regional-current-role-title-"
-            },
-            {
-              "id": "p-el-deck-rank-by-mgr-row-manager-name"
-            }
+
           ],
           "columnsBy": [
             {
-              "id": "p-el-deck-rank-by-mgr-col-deck-rank"
+              "id": "p-el-smb-weekly-col-week_of"
             }
           ]
         }
@@ -7044,9 +3267,9 @@
           },
           "columns": [
             {
-              "id": "p-el-vendor-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-vendor-overall-value-sfdc_commission",
@@ -7123,10 +3346,12 @@
             "p-el-vendor-overall-value-narr",
             "p-el-vendor-overall-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-vendor-overall-col-week"
+              "id": "p-el-vendor-overall-col-week_of"
             }
           ]
         },
@@ -7140,9 +3365,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-overall-value-sfdc_commission",
@@ -7229,10 +3454,12 @@
             "p-el-outbound-vendor-overall-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-overall-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-overall-col-week"
+              "id": "p-el-outbound-vendor-overall-col-week_of"
             }
           ]
         },
@@ -7246,9 +3473,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-regalix-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-regalix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-regalix-value-sfdc_commission",
@@ -7335,10 +3562,12 @@
             "p-el-outbound-vendor-regalix-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-regalix-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-regalix-col-week"
+              "id": "p-el-outbound-vendor-regalix-col-week_of"
             }
           ]
         },
@@ -7352,9 +3581,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-wipro-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-wipro-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-wipro-value-sfdc_commission",
@@ -7441,10 +3670,12 @@
             "p-el-outbound-vendor-wipro-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-wipro-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-wipro-col-week"
+              "id": "p-el-outbound-vendor-wipro-col-week_of"
             }
           ]
         },
@@ -7458,9 +3689,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-taskus-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-taskus-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-taskus-value-sfdc_commission",
@@ -7547,10 +3778,12 @@
             "p-el-outbound-vendor-taskus-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-taskus-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-taskus-col-week"
+              "id": "p-el-outbound-vendor-taskus-col-week_of"
             }
           ]
         },
@@ -7564,9 +3797,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-concentrix-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-concentrix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-concentrix-value-sfdc_commission",
@@ -7653,10 +3886,12 @@
             "p-el-outbound-vendor-concentrix-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-concentrix-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-concentrix-col-week"
+              "id": "p-el-outbound-vendor-concentrix-col-week_of"
             }
           ]
         },
@@ -7670,9 +3905,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-movate-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-movate-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-movate-value-sfdc_commission",
@@ -7759,10 +3994,12 @@
             "p-el-outbound-vendor-movate-value-calculation_1656550670929633282",
             "p-el-outbound-vendor-movate-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-movate-col-week"
+              "id": "p-el-outbound-vendor-movate-col-week_of"
             }
           ]
         },
@@ -7776,9 +4013,9 @@
           },
           "columns": [
             {
-              "id": "p-el-scale-team-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-scale-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-scale-team-value-sfdc_commission",
@@ -7855,10 +4092,12 @@
             "p-el-scale-team-value-narr",
             "p-el-scale-team-value-calculation_3783938539825639424"
           ],
-          "rowsBy": [],
+          "rowsBy": [
+
+          ],
           "columnsBy": [
             {
-              "id": "p-el-scale-team-col-week"
+              "id": "p-el-scale-team-col-week_of"
             }
           ]
         }

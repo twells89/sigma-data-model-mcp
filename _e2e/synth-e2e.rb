@@ -92,6 +92,10 @@ require 'yaml'
 File.write(File.join(WORK,'master-cols.yaml'), { 'columns' => mcols }.to_yaml)
 puts "master: #{mcols.size} column(s)"
 
+# Enrich the master-map with space/underscore-flexible + Tableau-caption entries
+# (n4pi.7) so chart refs that use friendly captions resolve to warehouse-named cols.
+run!(['python3', File.join(__dir__, 'enrich-mmap.py'), WORK])
+
 puts "\n== 4. build-charts =="
 layout = File.join(WORK,'layout.json')
 bc = ['ruby', File.join(HERE,'build-charts-from-signals.rb'), '--tableau-dir',WORK,'--layout',layout,'--master-map',File.join(WORK,'master-map.json'),'--master-element-id','master','--page-per-dashboard','--out',File.join(WORK,'chart-specs.json'),'--coverage-out',File.join(WORK,'coverage.json')]
@@ -101,6 +105,29 @@ run!(bc, allow_fail: true)
 
 puts "\n== 5. build-workbook-spec =="
 run!(['ruby', File.join(HERE,'build-workbook-spec.rb'), '--chart-specs',File.join(WORK,'chart-specs.json'),'--dm-ids',File.join(WORK,'dm-ids.json'),'--master-cols',File.join(WORK,'master-cols.yaml'),'--workbook-name','DDMX Blend E2E (n4pi)','--folder-id',FOLDER,'--mode','dashboard','--dm-element-name',fact['name'],'--out',File.join(WORK,'wb-spec.json')], allow_fail: true)
+
+# build-workbook-spec page-id slug can contain invalid chars (e.g. '+'); Sigma
+# requires /^[a-zA-Z0-9_-]{1,64}$/. Sanitize before POST (skill bug, n4pi.5).
+wbspec = JSON.parse(File.read(File.join(WORK,'wb-spec.json')))
+(wbspec['pages'] || []).each { |pg| pg['id'] = pg['id'].gsub(/[^a-zA-Z0-9_-]/, '-')[0,64] if pg['id'] }
+
+# Prune viz elements that reference master columns we don't have (charts plotting
+# untranslated Tableau calcs/params — n4pi.4). Surface the count (never silent).
+master_names = mcols.map { |c| c['name'].downcase }.to_set
+ref_re = /\[master\/([^\]]+)\]/i
+collect = lambda { |o, acc| case o
+  when Hash  then o.each_value { |v| v.is_a?(String) ? acc.concat(v.scan(ref_re).flatten) : collect.call(v, acc) }
+  when Array then o.each { |v| collect.call(v, acc) } end; acc }
+dropped_viz = 0
+(wbspec['pages'] || []).each do |pg|
+  kept = (pg['elements'] || []).select do |e|
+    miss = collect.call(e, []).reject { |r| master_names.include?(r.downcase) }
+    if miss.any? then dropped_viz += 1; false else true end
+  end
+  pg['elements'] = kept
+end
+puts "viz prune: dropped #{dropped_viz} element(s) referencing untranslated calcs/params (n4pi.4)"
+File.write(File.join(WORK,'wb-spec.json'), JSON.pretty_generate(wbspec))
 
 puts "\n== 6. POST workbook =="
 o,e,s = run!(['ruby', File.join(HERE,'post-and-readback.rb'), '--type','workbook','--spec',File.join(WORK,'wb-spec.json'),'--out',File.join(WORK,'wb-ids.json'),'--workdir',WORK], allow_fail: true)

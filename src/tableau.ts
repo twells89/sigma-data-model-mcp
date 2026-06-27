@@ -733,7 +733,11 @@ export function collapseCustomSqlBlend(
     ctes.push(`${cte} AS (\n  SELECT\n${subSel.join(',\n')}\n  FROM (\n${sec.source.statement}\n) ${_qid(`__src_${i}`)}\n  GROUP BY ${grpBy}\n)`);
     joins.push(`LEFT JOIN ${cte} ON ` +
       keyPairs.map((p: any) => `__f.${_qid(p.factSql)} = ${cte}.${_qid(p.secSql)}`).join(' AND '));
-    for (const c of nonKeyCols) emit(`${cte}.${_qid(sqlName(c.id))}`, c);
+    // Emit ALL secondary columns — including the join keys (available in the CTE
+    // at link grain). Tableau worksheets group by the secondary's key field
+    // (e.g. "Role" → the goal table's ROLE), so dropping it leaves those chart
+    // refs unresolvable even though the value equals the fact-side key.
+    for (const c of (sec.columns || [])) emit(`${cte}.${_qid(sqlName(c.id))}`, c);
   });
 
   const statement =
