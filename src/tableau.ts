@@ -601,6 +601,131 @@ function normalizeColumnName(name: string): string {
   return name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
 }
 
+// ── Blend collapse (multi-source-blend → one wide JOIN element) ────────────────
+// A Tableau multi-source BLEND lowers to N isolated kind:'sql' islands plus
+// cross-island relationships wired onto the row-grain fact. A Sigma master can
+// only source ONE element, so it physically cannot see sibling-island columns —
+// every cross-island chart ref fails ("Dependency not found: master/<col>") and
+// the dashboard comes out blank. Collapse the blend into a SINGLE wide kind:'sql'
+// element: pre-aggregate each secondary island to its link grain in a CTE (so a
+// many-to-many link cannot fan out the fact or — as a raw Sigma m:1 relationship
+// would — return NULL), then LEFT JOIN every secondary onto the fact. The master
+// then sees every column as a local column. SUM is used for additive measures
+// (Tableau local-type integer/real), MAX for dimensions, mirroring how a Tableau
+// blend aggregates the secondary at the link grain.
+//
+// Pure + side-effect-free over its inputs (returns the new element + the ids it
+// consumed); the caller splices `elements`. Returns null when the datasource is
+// not a custom-SQL blend (≥1 sql→sql relationship on the fact), leaving the
+// star-schema / single-source path untouched.
+const _qid = (name: string) => `"${String(name).replace(/"/g, '""')}"`;
+const _isNumericType = (t?: string) => t === 'integer' || t === 'real';
+
+export function collapseCustomSqlBlend(
+  elements: any[],
+  connId: string,
+  colSqlNameById: Record<string, string>,
+  colTypeById: Record<string, string>,
+  warnings: string[],
+): { mergedElement: any; consumedIds: string[] } | null {
+  const elById = new Map<string, any>(elements.map(e => [e.id, e]));
+  // The fact is the element carrying relationships that target other kind:'sql'
+  // islands. (A star schema relates to warehouse-table dims — not collapsed.)
+  const fact = elements.find(e =>
+    e.source?.kind === 'sql' &&
+    Array.isArray(e.relationships) &&
+    e.relationships.some((r: any) => elById.get(r.targetElementId)?.source?.kind === 'sql'));
+  if (!fact) return null;
+
+  // The exact SQL-output name for a column id: the captured remote-alias, else the
+  // uppercase identifier baked into the inode id ("inode-<hash>/<NAME>").
+  const sqlName = (colId: string): string =>
+    colSqlNameById[colId] || colId.split('/').slice(1).join('/') || colId;
+  // The clean formula alias Sigma uses for a column ("[Custom SQL/<alias>]").
+  const cleanAlias = (col: any): string => {
+    const m = typeof col.formula === 'string' && col.formula.match(/\/([^\]]+)\]$/);
+    return (m ? m[1] : (col.name || sqlName(col.id))).trim();
+  };
+
+  // Dedup relationships: identical (target + key-set) links are role-played dups
+  // (e.g. 3 copies of the special-projects goal). Keep the first of each.
+  const seen = new Set<string>();
+  const rels = (fact.relationships as any[])
+    .filter(r => elById.get(r.targetElementId)?.source?.kind === 'sql')
+    .filter(r => {
+      const sig = r.targetElementId + '|' +
+        (r.keys || []).map((k: any) => `${k.sourceColumnId}=${k.targetColumnId}`).sort().join(',');
+      if (seen.has(sig)) return false;
+      seen.add(sig);
+      return true;
+    });
+  // Only collapse a genuine MULTI-source blend (≥2 distinct secondary islands).
+  // A fact + single dim is an ordinary star relationship Sigma resolves natively
+  // (m:1 lookup) — leave it as relationships so the idiomatic shape is preserved.
+  if (rels.length < 2) return null;
+
+  const ctes: string[] = [`__f AS (\n${fact.source.statement}\n)`];
+  const joins: string[] = [];
+  const outSelect: string[] = [];
+  const mergedColumns: any[] = [];
+  const order: string[] = [];
+  // Output-alias uniqueness: a secondary column that collides with one already
+  // emitted is suffixed (keeps name == SQL alias so the formula always resolves).
+  const usedOut = new Set<string>();
+  const uniq = (base: string): string => {
+    let a = base, i = 2;
+    while (usedOut.has(a.toUpperCase())) a = `${base}_${i++}`;
+    usedOut.add(a.toUpperCase());
+    return a;
+  };
+
+  const emit = (sqlRef: string, col: any) => {
+    const out = uniq(cleanAlias(col));
+    outSelect.push(`  ${sqlRef} AS ${_qid(out)}`);
+    mergedColumns.push({ id: col.id, name: out, formula: `[Custom SQL/${out}]` });
+    order.push(col.id);
+  };
+
+  // 1. Fact columns straight through.
+  for (const col of (fact.columns || [])) emit(`__f.${_qid(sqlName(col.id))}`, col);
+
+  // 2. Each secondary: pre-aggregate to the link grain, LEFT JOIN, surface non-key cols.
+  rels.forEach((r, i) => {
+    const sec = elById.get(r.targetElementId);
+    if (!sec) return;
+    const cte = `__s${i}`;
+    const keyPairs = (r.keys || []).map((k: any) => ({
+      factSql: sqlName(k.sourceColumnId),
+      secSql: sqlName(k.targetColumnId),
+    }));
+    const keySecNames = new Set(keyPairs.map((p: any) => p.secSql));
+    const nonKeyCols = (sec.columns || []).filter((c: any) => !keySecNames.has(sqlName(c.id)));
+
+    const subSel: string[] = [];
+    for (const p of keyPairs) subSel.push(`    ${_qid(p.secSql)} AS ${_qid(p.secSql)}`);
+    for (const c of nonKeyCols) {
+      const sn = sqlName(c.id);
+      const agg = _isNumericType(colTypeById[c.id]) ? 'SUM' : 'MAX';
+      subSel.push(`    ${agg}(${_qid(sn)}) AS ${_qid(sn)}`);
+    }
+    const grpBy = keyPairs.map((p: any) => _qid(p.secSql)).join(', ');
+    ctes.push(`${cte} AS (\n  SELECT\n${subSel.join(',\n')}\n  FROM (\n${sec.source.statement}\n) ${_qid(`__src_${i}`)}\n  GROUP BY ${grpBy}\n)`);
+    joins.push(`LEFT JOIN ${cte} ON ` +
+      keyPairs.map((p: any) => `__f.${_qid(p.factSql)} = ${cte}.${_qid(p.secSql)}`).join(' AND '));
+    for (const c of nonKeyCols) emit(`${cte}.${_qid(sqlName(c.id))}`, c);
+  });
+
+  const statement =
+    `WITH ${ctes.join(',\n')}\nSELECT\n${outSelect.join(',\n')}\nFROM __f\n${joins.join('\n')}`;
+
+  warnings.push(`ℹ Multi-source blend collapsed into one wide JOIN element: fact + ${rels.length} pre-aggregated secondary island(s) (link-grain SUM/MAX) → ${mergedColumns.length} columns. Charts can now resolve every column locally.`);
+
+  return {
+    mergedElement: { id: fact.id, kind: 'table', source: { connectionId: connId, kind: 'sql', statement }, columns: mergedColumns, order },
+    consumedIds: [fact.id, ...rels.map(r => r.targetElementId)],
+  };
+}
+
 // ── Path Extraction ──────────────────────────────────────────────────────────
 
 function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
@@ -1314,9 +1439,18 @@ export function convertTableauToSigma(
         // namespaced `_.fcp.…true...object-id`. Grouping only by object-id collapsed
         // every column onto the first element (the empty-stub-elements bug); group by
         // parent-name so each of the N relations gets its own columns.
-        type MetaCol = { uuid: string; caption: string; objId?: string };
+        type MetaCol = { uuid: string; caption: string; objId?: string; localType?: string; remoteAlias?: string };
         const metaByObjId: Record<string, MetaCol[]> = {};
         const metaByParent: Record<string, MetaCol[]> = {};
+        // colId → Tableau local-type ('integer'|'real'|'date'|'string'|'boolean').
+        // Used by the blend-collapse to pick SUM (additive measures) vs MAX (dims)
+        // when pre-aggregating a secondary island to its link grain.
+        const colTypeById: Record<string, string> = {};
+        // colId → the EXACT SQL-output column name (Tableau remote-alias, incl. any
+        // " (Disambig)" suffix, e.g. "ROLE (PRESALE_PRODUCT_GOALS)"). The Sigma column
+        // formula uses the STRIPPED clean name; the blend-collapse must read each
+        // island's column by its exact output name and re-alias it to the clean name.
+        const colSqlNameById: Record<string, string> = {};
         const metaRecords = asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || []);
         const stripBrackets = (s: string) => s.replace(/^\[|\]$/g, '');
         for (const mr of metaRecords) {
@@ -1330,6 +1464,10 @@ export function convertTableauToSigma(
           const objIdRaw = stripBrackets((((mr['object-id'] as string) ||
             (nsChild(mr, 'object-id') as string) || '')).trim());
           const parentRaw = stripBrackets(((mr['parent-name'] as string) || '').trim());
+          const localType = ((mr['local-type'] as string) || '').trim().toLowerCase();
+          // The exact SQL-output column name (preserves the " (Disambig)" suffix).
+          const remoteAlias = (((mr['remote-alias'] as string) ||
+            stripBrackets(((mr['local-name'] as string) || '')) || '') as string).trim();
           if (!uuid || !cap) continue;
           // A record whose only available name is a raw Tableau GUID (no
           // caption/alias/local-name resolved to anything else). Some of these are
@@ -1350,7 +1488,7 @@ export function convertTableauToSigma(
               : `⚠ Dropped column "${uuid}" — referenced only by an internal Tableau GUID with no recoverable caption; emitting it would produce an unresolvable [TABLE/${uuid}] reference.`);
             continue;
           }
-          const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
+          const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined, localType: localType || undefined, remoteAlias: remoteAlias || undefined };
           if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
           if (parentRaw) (metaByParent[parentRaw] ||= []).push(entry);
         }
@@ -1404,10 +1542,13 @@ export function convertTableauToSigma(
           const isCustomSqlRel = attr(rel, 'type') === 'text';
           const colPrefix = isCustomSqlRel ? 'Custom SQL' : cleanName;
 
-          for (const { uuid, caption } of metaCols) {
+          for (const { uuid, caption, localType, remoteAlias } of metaCols) {
             const cleanCaption = caption.replace(/\s*\(.*\)$/, '').trim(); // strip disambiguation suffix
             const idKey = uuid.toUpperCase();
             const id    = sigmaInodeId(idKey);
+            if (localType) colTypeById[id] = localType;
+            // exact SQL-output name for blend-collapse; fall back to the caption.
+            colSqlNameById[id] = remoteAlias || caption;
             columns.push({ id, formula: `[${colPrefix}/${cleanCaption}]`, name: cleanCaption });
             order.push(id);
             colIdMap[idKey] = id;
@@ -1574,6 +1715,18 @@ export function convertTableauToSigma(
           const bR = !!((b as any).relationships?.length);
           return aR === bR ? 0 : aR ? 1 : -1;
         });
+
+        // Multi-source-blend collapse: fold isolated kind:'sql' islands + their
+        // cross-island relationships into ONE wide JOIN element so a single Sigma
+        // master can resolve every column (see collapseCustomSqlBlend).
+        const blend = collapseCustomSqlBlend(elements, connId, colSqlNameById, colTypeById, warnings);
+        if (blend) {
+          const consumed = new Set(blend.consumedIds);
+          for (let i = elements.length - 1; i >= 0; i--) {
+            if (consumed.has(elements[i].id)) elements.splice(i, 1);
+          }
+          elements.push(blend.mergedElement);
+        }
 
         if (!dbOverride || !schOverride) {
           warnings.push('⚠ Virtual connection: pass database and schema parameters to set the full warehouse path.');
