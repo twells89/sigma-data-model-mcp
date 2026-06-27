@@ -182,3 +182,10 @@ puts "\n== 6. POST workbook =="
 o,e,s = run!(['ruby', File.join(HERE,'post-and-readback.rb'), '--type','workbook','--spec',File.join(WORK,'wb-spec.json'),'--out',File.join(WORK,'wb-ids.json'),'--workdir',WORK], allow_fail: true)
 puts "\n== POST workbook stderr tail (resolution errors) =="
 puts (e||'')[-3000..] || e
+
+puts "\n== 7. migration notes (Not Migrated and why) =="
+# Turn every dropped tile into an actionable punch-list entry (n4pi.8 surfacing,
+# bead ncwe) so no empty tab is mysterious: param measure-picker → control-driven
+# Switch, field absent from source SQL, inert/commented source calc, window/LOD, etc.
+run!(['node', File.join(__dir__, 'migration-notes.mjs'), WORK, TWB, CONN, DB, SCHEMA], allow_fail: true)
+puts "→ #{File.join(WORK, 'migration-notes.md')}"
