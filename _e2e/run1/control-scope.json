@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "source": "tableau",
+  "sourceFilterSignals": 5,
+  "controls": [
+    {
+      "controlId": "ctl-param-deck-rank-signs-vs-param-canada-only-view",
+      "name": "Deck Rank Signs vs % Param",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'Deck Rank Signs vs % Param' (referenced by worksheet calcs)",
+      "intended": [
+        {
+          "element_id": "el-canada-outside-overall-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-outside-overall-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-total-org-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-total-org-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-can-inside-overall-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-can-inside-overall-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-deck-rank-by-mgr",
+          "name": "Product Color Param"
+        }
+      ],
+      "sourceName": "tableau parameter 'Deck Rank Signs vs % Param' (referenced by worksheet calcs)",
+      "scope": [
+        "el-canada-outside-overall-medal",
+        "el-canada-outside-overall-tiers",
+        "el-canada-total-org-medal",
+        "el-canada-total-org-tiers",
+        "el-can-inside-overall-medal",
+        "el-can-inside-overall-tiers",
+        "el-deck-rank-by-mgr"
+      ]
+    },
+    {
+      "controlId": "ctl-param-deck-rank-signs-vs-param-total-pre-sale-org",
+      "name": "Deck Rank Signs vs % Param",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'Deck Rank Signs vs % Param' (referenced by worksheet calcs)",
+      "intended": [
+        {
+          "element_id": "el-canada-outside-overall-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-outside-overall-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-total-org-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-canada-total-org-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-can-inside-overall-medal",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-can-inside-overall-tiers",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-deck-rank-by-mgr",
+          "name": "Product Color Param"
+        }
+      ],
+      "sourceName": "tableau parameter 'Deck Rank Signs vs % Param' (referenced by worksheet calcs)",
+      "scope": [
+        "el-canada-outside-overall-medal",
+        "el-canada-outside-overall-tiers",
+        "el-canada-total-org-medal",
+        "el-canada-total-org-tiers",
+        "el-can-inside-overall-medal",
+        "el-can-inside-overall-tiers",
+        "el-deck-rank-by-mgr"
+      ]
+    },
+    {
+      "controlId": "ctl-param-sgl-nav-param",
+      "name": "SGL Nav Param",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'SGL Nav Param' (referenced by worksheet calcs)",
+      "intended": [
+
+      ],
+      "sourceName": "tableau parameter 'SGL Nav Param' (referenced by worksheet calcs)",
+      "scope": [
+
+      ]
+    },
+    {
+      "controlId": "ctl-param-selection-param-selection-strategy",
+      "name": "Selection Param",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'Selection Param' (referenced by worksheet calcs)",
+      "intended": [
+        {
+          "element_id": "el-selection-tier-by-role-tbd",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-selection-market-maker-location",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-selection-lead-list",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-selection-aces",
+          "name": "Product Color Param"
+        },
+        {
+          "element_id": "el-selection-holdouts",
+          "name": "Product Color Param"
+        }
+      ],
+      "sourceName": "tableau parameter 'Selection Param' (referenced by worksheet calcs)",
+      "scope": [
+        "el-selection-tier-by-role-tbd",
+        "el-selection-market-maker-location",
+        "el-selection-lead-list",
+        "el-selection-aces",
+        "el-selection-holdouts"
+      ]
+    },
+    {
+      "controlId": "ctl-param-can-switch-medals-and-tiers-param",
+      "name": "CAN Switch Medals and Tiers PARAM",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'CAN Switch Medals and Tiers PARAM' (referenced by worksheet calcs)",
+      "intended": [
+
+      ],
+      "sourceName": "tableau parameter 'CAN Switch Medals and Tiers PARAM' (referenced by worksheet calcs)",
+      "scope": [
+
+      ]
+    },
+    {
+      "controlId": "ctl-param-activations-country",
+      "name": "Activations Country",
+      "mechanism": "formula",
+      "source_signal": "tableau parameter 'Activations Country' (referenced by worksheet calcs)",
+      "intended": [
+
+      ],
+      "sourceName": "tableau parameter 'Activations Country' (referenced by worksheet calcs)",
+      "scope": [
+
+      ]
+    }
+  ],
+  "dropped": [
+
+  ]
+}

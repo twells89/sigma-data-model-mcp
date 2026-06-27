@@ -1,0 +1,245 @@
+{
+  "dataModelId": "de5c14ff-09f1-4ca0-ad94-b8af68875ccc",
+  "pages": [
+    {
+      "id": "XLU1vU97h7",
+      "name": "Page 1",
+      "visibility": null,
+      "elements": [
+        {
+          "id": "9eaKAQiAaHcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "PgF2DnX93ocon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "2VShZkKdzCcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "oijuoH0zFJcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "PEsLjSoGqRcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "PzAUm67xL7con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "tpfETU4unQcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "KP1pFZuhn4con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "TmWl57Z5frcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "spUd1Qi3Hlcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "xyywuRppSQcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "HPW0SKaE4ucon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "bj7YQ4fLnIcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "sll5P67Rc5con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "OTzX0Y46NXcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "YSq0Us3FyYcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "KN8Wo1LdMTcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "g1sXLdczZkcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "4ve55yJB5ocon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "Mp1YWGGv96con",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "qWsundTgWpcon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "KMUeQSDe8scon",
+          "kind": "control",
+          "name": null
+        },
+        {
+          "id": "PpM3C8ylhg",
+          "kind": "table",
+          "name": "presales_cw_level",
+          "columnLabels": [
+            "PRODUCT",
+            "STARTING_POINT",
+            "STORE_NAME",
+            "INITIATIVE_GOAL",
+            "SDR_ID",
+            "STORE_ACCOUNT_ID",
+            "COUNTRY_2",
+            "CLOSES",
+            "YR_2",
+            "ACTIVATION_GOAL",
+            "MARKET_MAKER",
+            "IS_ADS_PROMOS",
+            "INITIATIVE_2",
+            "DECK_RANK",
+            "INCREMENTAL_SIGN_TAM",
+            "BUSINESS_ID",
+            "IS_ALCOHOL",
+            "OWNER_TEAM",
+            "IS_PICKUP",
+            "BUSINESS_ACCOUNT_ID",
+            "PROVISIONING_STATUS",
+            "BUSINESS_NAME",
+            "AHC_GOAL",
+            "INITIATIVE_GOAL_3",
+            "WEEK_GOAL_SP_3",
+            "STORE_ID",
+            "WEEK_OF",
+            "CW_COUNTRY",
+            "SUBMARKET_ID",
+            "REP_RANK",
+            "SALES_OWNER_2",
+            "USER_ID",
+            "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+            "CW_WEEK",
+            "QTR_YR_PG",
+            "TARGET",
+            "WEEK_GOAL_SP_2",
+            "HC",
+            "INITIATIVE_3",
+            "TOP_MX",
+            "DASHPASS_COMMISSION",
+            "WEEK_GOAL_SP",
+            "SALES_OWNER_ID",
+            "PRODUCT_LIST",
+            "OWNER_ROLE_OFFICIAL_TITLE",
+            "BASED",
+            "QTR_YR_SP",
+            "TEAM",
+            "MERCHANT_CLOSE_DATE",
+            "REP_COUNTRY",
+            "LAST_ETL_RUN",
+            "ACTIVATION_BONUS_AMOUNT",
+            "YR",
+            "IS_GNC",
+            "SDR_OWNER",
+            "STARTING_POINT_ID",
+            "PACKAGE_SOLD",
+            "SDR_COUNTRY",
+            "LEAD_LIST_CUSTOMIZED",
+            "QTR_YR",
+            "QTR_3",
+            "SDR_MANAGER_ID",
+            "TIER",
+            "SUBMARKET",
+            "WEEK_OF_3",
+            "WORK_ORDER_ID",
+            "CW_OWNER_ROLE_OFFICIAL_TITLE",
+            "IS_DASHPASS",
+            "IS_PROMO",
+            "TRIAL_PERIOD",
+            "CLOSE_PHASING",
+            "OPPORTUNITY_ID",
+            "IS_TRIAL",
+            "REP_ROLE",
+            "SFDC_COMMISSION",
+            "ACCOUNT_NAME",
+            "OWNER_ORG_FOCUS",
+            "MERCHANT_ACTIVATION_DATE",
+            "READINESS_CHECK_COMPLETE_DATE",
+            "NARR",
+            "SDR_ROLE",
+            "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+            "REGION",
+            "IS_ADS",
+            "COUNTRY",
+            "IS_STOREFRONT",
+            "QTR_YR_SP_2",
+            "WORK_ORDER_NUMBER",
+            "PRODUCT_GOAL",
+            "DAYS_OFF",
+            "LEAD_ID",
+            "QTR_YR_SP_3",
+            "SDR_MANAGER_NAME",
+            "QTR_2",
+            "QUARTER_YEAR",
+            "FULL_NAME",
+            "OPP_TYPE",
+            "WORKING_DAYS",
+            "NTAM",
+            "WEEK_OF_2",
+            "CLEAN_COUNTRY",
+            "NARR_2",
+            "WEEK_GOAL_ACTIVATIONS",
+            "SALES_OWNER",
+            "REP_SEGMENT",
+            "SFDC_SOURCE",
+            "SALES_MANAGER",
+            "YR_3",
+            "MX_ONBOARDING_LINK_SENT_DATE",
+            "PRIMARY_VERTICAL",
+            "MANAGER_NAME",
+            "ORG",
+            "INITIATIVE",
+            "INITIATIVE_GOAL_2",
+            "OPPORTUNITY_NAME",
+            "QTR"
+          ]
+        }
+      ]
+    }
+  ]
+}

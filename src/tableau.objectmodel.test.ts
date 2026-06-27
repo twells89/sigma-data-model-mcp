@@ -200,7 +200,7 @@ const blendTwb = `<?xml version='1.0' encoding='utf-8'?>
         <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
           <relation connection='snow' name='Custom SQL Query1' type='text'>select ROLE, WK, SALES from FACT_TBL</relation>
           <relation connection='snow' name='Custom SQL Query2' type='text'>select ROLE_G, WK_G, GOAL from WEEKLY_GOALS</relation>
-          <relation connection='snow' name='Custom SQL Query3' type='text'>select ROLE_P, PRODUCT, PGOAL from PRODUCT_GOALS</relation>
+          <relation connection='snow' name='Custom SQL Query3' type='text'>select ROLE_P, PRODUCT, PGOAL from SC.PRODUCT_GOALS</relation>
         </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
         <metadata-records>
           ${MR('ROLE',    'Custom SQL Query1', 'F (DB.F)_AAAA', 'string')}
@@ -277,5 +277,13 @@ describe('multi-source blend → one wide JOIN element', () => {
     const names = sqlEls[0].columns.map((c: any) => c.name);
     for (const f of ['ROLE', 'WK', 'SALES']) assert.ok(names.includes(f), `fact col ${f} present`);
     assert.ok(names.includes('GOAL') && names.includes('PGOAL'), 'secondary goal measures surfaced');
+  });
+
+  test('2-part FROM is qualified to 3-part (bug #2); 1-part is left alone', () => {
+    const s = sqlEls[0].source.statement;
+    // database override = 'DB'; the product-goals island used `from SC.PRODUCT_GOALS`.
+    assert.match(s, /FROM\s+DB\.SC\.PRODUCT_GOALS/i, '2-part schema.table qualified to db.schema.table');
+    assert.doesNotMatch(s, /FROM\s+DB\.FACT_TBL/i, '1-part bare table NOT spuriously qualified');
+    assert.doesNotMatch(s, /DB\.DB\./i, 'already-qualified refs not double-qualified');
   });
 });

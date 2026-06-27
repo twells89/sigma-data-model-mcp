@@ -621,6 +621,27 @@ function normalizeColumnName(name: string): string {
 const _qid = (name: string) => `"${String(name).replace(/"/g, '""')}"`;
 const _isNumericType = (t?: string) => t === 'integer' || t === 'real';
 
+// Qualify 2-part FROM/JOIN table refs (schema.table, quoted or bare) to 3-part
+// (database.schema.table). A Tableau Custom SQL statement carries 2-part names
+// that resolved against the original connection's DEFAULT database. A Sigma
+// OAuth connection has no current database, so a 2-part ref fails at POST with
+// "This session does not have a current database". Only FROM/JOIN targets are
+// touched (never SELECT-list schema.column), and refs already 3-part (preceded
+// by `<db>.`) are left alone. No-op when no database override is known.
+function qualifyTwoPartFqns(sql: string, db: string): string {
+  if (!sql || !db) return sql;
+  const qdb = /[^A-Za-z0-9_$]/.test(db) ? `"${db}"` : db;
+  const part = `(?:"[^"]+"|[A-Za-z_$][\\w$]*)`;
+  // Capture the WHOLE dotted ref after FROM/JOIN, then decide by part count —
+  // avoids the partial-identifier backtracking that would double-qualify a
+  // 3-part name. Only a 2-part schema.table is rewritten; 1- and 3-part stay.
+  const re = new RegExp(`(\\b(?:FROM|JOIN)\\s+)(${part}(?:\\.${part})*)`, 'gi');
+  return sql.replace(re, (m, kw, ref) => {
+    const parts = ref.match(new RegExp(part, 'g')) || [];
+    return parts.length === 2 ? `${kw}${qdb}.${ref}` : m;
+  });
+}
+
 export function collapseCustomSqlBlend(
   elements: any[],
   connId: string,
@@ -718,10 +739,17 @@ export function collapseCustomSqlBlend(
   const statement =
     `WITH ${ctes.join(',\n')}\nSELECT\n${outSelect.join(',\n')}\nFROM __f\n${joins.join('\n')}`;
 
+  // Name the merged element after the fact's base table (last FROM segment) so
+  // the master/derive_master step has a stable element name to source from.
+  const factFrom = String(fact.source?.statement || '').match(/\bFROM\s+(?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|([\w$]+)))*/i);
+  const mergedName = fact.name
+    || (factFrom && factFrom[1] ? factFrom[1].replace(/"/g, '') : 'BLEND')
+    || 'BLEND';
+
   warnings.push(`ℹ Multi-source blend collapsed into one wide JOIN element: fact + ${rels.length} pre-aggregated secondary island(s) (link-grain SUM/MAX) → ${mergedColumns.length} columns. Charts can now resolve every column locally.`);
 
   return {
-    mergedElement: { id: fact.id, kind: 'table', source: { connectionId: connId, kind: 'sql', statement }, columns: mergedColumns, order },
+    mergedElement: { id: fact.id, name: mergedName, kind: 'table', source: { connectionId: connId, kind: 'sql', statement }, columns: mergedColumns, order },
     consumedIds: [fact.id, ...rels.map(r => r.targetElementId)],
   };
 }
@@ -1579,7 +1607,9 @@ export function convertTableauToSigma(
           // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
           // is not a real table, so a warehouse-table path would fail at migration).
           const isCustomSql = isCustomSqlRel;
-          const sqlText = isCustomSql ? String(rel['#text'] ?? '').trim() : '';
+          const sqlText = isCustomSql
+            ? qualifyTwoPartFqns(String(rel['#text'] ?? '').trim(), dbOverride)
+            : '';
           const source = (isCustomSql && sqlText)
             ? { connectionId: connId, kind: 'sql', statement: sqlText }
             : { connectionId: connId, kind: 'warehouse-table', path };
