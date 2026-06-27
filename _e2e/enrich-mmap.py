@@ -20,12 +20,22 @@ for c in mcols:
 xml=open(twb,encoding='utf-8',errors='replace').read()
 caps=re.findall(r"<column\b[^>]*\bcaption='([^']+)'[^>]*\bname='\[([^']+)\]'", xml)
 capmap=0
+by_name={norm(c['name']):c for c in mcols}            # master col by normalized display name
+namemap=0
 for cap,field in caps:
     base=re.sub(r'\s*\([^)]*\)\s*','',field)          # strip (Custom SQL QueryN)
     base=re.sub(r'\s*\(copy\)_\d+$','',base)
     col=by_base.get(norm(base))
-    if not col: continue
-    key=f'(?i)^{AGG}{re.escape(cap)}$'
-    if key not in mmap: mmap[key]={'id':col['id'],'name':col['name']}; capmap+=1
+    if col:
+        key=f'(?i)^{AGG}{re.escape(cap)}$'
+        if key not in mmap: mmap[key]={'id':col['id'],'name':col['name']}; capmap+=1
+    # (c) internal field NAME -> the master col matching its CAPTION. Chart shelves
+    # reference the Tableau internal name ([Calculation_NNN], [X (copy)_NNN]); a
+    # calc's master col is named by caption, so without this the shelf ref dangles
+    # and the whole chart drops. Only map when the caption resolves to a master col.
+    capcol=by_name.get(norm(cap))
+    if capcol:
+        nkey=f'(?i)^{AGG}{re.escape(field)}$'
+        if nkey not in mmap: mmap[nkey]={'id':capcol['id'],'name':capcol['name']}; namemap+=1
 json.dump(mmap,open(f'{run}/master-map.json','w'),indent=2)
-print(f"enriched mmap: +{added} normalized, +{capmap} caption entries (total {len(mmap)})")
+print(f"enriched mmap: +{added} normalized, +{capmap} caption, +{namemap} internal-name entries (total {len(mmap)})")

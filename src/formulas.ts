@@ -172,6 +172,43 @@ export function tableauTextConcatToSigma(formula: string, isTextRef?: (name: str
   return f;
 }
 
+/**
+ * Parse a Tableau parameter-driven measure/dimension picker —
+ *   `case [Parameters].[Param N] when 'Signs' then [A] when 'TAM' then sum([B]) [else [C]] end`
+ * — into the Sigma-native equivalent: a control-driven Switch. Returns the param
+ * name, the case map, and a ready Switch formula `Switch([<controlId>], "Signs",
+ * <transA>, "TAM", <transB>, [<transElse>])`. Each result expression is run through
+ * tableauFormulaToSigma; metric references ([Signs - Actuals]) are LEFT intact for
+ * the build layer to inline against the posted model. Returns null if the formula
+ * isn't a parameter case-switch. This is the n4pi.8 measure-picker re-architecture.
+ */
+export function tableauParamSwitchToSigma(
+  formula: string,
+  controlId: string,
+  warnings?: string[],
+): { paramName: string; controlId: string; cases: { when: string; then: string }[]; elseExpr: string | null; switchFormula: string } | null {
+  const f = decodeXmlEntities(stripLineComments(formula)).trim();
+  const head = f.match(/^case\s+\[Parameters?\]\s*\.\s*\[([^\]]+)\]\s+([\s\S]*?)\s*end\s*$/i);
+  if (!head) return null;
+  const paramName = head[1];
+  const body = head[2];
+  const cases: { when: string; then: string }[] = [];
+  // `when <quoted-literal> then <result up to next when/else/end-of-body>`
+  const pairRe = /\bwhen\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s+then\s+([\s\S]*?)(?=\s*\bwhen\b|\s*\belse\b|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pairRe.exec(body))) {
+    const whenVal = m[1].slice(1, -1).replace(/\\(.)/g, '$1');   // strip quotes + unescape
+    const thenSig = tableauFormulaToSigma(m[2].trim(), warnings);
+    cases.push({ when: whenVal, then: thenSig });
+  }
+  if (!cases.length) return null;
+  const elseM = body.match(/\belse\s+([\s\S]*?)$/i);
+  const elseExpr = elseM ? tableauFormulaToSigma(elseM[1].trim(), warnings) : null;
+  const parts = cases.map(c => `"${c.when}", ${c.then}`).join(', ');
+  const switchFormula = `Switch([${controlId}], ${parts}${elseExpr ? `, ${elseExpr}` : ''})`;
+  return { paramName, controlId, cases, elseExpr, switchFormula };
+}
+
 /** Convert bare ALL_CAPS SQL identifier to Sigma display-name column ref [Title Case] */
 export function lookColRef(identifier: string): string {
   return `[${sigmaDisplayName(identifier)}]`;

@@ -19,6 +19,7 @@ import { convertTableauToSigma } from './tableau.js';
 import {
   decodeXmlEntities, stripLineComments, tableauInToSigma,
   tableauTextConcatToSigma, formulaHasUntranslatableFragment, tableauFormulaToSigma,
+  tableauParamSwitchToSigma,
 } from './formulas.js';
 
 const META = (objId: string) => `
@@ -337,5 +338,67 @@ describe('calc translation helpers (n4pi.4)', () => {
     assert.doesNotMatch(out, /&#10;|\bin\s*\(/);
     const dt = tableauFormulaToSigma("DATETRUNC('week', [D], 'monday')");
     assert.equal(dt, 'DateTrunc("week", [D])');
+  });
+});
+
+// ── n4pi.8: parameter measure-picker → control-driven Switch ─────────────────
+describe('param measure-picker → Switch (n4pi.8)', () => {
+  test('case [Parameters].[P] when V then E → Switch([ctl], "V", E, …)', () => {
+    const r = tableauParamSwitchToSigma(
+      `case [Parameters].[Parameter 17] when 'Signs' then [Signs - Actuals] when 'TAM' then sum([INCREMENTAL_SIGN_TAM]) end`,
+      'ctl-parameter-17');
+    assert.ok(r, 'parsed as a param-switch');
+    assert.equal(r!.paramName, 'Parameter 17');
+    assert.equal(r!.cases.length, 2);
+    assert.equal(r!.cases[0].when, 'Signs');
+    assert.match(r!.switchFormula, /^Switch\(\[ctl-parameter-17\], "Signs", /);
+    // bare translator emits the display-name form; SQL-alias reconciliation is a later (build) step
+    assert.match(r!.switchFormula, /"TAM", Sum\(\[Incremental Sign Tam\]\)/);
+  });
+
+  test('else branch + entity-encoded values are handled', () => {
+    const r = tableauParamSwitchToSigma(
+      `case [Parameters].[P] when &quot;A&quot; then [X] else [Y] end`, 'ctl-p');
+    assert.ok(r);
+    assert.equal(r!.elseExpr, '[Y]');
+    assert.match(r!.switchFormula, /Switch\(\[ctl-p\], "A", \[X\], \[Y\]\)/);
+  });
+
+  test('non-switch formula returns null', () => {
+    assert.equal(tableauParamSwitchToSigma('If([X] = 1, 2, 3)', 'ctl-p'), null);
+  });
+
+  test('converter emits param-switch + param-filter patterns + parameter members', () => {
+    const twb = `<?xml version='1.0'?><workbook><datasources>
+      <datasource name='Parameters' hasconnection='false'>
+        <column caption='Metric' datatype='string' name='[Parameter 1]' param-domain-type='list' value='&quot;Signs&quot;'>
+          <calculation class='tableau' formula='&quot;Signs&quot;'/>
+          <members><member value='&quot;Signs&quot;'/><member value='&quot;TAM&quot;'/></members>
+        </column>
+      </datasource>
+      <datasource caption='DS' name='federated.x'>
+        <connection class='federated'>
+          <named-connections><named-connection name='s'><connection class='snowflake' dbname='DB' schema='SC'/></named-connection></named-connections>
+          <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+            <relation connection='s' name='Custom SQL Query1' type='text'>select STORE_ACCOUNT_ID, INCREMENTAL_SIGN_TAM from T</relation>
+          </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+          <metadata-records>
+            <metadata-record class='column'><remote-name>STORE_ACCOUNT_ID</remote-name><caption>STORE_ACCOUNT_ID</caption><parent-name>[Custom SQL Query1]</parent-name><local-type>integer</local-type></metadata-record>
+            <metadata-record class='column'><remote-name>INCREMENTAL_SIGN_TAM</remote-name><caption>INCREMENTAL_SIGN_TAM</caption><parent-name>[Custom SQL Query1]</parent-name><local-type>real</local-type></metadata-record>
+          </metadata-records>
+        </connection>
+        <column caption='Metric Picker' datatype='real' name='[Calculation_9]' role='measure' type='quantitative'>
+          <calculation class='tableau' formula="case [Parameters].[Parameter 1] when 'Signs' then count([STORE_ACCOUNT_ID]) when 'TAM' then sum([INCREMENTAL_SIGN_TAM]) end"/>
+        </column>
+      </datasource></datasources></workbook>`;
+    const out: any = convertTableauToSigma(twb, { connectionId: 'c', database: 'DB', schema: 'SC', datasourceIndex: 1 });
+    const params = out.parameters || [];
+    const p1 = params.find((p: any) => p.rawName === 'Parameter 1');
+    assert.ok(p1, 'parameter parsed');
+    assert.deepEqual(p1.members, ['Signs', 'TAM'], 'members parsed from <members><member>');
+    assert.equal(p1.currentValue, 'Signs', 'current value from value attr');
+    const sw = (out.workbookPatterns || []).find((w: any) => w.kind === 'param-switch');
+    assert.ok(sw, 'param-switch pattern emitted');
+    assert.match(sw.formula, /^Switch\(\[ctl-parameter-1\], "Signs", /);
   });
 });
