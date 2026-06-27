@@ -23,14 +23,14 @@
               "formula": "[Master/Activations by Team]"
             },
             {
-              "id": "p-el-total-org-_activations-row-role-activations",
-              "name": "Role Activations",
-              "formula": "[Master/Role Activations]"
+              "id": "p-el-total-org-_activations-row-role_activations",
+              "name": "ROLE_ACTIVATIONS",
+              "formula": "[Master/ROLE_ACTIVATIONS]"
             },
             {
-              "id": "p-el-total-org-_activations-col-week-goal-activations",
-              "name": "Week Goal Activations",
-              "formula": "[Master/Week Goal Activations]"
+              "id": "p-el-total-org-_activations-col-week_goal_activations",
+              "name": "WEEK_GOAL_ACTIVATIONS",
+              "formula": "[Master/WEEK_GOAL_ACTIVATIONS]"
             },
             {
               "id": "p-el-total-org-_activations-value-activation_goal",
@@ -71,12 +71,12 @@
               "id": "p-el-total-org-_activations-row-activations-by-team"
             },
             {
-              "id": "p-el-total-org-_activations-row-role-activations"
+              "id": "p-el-total-org-_activations-row-role_activations"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-total-org-_activations-col-week-goal-activations"
+              "id": "p-el-total-org-_activations-col-week_goal_activations"
             }
           ]
         },
@@ -218,14 +218,14 @@
               "formula": "[Master/Activation_Week]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-activation-date",
-              "name": "Activation Date",
-              "formula": "[Master/Activation Date]"
+              "id": "p-el-activations-deep-dive-row-merchant_activation_date",
+              "name": "MERCHANT_ACTIVATION_DATE",
+              "formula": "[Master/MERCHANT_ACTIVATION_DATE]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
+              "id": "p-el-activations-deep-dive-row-account_name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Master/ACCOUNT_NAME]"
             },
             {
               "id": "p-el-activations-deep-dive-row-store_id",
@@ -233,14 +233,14 @@
               "formula": "[Master/STORE_ID]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-activations-deep-dive-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
+              "id": "p-el-activations-deep-dive-row-work_order_id",
+              "name": "WORK_ORDER_ID",
+              "formula": "[Master/WORK_ORDER_ID]"
             },
             {
               "id": "p-el-activations-deep-dive-row-wo-number",
@@ -253,9 +253,9 @@
               "formula": "[Master/Opp URL]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-activations-deep-dive-row-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
               "id": "p-el-activations-deep-dive-row-sales-owner-copy-",
@@ -263,19 +263,19 @@
               "formula": "[Master/Sales Owner (copy)]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-activations-deep-dive-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-activations-deep-dive-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-activations-deep-dive-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-activations-deep-dive-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
               "id": "p-el-activations-deep-dive-value-calculation_6622965475636920323",
@@ -385,19 +385,19 @@
               "id": "p-el-activations-deep-dive-row-activation_week"
             },
             {
-              "id": "p-el-activations-deep-dive-row-activation-date"
+              "id": "p-el-activations-deep-dive-row-merchant_activation_date"
             },
             {
-              "id": "p-el-activations-deep-dive-row-account-name"
+              "id": "p-el-activations-deep-dive-row-account_name"
             },
             {
               "id": "p-el-activations-deep-dive-row-store_id"
             },
             {
-              "id": "p-el-activations-deep-dive-row-merchant-close-date"
+              "id": "p-el-activations-deep-dive-row-merchant_close_date"
             },
             {
-              "id": "p-el-activations-deep-dive-row-wo-id"
+              "id": "p-el-activations-deep-dive-row-work_order_id"
             },
             {
               "id": "p-el-activations-deep-dive-row-wo-number"
@@ -406,19 +406,19 @@
               "id": "p-el-activations-deep-dive-row-opp-url"
             },
             {
-              "id": "p-el-activations-deep-dive-row-deck-rank"
+              "id": "p-el-activations-deep-dive-row-deck_rank"
             },
             {
               "id": "p-el-activations-deep-dive-row-sales-owner-copy-"
             },
             {
-              "id": "p-el-activations-deep-dive-row-cw-owner-role-official-title"
+              "id": "p-el-activations-deep-dive-row-cw_owner_role_official_title"
             },
             {
-              "id": "p-el-activations-deep-dive-row-cw-country"
+              "id": "p-el-activations-deep-dive-row-cw_country"
             },
             {
-              "id": "p-el-activations-deep-dive-row-manager-name"
+              "id": "p-el-activations-deep-dive-row-manager_name"
             }
           ],
           "columnsBy": [
@@ -451,13 +451,13 @@
             },
             {
               "id": "p-el-avg-days-off-by-team-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-avg-days-off-by-team-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-avg-days-off-by-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-avg-days-off-by-team-value-calculation_6492009266119520260",
@@ -492,7 +492,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-avg-days-off-by-team-col-week"
+              "id": "p-el-avg-days-off-by-team-col-week_of"
             }
           ]
         },
@@ -511,9 +511,9 @@
               "formula": "[Master/Vendor v Onshore]"
             },
             {
-              "id": "p-el-bis-calculation-detail-col-week-of-presales-active-hc-",
-              "name": "Week Of (Presales Active Hc)",
-              "formula": "[Master/Week Of (Presales Active Hc)]"
+              "id": "p-el-bis-calculation-detail-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-bis-calculation-detail-value-working_days",
@@ -575,7 +575,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-bis-calculation-detail-col-week-of-presales-active-hc-"
+              "id": "p-el-bis-calculation-detail-col-week_of"
             }
           ]
         }
@@ -599,14 +599,14 @@
           },
           "columns": [
             {
-              "id": "p-el-cw-view-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-cw-view-row-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
-              "id": "p-el-cw-view-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-cw-view-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
               "id": "p-el-cw-view-row-calculation_573927491580395521-nk-1",
@@ -614,14 +614,14 @@
               "formula": "[Master/Calculation_573927491580395521:nk:1]"
             },
             {
-              "id": "p-el-cw-view-row-account_id",
-              "name": "ACCOUNT_ID",
-              "formula": "[Master/ACCOUNT_ID]"
+              "id": "p-el-cw-view-row-store_account_id",
+              "name": "STORE_ACCOUNT_ID",
+              "formula": "[Master/STORE_ACCOUNT_ID]"
             },
             {
-              "id": "p-el-cw-view-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
+              "id": "p-el-cw-view-row-account_name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Master/ACCOUNT_NAME]"
             },
             {
               "id": "p-el-cw-view-row-store_id",
@@ -634,9 +634,9 @@
               "formula": "[Master/WO Number]"
             },
             {
-              "id": "p-el-cw-view-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
+              "id": "p-el-cw-view-row-work_order_id",
+              "name": "WORK_ORDER_ID",
+              "formula": "[Master/WORK_ORDER_ID]"
             },
             {
               "id": "p-el-cw-view-row-opp-url",
@@ -644,14 +644,14 @@
               "formula": "[Master/Opp URL]"
             },
             {
-              "id": "p-el-cw-view-row-opportunity-id",
-              "name": "Opportunity Id",
-              "formula": "[Master/Opportunity Id]"
+              "id": "p-el-cw-view-row-opportunity_id",
+              "name": "OPPORTUNITY_ID",
+              "formula": "[Master/OPPORTUNITY_ID]"
             },
             {
-              "id": "p-el-cw-view-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-cw-view-row-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
               "id": "p-el-cw-view-row-sales-owner-copy-",
@@ -659,29 +659,29 @@
               "formula": "[Master/Sales Owner (copy)]"
             },
             {
-              "id": "p-el-cw-view-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-cw-view-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-cw-view-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-cw-view-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-cw-view-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-cw-view-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
-              "id": "p-el-cw-view-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
+              "id": "p-el-cw-view-row-sdr_owner",
+              "name": "SDR_OWNER",
+              "formula": "[Master/SDR_OWNER]"
             },
             {
-              "id": "p-el-cw-view-row-top-mx",
-              "name": "Top Mx",
-              "formula": "[Master/Top Mx]"
+              "id": "p-el-cw-view-row-top_mx",
+              "name": "TOP_MX",
+              "formula": "[Master/TOP_MX]"
             },
             {
               "id": "p-el-cw-view-row-tier",
@@ -778,19 +778,19 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-cw-view-row-week-of-cw"
+              "id": "p-el-cw-view-row-week_of"
             },
             {
-              "id": "p-el-cw-view-row-merchant-close-date"
+              "id": "p-el-cw-view-row-merchant_close_date"
             },
             {
               "id": "p-el-cw-view-row-calculation_573927491580395521-nk-1"
             },
             {
-              "id": "p-el-cw-view-row-account_id"
+              "id": "p-el-cw-view-row-store_account_id"
             },
             {
-              "id": "p-el-cw-view-row-account-name"
+              "id": "p-el-cw-view-row-account_name"
             },
             {
               "id": "p-el-cw-view-row-store_id"
@@ -799,34 +799,34 @@
               "id": "p-el-cw-view-row-wo-number"
             },
             {
-              "id": "p-el-cw-view-row-wo-id"
+              "id": "p-el-cw-view-row-work_order_id"
             },
             {
               "id": "p-el-cw-view-row-opp-url"
             },
             {
-              "id": "p-el-cw-view-row-opportunity-id"
+              "id": "p-el-cw-view-row-opportunity_id"
             },
             {
-              "id": "p-el-cw-view-row-deck-rank"
+              "id": "p-el-cw-view-row-deck_rank"
             },
             {
               "id": "p-el-cw-view-row-sales-owner-copy-"
             },
             {
-              "id": "p-el-cw-view-row-cw-owner-role-official-title"
+              "id": "p-el-cw-view-row-cw_owner_role_official_title"
             },
             {
-              "id": "p-el-cw-view-row-cw-country"
+              "id": "p-el-cw-view-row-cw_country"
             },
             {
-              "id": "p-el-cw-view-row-manager-name"
+              "id": "p-el-cw-view-row-manager_name"
             },
             {
-              "id": "p-el-cw-view-row-sdr"
+              "id": "p-el-cw-view-row-sdr_owner"
             },
             {
-              "id": "p-el-cw-view-row-top-mx"
+              "id": "p-el-cw-view-row-top_mx"
             },
             {
               "id": "p-el-cw-view-row-tier"
@@ -854,14 +854,14 @@
               "formula": "[Master/Activation_Week]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation-date",
-              "name": "Activation Date",
-              "formula": "[Master/Activation Date]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant_activation_date",
+              "name": "MERCHANT_ACTIVATION_DATE",
+              "formula": "[Master/MERCHANT_ACTIVATION_DATE]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account_name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Master/ACCOUNT_NAME]"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-store_id",
@@ -869,14 +869,14 @@
               "formula": "[Master/STORE_ID]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-work_order_id",
+              "name": "WORK_ORDER_ID",
+              "formula": "[Master/WORK_ORDER_ID]"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-number",
@@ -889,9 +889,9 @@
               "formula": "[Master/Opp URL]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-sales-owner-copy-",
@@ -899,19 +899,19 @@
               "formula": "[Master/Sales Owner (copy)]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-value-calculation_6622965475636920323",
@@ -1021,19 +1021,19 @@
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation_week"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-activation-date"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant_activation_date"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account-name"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-account_name"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-store_id"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant-close-date"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-merchant_close_date"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-id"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-work_order_id"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-wo-number"
@@ -1042,19 +1042,19 @@
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-opp-url"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck-rank"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-deck_rank"
             },
             {
               "id": "p-el-activations-deep-dive-cw-deep-dive-row-sales-owner-copy-"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-owner-role-official-title"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw_owner_role_official_title"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw-country"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-cw_country"
             },
             {
-              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager-name"
+              "id": "p-el-activations-deep-dive-cw-deep-dive-row-manager_name"
             }
           ],
           "columnsBy": [
@@ -1101,9 +1101,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-sml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-sml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-sml-value-sfdc_commission",
@@ -1184,7 +1184,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-sml-col-week"
+              "id": "p-el-can-sml-col-week_of"
             }
           ]
         },
@@ -1199,13 +1199,13 @@
           "columns": [
             {
               "id": "p-el-can-inside-by-role-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-can-inside-by-role-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-inside-by-role-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-inside-by-role-value-sfdc_commission",
@@ -1288,7 +1288,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-inside-by-role-col-week"
+              "id": "p-el-can-inside-by-role-col-week_of"
             }
           ]
         },
@@ -1303,13 +1303,13 @@
           "columns": [
             {
               "id": "p-el-can-inbound-vendor-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-can-inbound-vendor-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-inbound-vendor-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-inbound-vendor-value-sfdc_commission",
@@ -1372,7 +1372,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-inbound-vendor-col-week"
+              "id": "p-el-can-inbound-vendor-col-week_of"
             }
           ]
         },
@@ -1386,9 +1386,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-ssmo-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-ssmo-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-ssmo-value-sfdc_commission",
@@ -1469,7 +1469,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-ssmo-col-week"
+              "id": "p-el-can-ssmo-col-week_of"
             }
           ]
         },
@@ -1483,9 +1483,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-ml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-ml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-ml-value-sfdc_commission",
@@ -1566,7 +1566,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-ml-col-week"
+              "id": "p-el-can-ml-col-week_of"
             }
           ]
         },
@@ -1580,9 +1580,9 @@
           },
           "columns": [
             {
-              "id": "p-el-canada-outside-overall-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-canada-outside-overall-medal-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-canada-outside-overall-medal-value-sfdc_commission",
@@ -1743,7 +1743,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-canada-outside-overall-medal-col-week"
+              "id": "p-el-canada-outside-overall-medal-col-week_of"
             }
           ]
         },
@@ -1757,9 +1757,9 @@
           },
           "columns": [
             {
-              "id": "p-el-canada-outside-overall-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-canada-outside-overall-tiers-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-canada-outside-overall-tiers-value-sfdc_commission",
@@ -1920,7 +1920,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-canada-outside-overall-tiers-col-week"
+              "id": "p-el-canada-outside-overall-tiers-col-week_of"
             }
           ]
         },
@@ -1934,9 +1934,9 @@
           },
           "columns": [
             {
-              "id": "p-el-canada-total-org-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-canada-total-org-medal-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-canada-total-org-medal-value-sfdc_commission",
@@ -2067,7 +2067,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-canada-total-org-medal-col-week"
+              "id": "p-el-canada-total-org-medal-col-week_of"
             }
           ]
         },
@@ -2081,9 +2081,9 @@
           },
           "columns": [
             {
-              "id": "p-el-canada-total-org-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-canada-total-org-tiers-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-canada-total-org-tiers-value-sfdc_commission",
@@ -2214,7 +2214,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-canada-total-org-tiers-col-week"
+              "id": "p-el-canada-total-org-tiers-col-week_of"
             }
           ]
         },
@@ -2228,9 +2228,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-inside-overall-medal-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-inside-overall-medal-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-inside-overall-medal-value-sfdc_commission",
@@ -2391,7 +2391,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-inside-overall-medal-col-week"
+              "id": "p-el-can-inside-overall-medal-col-week_of"
             }
           ]
         },
@@ -2405,9 +2405,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-inside-overall-tiers-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-can-inside-overall-tiers-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-inside-overall-tiers-value-sfdc_commission",
@@ -2568,7 +2568,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-inside-overall-tiers-col-week"
+              "id": "p-el-can-inside-overall-tiers-col-week_of"
             }
           ]
         },
@@ -2587,9 +2587,9 @@
               "formula": "[Master/CAN Special Roles]"
             },
             {
-              "id": "p-el-mcdonald-s-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-mcdonald-s-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-mcdonald-s-value-sfdc_commission",
@@ -2652,7 +2652,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-mcdonald-s-col-week-of-cw"
+              "id": "p-el-mcdonald-s-col-week_of"
             }
           ]
         },
@@ -2666,9 +2666,9 @@
           },
           "columns": [
             {
-              "id": "p-el-can-bde-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-can-bde-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-can-bde-value-sfdc_commission",
@@ -2730,7 +2730,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-can-bde-col-week-of-cw"
+              "id": "p-el-can-bde-col-week_of"
             }
           ]
         },
@@ -2744,24 +2744,24 @@
           },
           "columns": [
             {
-              "id": "p-el-can-cw-detail-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-can-cw-detail-row-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
-              "id": "p-el-can-cw-detail-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-can-cw-detail-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
-              "id": "p-el-can-cw-detail-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-can-cw-detail-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
-              "id": "p-el-can-cw-detail-row-full-name",
-              "name": "Full Name",
-              "formula": "[Master/Full Name]"
+              "id": "p-el-can-cw-detail-row-full_name",
+              "name": "FULL_NAME",
+              "formula": "[Master/FULL_NAME]"
             },
             {
               "id": "p-el-can-cw-detail-row-opp-url",
@@ -2779,9 +2779,9 @@
               "formula": "[Master/SUBMARKET]"
             },
             {
-              "id": "p-el-can-cw-detail-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-can-cw-detail-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
               "id": "p-el-can-cw-detail-row-primary-campaign-source",
@@ -2863,16 +2863,16 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-can-cw-detail-row-week-of-cw"
+              "id": "p-el-can-cw-detail-row-week_of"
             },
             {
-              "id": "p-el-can-cw-detail-row-merchant-close-date"
+              "id": "p-el-can-cw-detail-row-merchant_close_date"
             },
             {
-              "id": "p-el-can-cw-detail-row-manager-name"
+              "id": "p-el-can-cw-detail-row-manager_name"
             },
             {
-              "id": "p-el-can-cw-detail-row-full-name"
+              "id": "p-el-can-cw-detail-row-full_name"
             },
             {
               "id": "p-el-can-cw-detail-row-opp-url"
@@ -2884,7 +2884,7 @@
               "id": "p-el-can-cw-detail-row-submarket"
             },
             {
-              "id": "p-el-can-cw-detail-row-cw-country"
+              "id": "p-el-can-cw-detail-row-cw_country"
             },
             {
               "id": "p-el-can-cw-detail-row-primary-campaign-source"
@@ -2914,9 +2914,9 @@
           },
           "columns": [
             {
-              "id": "p-el-regional-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-regional-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-regional-overall-value-sfdc_commission",
@@ -2998,7 +2998,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-regional-overall-col-week"
+              "id": "p-el-regional-overall-col-week_of"
             }
           ]
         },
@@ -3012,9 +3012,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-ml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-ml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-ml-value-sfdc_commission",
@@ -3096,7 +3096,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-ml-col-week"
+              "id": "p-el-outside-regional-ml-col-week_of"
             }
           ]
         },
@@ -3110,9 +3110,9 @@
           },
           "columns": [
             {
-              "id": "p-el-inside-regional-ae-blitz-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-inside-regional-ae-blitz-ae-value-sfdc_commission",
@@ -3194,7 +3194,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-inside-regional-ae-blitz-ae-col-week"
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of"
             }
           ]
         },
@@ -3208,9 +3208,9 @@
           },
           "columns": [
             {
-              "id": "p-el-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ae-value-sfdc_commission",
@@ -3292,7 +3292,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-ae-col-week"
+              "id": "p-el-ae-col-week_of"
             }
           ]
         },
@@ -3306,9 +3306,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-gml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-gml-value-sfdc_commission",
@@ -3400,7 +3400,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-gml-col-week"
+              "id": "p-el-outside-regional-gml-col-week_of"
             }
           ]
         },
@@ -3414,9 +3414,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-ml-agml-and-gml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-ml-agml-and-gml-value-sfdc_commission",
@@ -3498,7 +3498,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-ml-agml-and-gml-col-week"
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of"
             }
           ]
         },
@@ -3512,9 +3512,9 @@
           },
           "columns": [
             {
-              "id": "p-el-blitz-ae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-blitz-ae-value-sfdc_commission",
@@ -3596,7 +3596,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-blitz-ae-col-week"
+              "id": "p-el-blitz-ae-col-week_of"
             }
           ]
         },
@@ -3610,9 +3610,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-regional-agml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-regional-agml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-regional-agml-value-sfdc_commission",
@@ -3704,7 +3704,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outside-regional-agml-col-week"
+              "id": "p-el-outside-regional-agml-col-week_of"
             }
           ]
         }
@@ -3728,14 +3728,14 @@
           },
           "columns": [
             {
-              "id": "p-el-cw-view-roster-cws-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-cw-view-roster-cws-row-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-cw-view-roster-cws-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-calculation_573927491580395521-nk-1",
@@ -3743,14 +3743,14 @@
               "formula": "[Master/Calculation_573927491580395521:nk:1]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-account_id",
-              "name": "ACCOUNT_ID",
-              "formula": "[Master/ACCOUNT_ID]"
+              "id": "p-el-cw-view-roster-cws-row-store_account_id",
+              "name": "STORE_ACCOUNT_ID",
+              "formula": "[Master/STORE_ACCOUNT_ID]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
+              "id": "p-el-cw-view-roster-cws-row-account_name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Master/ACCOUNT_NAME]"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-store_id",
@@ -3763,9 +3763,9 @@
               "formula": "[Master/WO Number]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-wo-id",
-              "name": "WO ID",
-              "formula": "[Master/WO ID]"
+              "id": "p-el-cw-view-roster-cws-row-work_order_id",
+              "name": "WORK_ORDER_ID",
+              "formula": "[Master/WORK_ORDER_ID]"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-opp-url",
@@ -3773,14 +3773,14 @@
               "formula": "[Master/Opp URL]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-opportunity-id",
-              "name": "Opportunity Id",
-              "formula": "[Master/Opportunity Id]"
+              "id": "p-el-cw-view-roster-cws-row-opportunity_id",
+              "name": "OPPORTUNITY_ID",
+              "formula": "[Master/OPPORTUNITY_ID]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-cw-view-roster-cws-row-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-sales-owner-copy-",
@@ -3788,29 +3788,29 @@
               "formula": "[Master/Sales Owner (copy)]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-cw-view-roster-cws-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-cw-view-roster-cws-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-cw-view-roster-cws-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
+              "id": "p-el-cw-view-roster-cws-row-sdr_owner",
+              "name": "SDR_OWNER",
+              "formula": "[Master/SDR_OWNER]"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-top-mx",
-              "name": "Top Mx",
-              "formula": "[Master/Top Mx]"
+              "id": "p-el-cw-view-roster-cws-row-top_mx",
+              "name": "TOP_MX",
+              "formula": "[Master/TOP_MX]"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-tier",
@@ -3907,19 +3907,19 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-cw-view-roster-cws-row-week-of-cw"
+              "id": "p-el-cw-view-roster-cws-row-week_of"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-merchant-close-date"
+              "id": "p-el-cw-view-roster-cws-row-merchant_close_date"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-calculation_573927491580395521-nk-1"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-account_id"
+              "id": "p-el-cw-view-roster-cws-row-store_account_id"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-account-name"
+              "id": "p-el-cw-view-roster-cws-row-account_name"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-store_id"
@@ -3928,34 +3928,34 @@
               "id": "p-el-cw-view-roster-cws-row-wo-number"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-wo-id"
+              "id": "p-el-cw-view-roster-cws-row-work_order_id"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-opp-url"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-opportunity-id"
+              "id": "p-el-cw-view-roster-cws-row-opportunity_id"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-deck-rank"
+              "id": "p-el-cw-view-roster-cws-row-deck_rank"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-sales-owner-copy-"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-cw-owner-role-official-title"
+              "id": "p-el-cw-view-roster-cws-row-cw_owner_role_official_title"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-cw-country"
+              "id": "p-el-cw-view-roster-cws-row-cw_country"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-manager-name"
+              "id": "p-el-cw-view-roster-cws-row-manager_name"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-sdr"
+              "id": "p-el-cw-view-roster-cws-row-sdr_owner"
             },
             {
-              "id": "p-el-cw-view-roster-cws-row-top-mx"
+              "id": "p-el-cw-view-roster-cws-row-top_mx"
             },
             {
               "id": "p-el-cw-view-roster-cws-row-tier"
@@ -3983,9 +3983,9 @@
               "formula": "[Master/Role Title]"
             },
             {
-              "id": "p-el-productivity-per-role-summary-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "DateTrunc(\"month\", [Master/Merchant Close Date])",
+              "id": "p-el-productivity-per-role-summary-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "DateTrunc(\"month\", [Master/MERCHANT_CLOSE_DATE])",
               "format": {
                 "kind": "datetime",
                 "formatString": "%b %Y"
@@ -4009,7 +4009,7 @@
               "id": "p-el-productivity-per-role-summary-row-role-title"
             },
             {
-              "id": "p-el-productivity-per-role-summary-row-merchant-close-date"
+              "id": "p-el-productivity-per-role-summary-row-merchant_close_date"
             }
           ],
           "columnsBy": [
@@ -4041,9 +4041,9 @@
               "formula": "[Master/Clean Combined Country]"
             },
             {
-              "id": "p-el-ssmo-sheet-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-ssmo-sheet-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ssmo-sheet-value-sfdc_commission",
@@ -4096,7 +4096,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-ssmo-sheet-col-week"
+              "id": "p-el-ssmo-sheet-col-week_of"
             }
           ]
         },
@@ -4115,9 +4115,9 @@
               "formula": "[Master/Role Goals]"
             },
             {
-              "id": "p-el-inbound-vendor-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-inbound-vendor-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-inbound-vendor-value-sfdc_commission",
@@ -4211,7 +4211,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-inbound-vendor-col-week"
+              "id": "p-el-inbound-vendor-col-week_of"
             }
           ]
         },
@@ -4225,14 +4225,14 @@
           },
           "columns": [
             {
-              "id": "p-el-ssmo-anz-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-ssmo-anz-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-ssmo-anz-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-ssmo-anz-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ssmo-anz-value-sfdc_commission",
@@ -4270,12 +4270,12 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-ssmo-anz-row-cw-country"
+              "id": "p-el-ssmo-anz-row-cw_country"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-ssmo-anz-col-week-of-cw"
+              "id": "p-el-ssmo-anz-col-week_of"
             }
           ]
         },
@@ -4294,9 +4294,9 @@
               "formula": "[Master/Clean Combined Country]"
             },
             {
-              "id": "p-el-ssmo-ib-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-ssmo-ib-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-ssmo-ib-value-sfdc_commission",
@@ -4349,7 +4349,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-ssmo-ib-col-week"
+              "id": "p-el-ssmo-ib-col-week_of"
             }
           ]
         }
@@ -4409,9 +4409,9 @@
               "formula": "[Master/Role - Top Mx Tracking (copy)]"
             },
             {
-              "id": "p-el-selection-top-mx-cw-col-week-goal-sp",
-              "name": "Week Goal Sp",
-              "formula": "[Master/Week Goal Sp]"
+              "id": "p-el-selection-top-mx-cw-col-week_goal_sp",
+              "name": "WEEK_GOAL_SP",
+              "formula": "[Master/WEEK_GOAL_SP]"
             },
             {
               "id": "p-el-selection-top-mx-cw-value-whales-copy-_3215429439119798272",
@@ -4449,7 +4449,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-top-mx-cw-col-week-goal-sp"
+              "id": "p-el-selection-top-mx-cw-col-week_goal_sp"
             }
           ]
         },
@@ -4473,9 +4473,9 @@
               "formula": "[Master/Team - Tier Activations Tracking]"
             },
             {
-              "id": "p-el-selection-tiers-col-week_sp_copy",
-              "name": "Week_SP_Copy",
-              "formula": "[Master/Week_SP_Copy]"
+              "id": "p-el-selection-tiers-col-week_goal_sp",
+              "name": "WEEK_GOAL_SP",
+              "formula": "[Master/WEEK_GOAL_SP]"
             },
             {
               "id": "p-el-selection-tiers-value-top-mx-copy-_5820832199702355969",
@@ -4510,7 +4510,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-tiers-col-week_sp_copy"
+              "id": "p-el-selection-tiers-col-week_goal_sp"
             }
           ]
         },
@@ -4529,14 +4529,14 @@
               "formula": "[Master/TIER]"
             },
             {
-              "id": "p-el-selection-tier-by-role-tbd-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-selection-tier-by-role-tbd-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-selection-tier-by-role-tbd-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-selection-tier-by-role-tbd-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-selection-tier-by-role-tbd-value-calculation_1538401536513917038",
@@ -4571,12 +4571,12 @@
               "id": "p-el-selection-tier-by-role-tbd-row-tier"
             },
             {
-              "id": "p-el-selection-tier-by-role-tbd-row-cw-owner-role-official-title"
+              "id": "p-el-selection-tier-by-role-tbd-row-cw_owner_role_official_title"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-tier-by-role-tbd-col-week-of-cw"
+              "id": "p-el-selection-tier-by-role-tbd-col-week_of"
             }
           ]
         },
@@ -4605,9 +4605,9 @@
               "formula": "[Master/SUBMARKET]"
             },
             {
-              "id": "p-el-selection-market-maker-location-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-selection-market-maker-location-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-selection-market-maker-location-value-calculation_1538401536513917038",
@@ -4650,7 +4650,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-market-maker-location-col-week-of-cw"
+              "id": "p-el-selection-market-maker-location-col-week_of"
             }
           ]
         },
@@ -4669,14 +4669,14 @@
               "formula": "[Master/Primary Campaign Source]"
             },
             {
-              "id": "p-el-selection-lead-list-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-selection-lead-list-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-selection-lead-list-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-selection-lead-list-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-selection-lead-list-value-calculation_1538401536513917038",
@@ -4711,12 +4711,12 @@
               "id": "p-el-selection-lead-list-row-primary-campaign-source"
             },
             {
-              "id": "p-el-selection-lead-list-row-cw-owner-role-official-title"
+              "id": "p-el-selection-lead-list-row-cw_owner_role_official_title"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-lead-list-col-week-of-cw"
+              "id": "p-el-selection-lead-list-col-week_of"
             }
           ]
         },
@@ -4730,14 +4730,14 @@
           },
           "columns": [
             {
-              "id": "p-el-selection-aces-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-selection-aces-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-selection-aces-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-selection-aces-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-selection-aces-value-calculation_1538401536513917038",
@@ -4769,12 +4769,12 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-selection-aces-row-cw-owner-role-official-title"
+              "id": "p-el-selection-aces-row-cw_owner_role_official_title"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-aces-col-week-of-cw"
+              "id": "p-el-selection-aces-col-week_of"
             }
           ]
         },
@@ -4788,14 +4788,14 @@
           },
           "columns": [
             {
-              "id": "p-el-selection-holdouts-row-cw-owner-role-official-title",
-              "name": "Cw Owner Role Official Title",
-              "formula": "[Master/Cw Owner Role Official Title]"
+              "id": "p-el-selection-holdouts-row-cw_owner_role_official_title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[Master/CW_OWNER_ROLE_OFFICIAL_TITLE]"
             },
             {
-              "id": "p-el-selection-holdouts-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "DateAdd(\"day\", 1 - Weekday([Master/Week Of CW]), DateTrunc(\"day\", [Master/Week Of CW]))",
+              "id": "p-el-selection-holdouts-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "DateAdd(\"day\", 1 - Weekday([Master/WEEK_OF]), DateTrunc(\"day\", [Master/WEEK_OF]))",
               "format": {
                 "kind": "datetime",
                 "formatString": "%b %Y"
@@ -4831,12 +4831,12 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-selection-holdouts-row-cw-owner-role-official-title"
+              "id": "p-el-selection-holdouts-row-cw_owner_role_official_title"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-selection-holdouts-col-week-of-cw"
+              "id": "p-el-selection-holdouts-col-week_of"
             }
           ]
         },
@@ -4850,19 +4850,19 @@
           },
           "columns": [
             {
-              "id": "p-el-cw-view-selection-row-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-cw-view-selection-row-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
-              "id": "p-el-cw-view-selection-row-merchant-close-date",
-              "name": "Merchant Close Date",
-              "formula": "[Master/Merchant Close Date]"
+              "id": "p-el-cw-view-selection-row-merchant_close_date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[Master/MERCHANT_CLOSE_DATE]"
             },
             {
-              "id": "p-el-cw-view-selection-row-account-name",
-              "name": "Account Name",
-              "formula": "[Master/Account Name]"
+              "id": "p-el-cw-view-selection-row-account_name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[Master/ACCOUNT_NAME]"
             },
             {
               "id": "p-el-cw-view-selection-row-calculation_573927491580395521-nk-1",
@@ -4875,34 +4875,34 @@
               "formula": "[Master/Opp URL]"
             },
             {
-              "id": "p-el-cw-view-selection-row-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-cw-view-selection-row-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
-              "id": "p-el-cw-view-selection-row-sales-owner",
-              "name": "Sales Owner",
-              "formula": "[Master/Sales Owner]"
+              "id": "p-el-cw-view-selection-row-sales_owner",
+              "name": "SALES_OWNER",
+              "formula": "[Master/SALES_OWNER]"
             },
             {
               "id": "p-el-cw-view-selection-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
-              "id": "p-el-cw-view-selection-row-cw-country",
-              "name": "CW Country",
-              "formula": "[Master/CW Country]"
+              "id": "p-el-cw-view-selection-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
             },
             {
-              "id": "p-el-cw-view-selection-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-cw-view-selection-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
-              "id": "p-el-cw-view-selection-row-sdr",
-              "name": "SDR",
-              "formula": "[Master/SDR]"
+              "id": "p-el-cw-view-selection-row-sdr_owner",
+              "name": "SDR_OWNER",
+              "formula": "[Master/SDR_OWNER]"
             },
             {
               "id": "p-el-cw-view-selection-value-calculation_6622965475636920323",
@@ -4979,13 +4979,13 @@
           ],
           "rowsBy": [
             {
-              "id": "p-el-cw-view-selection-row-week-of-cw"
+              "id": "p-el-cw-view-selection-row-week_of"
             },
             {
-              "id": "p-el-cw-view-selection-row-merchant-close-date"
+              "id": "p-el-cw-view-selection-row-merchant_close_date"
             },
             {
-              "id": "p-el-cw-view-selection-row-account-name"
+              "id": "p-el-cw-view-selection-row-account_name"
             },
             {
               "id": "p-el-cw-view-selection-row-calculation_573927491580395521-nk-1"
@@ -4994,22 +4994,22 @@
               "id": "p-el-cw-view-selection-row-opp-url"
             },
             {
-              "id": "p-el-cw-view-selection-row-deck-rank"
+              "id": "p-el-cw-view-selection-row-deck_rank"
             },
             {
-              "id": "p-el-cw-view-selection-row-sales-owner"
+              "id": "p-el-cw-view-selection-row-sales_owner"
             },
             {
               "id": "p-el-cw-view-selection-row-role"
             },
             {
-              "id": "p-el-cw-view-selection-row-cw-country"
+              "id": "p-el-cw-view-selection-row-cw_country"
             },
             {
-              "id": "p-el-cw-view-selection-row-manager-name"
+              "id": "p-el-cw-view-selection-row-manager_name"
             },
             {
-              "id": "p-el-cw-view-selection-row-sdr"
+              "id": "p-el-cw-view-selection-row-sdr_owner"
             }
           ],
           "columnsBy": [
@@ -5036,9 +5036,9 @@
           },
           "columns": [
             {
-              "id": "p-el-strategic-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-strategic-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-strategic-overall-value-sfdc_commission",
@@ -5109,7 +5109,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-strategic-overall-col-week"
+              "id": "p-el-strategic-overall-col-week_of"
             }
           ]
         },
@@ -5123,9 +5123,9 @@
           },
           "columns": [
             {
-              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-sfdc_commission",
@@ -5207,7 +5207,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week"
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of"
             }
           ]
         },
@@ -5221,9 +5221,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outside-strategic-sml-sgl-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outside-strategic-sml-sgl-value-sfdc_commission",
@@ -5305,7 +5305,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outside-strategic-sml-sgl-col-week"
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of"
             }
           ]
         },
@@ -5319,9 +5319,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sml-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sml-value-sfdc_commission",
@@ -5403,7 +5403,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-sml-col-week"
+              "id": "p-el-sml-col-week_of"
             }
           ]
         },
@@ -5417,9 +5417,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-value-sfdc_commission",
@@ -5501,7 +5501,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-sae-col-week"
+              "id": "p-el-sae-col-week_of"
             }
           ]
         },
@@ -5515,9 +5515,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-top-mx-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-top-mx-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-top-mx-value-sfdc_commission",
@@ -5599,7 +5599,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-sae-top-mx-col-week"
+              "id": "p-el-sae-top-mx-col-week_of"
             }
           ]
         },
@@ -5613,9 +5613,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sgl-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sgl-value-sfdc_commission",
@@ -5717,7 +5717,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-sgl-col-week"
+              "id": "p-el-sgl-col-week_of"
             }
           ]
         },
@@ -5731,9 +5731,9 @@
           },
           "columns": [
             {
-              "id": "p-el-sae-inbound-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-sae-inbound-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-sae-inbound-value-sfdc_commission",
@@ -5815,7 +5815,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-sae-inbound-col-week"
+              "id": "p-el-sae-inbound-col-week_of"
             }
           ]
         }
@@ -5849,9 +5849,9 @@
               "formula": "[Master/SUBMARKET]"
             },
             {
-              "id": "p-el-tam-rep-by-submarket-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "[Master/Week Of CW]"
+              "id": "p-el-tam-rep-by-submarket-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-tam-rep-by-submarket-value-incremental_sign_tam",
@@ -5896,7 +5896,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-tam-rep-by-submarket-col-week-of-cw"
+              "id": "p-el-tam-rep-by-submarket-col-week_of"
             }
           ]
         },
@@ -5915,9 +5915,9 @@
               "formula": "[Master/REGION]"
             },
             {
-              "id": "p-el-tam-rep-by-submarket-qoq-col-week-of-cw",
-              "name": "Week Of CW",
-              "formula": "DateTrunc(\"quarter\", [Master/Week Of CW])",
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "DateTrunc(\"quarter\", [Master/WEEK_OF])",
               "format": {
                 "kind": "datetime",
                 "formatString": "%b %Y"
@@ -5963,7 +5963,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-tam-rep-by-submarket-qoq-col-week-of-cw"
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of"
             }
           ]
         }
@@ -6012,9 +6012,9 @@
               "formula": "[Master/Total Org]"
             },
             {
-              "id": "p-el-total-org-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-total-org-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-total-org-value-closes",
@@ -6067,7 +6067,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-total-org-col-week"
+              "id": "p-el-total-org-col-week_of"
             }
           ]
         },
@@ -6197,9 +6197,9 @@
           },
           "columns": [
             {
-              "id": "p-el-smb-weekly-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-smb-weekly-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-smb-weekly-value-closes",
@@ -6229,7 +6229,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-smb-weekly-col-week"
+              "id": "p-el-smb-weekly-col-week_of"
             }
           ]
         },
@@ -6254,8 +6254,8 @@
             },
             {
               "id": "p-el-cws-rep-ahc-row-role",
-              "name": "Role",
-              "formula": "[Master/Role]"
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
             },
             {
               "id": "p-el-cws-rep-ahc-value-calculation_4738279400725786635",
@@ -6325,14 +6325,14 @@
               "formula": "[Master/Strategic v Regional (Current Role Title)]"
             },
             {
-              "id": "p-el-deck-rank-by-mgr-row-manager-name",
-              "name": "Manager Name",
-              "formula": "[Master/Manager Name]"
+              "id": "p-el-deck-rank-by-mgr-row-manager_name",
+              "name": "MANAGER_NAME",
+              "formula": "[Master/MANAGER_NAME]"
             },
             {
-              "id": "p-el-deck-rank-by-mgr-col-deck-rank",
-              "name": "Deck Rank",
-              "formula": "[Master/Deck Rank]"
+              "id": "p-el-deck-rank-by-mgr-col-deck_rank",
+              "name": "DECK_RANK",
+              "formula": "[Master/DECK_RANK]"
             },
             {
               "id": "p-el-deck-rank-by-mgr-value-calculation_272115961656373248",
@@ -6360,12 +6360,12 @@
               "id": "p-el-deck-rank-by-mgr-row-strategic-v-regional-current-role-title-"
             },
             {
-              "id": "p-el-deck-rank-by-mgr-row-manager-name"
+              "id": "p-el-deck-rank-by-mgr-row-manager_name"
             }
           ],
           "columnsBy": [
             {
-              "id": "p-el-deck-rank-by-mgr-col-deck-rank"
+              "id": "p-el-deck-rank-by-mgr-col-deck_rank"
             }
           ]
         }
@@ -6389,9 +6389,9 @@
           },
           "columns": [
             {
-              "id": "p-el-vendor-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-vendor-overall-value-sfdc_commission",
@@ -6473,7 +6473,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-vendor-overall-col-week"
+              "id": "p-el-vendor-overall-col-week_of"
             }
           ]
         },
@@ -6487,9 +6487,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-overall-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-overall-value-sfdc_commission",
@@ -6581,7 +6581,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-overall-col-week"
+              "id": "p-el-outbound-vendor-overall-col-week_of"
             }
           ]
         },
@@ -6595,9 +6595,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-regalix-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-regalix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-regalix-value-sfdc_commission",
@@ -6689,7 +6689,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-regalix-col-week"
+              "id": "p-el-outbound-vendor-regalix-col-week_of"
             }
           ]
         },
@@ -6703,9 +6703,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-wipro-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-wipro-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-wipro-value-sfdc_commission",
@@ -6797,7 +6797,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-wipro-col-week"
+              "id": "p-el-outbound-vendor-wipro-col-week_of"
             }
           ]
         },
@@ -6811,9 +6811,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-taskus-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-taskus-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-taskus-value-sfdc_commission",
@@ -6905,7 +6905,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-taskus-col-week"
+              "id": "p-el-outbound-vendor-taskus-col-week_of"
             }
           ]
         },
@@ -6919,9 +6919,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-concentrix-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-concentrix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-concentrix-value-sfdc_commission",
@@ -7013,7 +7013,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-concentrix-col-week"
+              "id": "p-el-outbound-vendor-concentrix-col-week_of"
             }
           ]
         },
@@ -7027,9 +7027,9 @@
           },
           "columns": [
             {
-              "id": "p-el-outbound-vendor-movate-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-outbound-vendor-movate-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-outbound-vendor-movate-value-sfdc_commission",
@@ -7121,7 +7121,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-outbound-vendor-movate-col-week"
+              "id": "p-el-outbound-vendor-movate-col-week_of"
             }
           ]
         },
@@ -7135,9 +7135,9 @@
           },
           "columns": [
             {
-              "id": "p-el-scale-team-col-week",
-              "name": "Week",
-              "formula": "[Master/Week]"
+              "id": "p-el-scale-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
             },
             {
               "id": "p-el-scale-team-value-sfdc_commission",
@@ -7219,7 +7219,7 @@
           ],
           "columnsBy": [
             {
-              "id": "p-el-scale-team-col-week"
+              "id": "p-el-scale-team-col-week_of"
             }
           ]
         }

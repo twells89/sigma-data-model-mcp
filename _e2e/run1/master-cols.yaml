@@ -1,8 +1,8 @@
 ---
 columns:
-- id: m-qtr-yr-sp-3
-  name: QTR_YR_SP_3
-  formula: "[presales_cw_level/QTR_YR_SP_3]"
+- id: m-role-sp-3
+  name: ROLE_SP_3
+  formula: "[presales_cw_level/ROLE_SP_3]"
 - id: m-week-of
   name: WEEK_OF
   formula: "[presales_cw_level/WEEK_OF]"
@@ -231,6 +231,9 @@ columns:
 - id: m-week-goal-activations
   name: WEEK_GOAL_ACTIVATIONS
   formula: "[presales_cw_level/WEEK_GOAL_ACTIVATIONS]"
+- id: m-role-activations
+  name: ROLE_ACTIVATIONS
+  formula: "[presales_cw_level/ROLE_ACTIVATIONS]"
 - id: m-activation-goal
   name: ACTIVATION_GOAL
   formula: "[presales_cw_level/ACTIVATION_GOAL]"
@@ -240,15 +243,24 @@ columns:
 - id: m-country-2
   name: COUNTRY_2
   formula: "[presales_cw_level/COUNTRY_2]"
+- id: m-country-3
+  name: COUNTRY_3
+  formula: "[presales_cw_level/COUNTRY_3]"
 - id: m-days-off
   name: DAYS_OFF
   formula: "[presales_cw_level/DAYS_OFF]"
 - id: m-hc
   name: HC
   formula: "[presales_cw_level/HC]"
+- id: m-owner-role-official-title-2
+  name: OWNER_ROLE_OFFICIAL_TITLE_2
+  formula: "[presales_cw_level/OWNER_ROLE_OFFICIAL_TITLE_2]"
 - id: m-qtr-2
   name: QTR_2
   formula: "[presales_cw_level/QTR_2]"
+- id: m-qtr-yr-2
+  name: QTR_YR_2
+  formula: "[presales_cw_level/QTR_YR_2]"
 - id: m-rep-rank
   name: REP_RANK
   formula: "[presales_cw_level/REP_RANK]"
@@ -282,12 +294,18 @@ columns:
 - id: m-qtr-yr-pg
   name: QTR_YR_PG
   formula: "[presales_cw_level/QTR_YR_PG]"
+- id: m-role
+  name: ROLE
+  formula: "[presales_cw_level/ROLE]"
 - id: m-target
   name: TARGET
   formula: "[presales_cw_level/TARGET]"
 - id: m-team
   name: TEAM
   formula: "[presales_cw_level/TEAM]"
+- id: m-week-goal
+  name: WEEK_GOAL
+  formula: "[presales_cw_level/WEEK_GOAL]"
 - id: m-week-goal-sp
   name: WEEK_GOAL_SP
   formula: "[presales_cw_level/WEEK_GOAL_SP]"
@@ -300,18 +318,33 @@ columns:
 - id: m-qtr-yr-sp
   name: QTR_YR_SP
   formula: "[presales_cw_level/QTR_YR_SP]"
+- id: m-role-sp
+  name: ROLE_SP
+  formula: "[presales_cw_level/ROLE_SP]"
 - id: m-qtr-3
   name: QTR_3
   formula: "[presales_cw_level/QTR_3]"
 - id: m-yr-3
   name: YR_3
   formula: "[presales_cw_level/YR_3]"
+- id: m-qtr-yr-3
+  name: QTR_YR_3
+  formula: "[presales_cw_level/QTR_YR_3]"
+- id: m-country-4
+  name: COUNTRY_4
+  formula: "[presales_cw_level/COUNTRY_4]"
+- id: m-role-2
+  name: ROLE_2
+  formula: "[presales_cw_level/ROLE_2]"
 - id: m-closes
   name: CLOSES
   formula: "[presales_cw_level/CLOSES]"
 - id: m-narr-2
   name: NARR_2
   formula: "[presales_cw_level/NARR_2]"
+- id: m-cw-week-2
+  name: CW_WEEK_2
+  formula: "[presales_cw_level/CW_WEEK_2]"
 - id: m-working-days
   name: WORKING_DAYS
   formula: "[presales_cw_level/WORKING_DAYS]"
@@ -336,6 +369,9 @@ columns:
 - id: m-qtr-yr-sp-2
   name: QTR_YR_SP_2
   formula: "[presales_cw_level/QTR_YR_SP_2]"
+- id: m-role-sp-2
+  name: ROLE_SP_2
+  formula: "[presales_cw_level/ROLE_SP_2]"
 - id: m-week-goal-sp-3
   name: WEEK_GOAL_SP_3
   formula: "[presales_cw_level/WEEK_GOAL_SP_3]"
@@ -345,6 +381,9 @@ columns:
 - id: m-initiative-goal-3
   name: INITIATIVE_GOAL_3
   formula: "[presales_cw_level/INITIATIVE_GOAL_3]"
+- id: m-qtr-yr-sp-3
+  name: QTR_YR_SP_3
+  formula: "[presales_cw_level/QTR_YR_SP_3]"
 - id: m-merchant-close-date
   name: MERCHANT_CLOSE_DATE
   formula: "[presales_cw_level/MERCHANT_CLOSE_DATE]"
