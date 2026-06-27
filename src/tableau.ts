@@ -1117,6 +1117,12 @@ export function convertTableauToSigma(
   // (they belong to a related DIM element, not the physical fact table).
   const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const guidCaption: Record<string, string> = {};   // guid(lower) → display caption (suffix-stripped)
+  // Subset of guidCaption restricted to REAL physical columns Tableau merely renamed to a
+  // GUID — i.e. a datasource-level <column caption='…' name='[GUID]'> with NO <calculation>
+  // child. These are safe to RECOVER (emit with their real caption) when a metadata-record
+  // carries only the bare GUID as its name; the resulting [TABLE/Caption] ref resolves like
+  // any other physical column. Calculated/derived GUID columns are deliberately excluded.
+  const physicalGuidCaption: Record<string, string> = {}; // guid(lower) → display caption
   const guidOwnerRel: Record<string, string> = {};   // guid(lower) → owning relation name (e.g. "ORDER_FACT (CSA.ORDER_FACT)")
   {
     // (1) <cols><map> — GUID → owning relation. Key/value carry the GUID; the value's
@@ -1142,7 +1148,12 @@ export function convertTableauToSigma(
       const guid = (nm.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
       if (!guid) continue;
       const cap = (attr(col, 'caption') || '').replace(/\s*\([^()]*\([^)]*\)\)\s*$/, '').trim();
-      if (cap && !guidCaption[guid.toLowerCase()]) guidCaption[guid.toLowerCase()] = cap;
+      if (!cap) continue;
+      const g = guid.toLowerCase();
+      if (!guidCaption[g]) guidCaption[g] = cap;
+      // Physical (renamed) column = caption present, NO <calculation> child. Record it so
+      // the metadata-record loop can recover the real name instead of dropping the column.
+      if (!col.calculation && !physicalGuidCaption[g]) physicalGuidCaption[g] = cap;
     }
   }
 
@@ -1313,21 +1324,31 @@ export function convertTableauToSigma(
           const uuid = ((mr['remote-name'] as string) || '').trim();
           // caption is often absent on the encapsulated model — fall back to the
           // remote alias / local-name / remote-name so columns still get a name.
-          const cap = (((mr['caption'] as string) || (mr['remote-alias'] as string) ||
+          let cap = (((mr['caption'] as string) || (mr['remote-alias'] as string) ||
             stripBrackets(((mr['local-name'] as string) || '')) || uuid) as string).trim();
           // object-id may be bare OR under the namespaced `…object-id` key.
           const objIdRaw = stripBrackets((((mr['object-id'] as string) ||
             (nsChild(mr, 'object-id') as string) || '')).trim());
           const parentRaw = stripBrackets(((mr['parent-name'] as string) || '').trim());
           if (!uuid || !cap) continue;
-          // Skip a record whose only available name is a raw Tableau GUID (no
-          // caption/alias/local-name resolved to anything else). Such a "column"
-          // is an internal field id, not a real warehouse column — emitting it
-          // yields a `[TABLE/<guid>]` ref that can't resolve ("dependency not
-          // found" at POST). The pre-encapsulation path skipped these implicitly
-          // by requiring an object-id; relaxing that for the encapsulated variant
-          // let them leak in, so filter them explicitly.
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cap)) continue;
+          // A record whose only available name is a raw Tableau GUID (no
+          // caption/alias/local-name resolved to anything else). Some of these are
+          // REAL physical columns Tableau merely renamed to a GUID — the user-facing
+          // caption lives in a datasource-level <column caption='…' name='[GUID]'> def
+          // (physicalGuidCaption), separate from the connection's metadata-records.
+          // Recover the real caption when we have one, so we don't silently drop a real
+          // column. Only when NO physical caption is found do we skip — and we WARN, never
+          // skip silently (an unresolved GUID would emit a `[TABLE/<guid>]` ref that fails
+          // "dependency not found" at POST, the case #68 fixed).
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cap)) {
+            const recovered = physicalGuidCaption[uuid.toLowerCase()];
+            if (recovered) {
+              cap = recovered;   // real physical column — emit with its real name
+            } else {
+              warnings.push(`⚠ Dropped column "${uuid}" — referenced only by an internal Tableau GUID with no recoverable physical-column caption; emitting it would produce an unresolvable [TABLE/${uuid}] reference.`);
+              continue;
+            }
+          }
           const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
           if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
           if (parentRaw) (metaByParent[parentRaw] ||= []).push(entry);
