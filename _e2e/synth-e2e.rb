@@ -29,39 +29,19 @@ puts "stats: #{conv['stats'].to_json}"
 fx = MechanicalSpecs.fixup_dm_spec(conv['model'])
 puts "fixup: fixed=#{fx[:fixed]} dropped=#{fx[:dropped].size}"
 
-# Prune leaked Tableau calc columns/metrics (bug #3 / n4pi.4): keep only columns
-# whose refs resolve to real [Custom SQL/<alias>] aliases; drop raw-Tableau
-# leakage (&#10;, //, case/when, [Calculation_], Tableau IN, unknown refs).
+# NOTE (n4pi.4, 2026-06-27): the converter now self-validates calc columns/metrics
+# — it decodes XML entities, translates IN→or-chain, strips //comments, resolves
+# calc-on-calc refs to captions, reconciles caption↔SQL-alias, routes untranslatable
+# table-calc/LOD/param calcs to workbookPatterns, and drop-and-surfaces any calc with
+# an unresolvable sibling ref (transitive). So the old aggressive harness prune (which
+# required every ref to be [Custom SQL/<alias>] and therefore dropped ALL calc columns)
+# is obsolete. We trust the converter output and just report its calc-column counts.
 conv['model']['pages'].each do |pg|
   (pg['elements'] || []).each do |el|
     next unless el.dig('source', 'kind') == 'sql'
-    aliases = el['columns'].map { |c| c['formula'][%r{\[Custom SQL/(.+)\]$}, 1] }.compact.to_set
-    col_ok = lambda do |f|
-      return false if f.nil?
-      return false if f =~ /&#10;|\/\/|\bcase\s+when\b|Calculation_/i
-      f.scan(/\[([^\]\[]+)\]/).flatten.all? do |r|
-        pre, _, nm = r.partition('/')
-        !r.include?('/') ? false : (pre.strip.casecmp?('custom sql') && aliases.include?(nm))
-      end
-    end
-    keep = el['columns'].select { |c| col_ok.call(c['formula']) }
-    keepids = keep.map { |c| c['id'] }.to_set
-    dropped_cols = el['columns'].size - keep.size
-    el['columns'] = keep
-    el['order'] = (el['order'] || []).select { |i| keepids.include?(i) }
-    colnames = keep.map { |c| (c['name'] || '').downcase }.to_set
-    met_ok = lambda do |m|
-      f = m['formula'] || ''
-      return false if f =~ /&#10;|\/\/|\bcase\s+when\b|\bend\b|Calculation_|\bin\s*\(/i
-      f.scan(/\[([^\]\[]+)\]/).flatten.all? { |r| colnames.include?(r.downcase) }
-    end
-    dropped_mets = 0
-    if el['metrics']
-      before = el['metrics'].size
-      el['metrics'] = el['metrics'].select { |m| met_ok.call(m) }
-      dropped_mets = before - el['metrics'].size
-    end
-    puts "  prune: dropped #{dropped_cols} leaked col(s), #{dropped_mets} leaked metric(s); kept #{keep.size} col(s)" if dropped_cols + dropped_mets > 0
+    alias_cols = (el['columns'] || []).count { |c| (c['formula'] || '') =~ %r{\A\[Custom SQL/[^\]]+\]\z} }
+    calc_cols  = (el['columns'] || []).size - alias_cols
+    puts "  converter element '#{el['name']}': #{alias_cols} alias + #{calc_cols} calc col(s), #{(el['metrics'] || []).size} metric(s)"
   end
 end
 
@@ -69,9 +49,78 @@ FOLDER = '57e59735-86b9-40b0-b029-217205406f57'
 conv['model']['folderId'] = FOLDER
 File.write(File.join(WORK,'dm-spec.json'), JSON.pretty_generate(conv['model']))
 
-puts "\n== 2. POST DM =="
-run!(['ruby', File.join(HERE,'post-and-readback.rb'), '--type','datamodel','--spec',File.join(WORK,'dm-spec.json'),'--out',File.join(WORK,'dm-ids.json'),'--workdir',WORK])
-dm = JSON.parse(File.read(File.join(WORK,'dm-ids.json')))
+puts "\n== 2. POST DM (with error-column repair loop) =="
+# The converter self-validates calc refs, but Sigma's authoritative type checker
+# may still reject a calc for a reason we can't predict offline (e.g. a boolean
+# comparison form, an exotic function-arg shape). post-and-readback exits 2 and
+# names those columns. Use Sigma as ground truth: read the error columns, prune
+# them + any calc that transitively depends on them, delete the bad DM, re-post.
+# This is the self-heal pattern the skill (n4pi.5) should own. Never silent —
+# every pruned calc is printed.
+$LOAD_PATH.unshift File.join(HERE, 'lib')
+require 'sigma_rest'
+def prune_error_cols!(spec, error_names)
+  bad = error_names.map(&:downcase).to_set
+  loop do
+    grew = false
+    spec['pages'].each do |pg|
+      (pg['elements'] || []).each do |el|
+        next unless el.dig('source', 'kind') == 'sql'
+        %w[columns metrics].each do |k|
+          (el[k] || []).each do |c|
+            nm = (c['name'] || '').downcase
+            next if nm.empty? || bad.include?(nm)
+            refs = (c['formula'] || '').scan(/\[([^\]\[\/]+)\]/).flatten.map(&:downcase)
+            if refs.any? { |r| bad.include?(r) } && !(c['formula'] =~ %r{\A\[Custom SQL/})
+              bad << nm; grew = true
+            end
+          end
+        end
+      end
+    end
+    break unless grew
+  end
+  spec['pages'].each do |pg|
+    (pg['elements'] || []).each do |el|
+      next unless el.dig('source', 'kind') == 'sql'
+      keepids = nil
+      if el['columns']
+        before = el['columns'].size
+        el['columns'] = el['columns'].reject { |c| bad.include?((c['name'] || '').downcase) }
+        keepids = el['columns'].map { |c| c['id'] }.to_set
+        el['order'] = (el['order'] || []).select { |i| keepids.include?(i) } if el['order']
+      end
+      el['metrics'] = el['metrics'].reject { |c| bad.include?((c['name'] || '').downcase) } if el['metrics']
+    end
+  end
+  bad
+end
+
+dm = nil
+3.times do |attempt|
+  _o, _e, st = run!(['ruby', File.join(HERE,'post-and-readback.rb'), '--type','datamodel','--spec',File.join(WORK,'dm-spec.json'),'--out',File.join(WORK,'dm-ids.json'),'--workdir',WORK], allow_fail: true)
+  dm = JSON.parse(File.read(File.join(WORK,'dm-ids.json'))) rescue nil
+  break if st.success?
+  unless dm && dm['dataModelId']
+    abort "DM post failed and no dataModelId written — cannot repair"
+  end
+  cols = Sigma.request(:get, "/v2/dataModels/#{dm['dataModelId']}/columns")
+  errs = (cols['entries'] || []).select { |c| c.dig('type','type') == 'error' }.map { |c| c['label'] }
+  if errs.empty?
+    abort "post-and-readback failed (exit #{st.exitstatus}) but no error-type columns found — different failure"
+  end
+  puts "  repair attempt #{attempt+1}: Sigma flagged #{errs.size} error column(s): #{errs.join(', ')}"
+  spec = JSON.parse(File.read(File.join(WORK,'dm-spec.json')))
+  pruned = prune_error_cols!(spec, errs)
+  puts "  pruned #{pruned.size} column(s)/metric(s) (incl. transitive dependents); deleting bad DM #{dm['dataModelId']} and re-posting"
+  Sigma.request(:delete, "/v2/files/#{dm['dataModelId']}") rescue nil
+  File.write(File.join(WORK,'dm-spec.json'), JSON.pretty_generate(spec))
+end
+abort "DM still failing after repair attempts" unless dm
+# Re-sync the in-memory model with the (possibly repaired) posted spec, so master
+# derivation below doesn't emit master columns for fields the repair loop pruned
+# (which would 400 the workbook POST with "Dependency not found").
+conv['model'] = JSON.parse(File.read(File.join(WORK,'dm-spec.json')))
 dm_id = dm['dataModelId']; dm_els = dm['pages'].flat_map { |p| p['elements'] }
 dim_re = /(?i)\b(dim|date|calendar)\b/
 fact = dm_els.reject { |e| e['name'] =~ dim_re }.max_by { |e| (e['columnLabels']||[]).size } || dm_els.max_by { |e| (e['columnLabels']||[]).size }

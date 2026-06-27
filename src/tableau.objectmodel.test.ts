@@ -16,6 +16,10 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { convertTableauToSigma } from './tableau.js';
+import {
+  decodeXmlEntities, stripLineComments, tableauInToSigma,
+  tableauTextConcatToSigma, formulaHasUntranslatableFragment, tableauFormulaToSigma,
+} from './formulas.js';
 
 const META = (objId: string) => `
   <metadata-records>
@@ -285,5 +289,53 @@ describe('multi-source blend → one wide JOIN element', () => {
     assert.match(s, /FROM\s+DB\.SC\.PRODUCT_GOALS/i, '2-part schema.table qualified to db.schema.table');
     assert.doesNotMatch(s, /FROM\s+DB\.FACT_TBL/i, '1-part bare table NOT spuriously qualified');
     assert.doesNotMatch(s, /DB\.DB\./i, 'already-qualified refs not double-qualified');
+  });
+});
+
+// ── n4pi.4: Tableau calc-field translation (formula-level helpers) ───────────
+describe('calc translation helpers (n4pi.4)', () => {
+  test('decodeXmlEntities decodes numeric refs fxp leaves literal', () => {
+    assert.equal(decodeXmlEntities('If([A]&#10;= 1,&#9;1, 0)'), 'If([A]\n= 1,\t1, 0)');
+    assert.equal(decodeXmlEntities('a &amp; b &#x41;'), 'a & b A');
+    assert.equal(decodeXmlEntities('no entities'), 'no entities');   // idempotent / passthrough
+  });
+
+  test('stripLineComments removes // comments but preserves URLs in strings', () => {
+    assert.equal(stripLineComments('//note\nWeek([D])').trim(), 'Week([D])');
+    assert.equal(stripLineComments('"https://x.com/" + [Id]'), '"https://x.com/" + [Id]');
+  });
+
+  test('tableauInToSigma → or-chain / not-in → and-chain', () => {
+    assert.equal(tableauInToSigma('[R] in ("A", "B")'), '([R] = "A" or [R] = "B")');
+    assert.equal(tableauInToSigma('[R] not in ("A", "B")'), '([R] <> "A" and [R] <> "B")');
+    assert.equal(tableauInToSigma('Sum([X])'), 'Sum([X])');         // untouched
+  });
+
+  test('tableauTextConcatToSigma: text + → &, numeric + untouched', () => {
+    assert.equal(tableauTextConcatToSigma('"a" + [Id] + "/b"'), '"a" & [Id] & "/b"');
+    assert.equal(tableauTextConcatToSigma('Coalesce([C],"n") + Coalesce([D],"n")'),
+      'Coalesce([C],"n") & Coalesce([D],"n")');
+    assert.equal(tableauTextConcatToSigma('[A] + [B]'), '[A] + [B]');         // no type info → leave
+    assert.equal(tableauTextConcatToSigma('([A]) + ([B])', (n) => n === 'A' || n === 'B'),
+      '([A]) & ([B])');                                                       // type-aware text refs
+    assert.equal(tableauTextConcatToSigma('Sum([A]) + Sum([B])'), 'Sum([A]) + Sum([B])'); // numeric stays
+  });
+
+  test('formulaHasUntranslatableFragment flags LOD / lowercase running_sum / leftover CASE', () => {
+    assert.equal(formulaHasUntranslatableFragment('Avg({ FIXED [W] : Sum([X]) })'), true);
+    assert.equal(formulaHasUntranslatableFragment('running_sum(Sum([X]))'), true);       // lowercase
+    assert.equal(formulaHasUntranslatableFragment('WINDOW_SUM(Sum([X]), -2, 0)'), true);
+    assert.equal(formulaHasUntranslatableFragment('(case [X] = "a" then "b" end)'), true);
+    assert.equal(formulaHasUntranslatableFragment('If([X] = "a", 1, 0)'), false);        // clean
+    assert.equal(formulaHasUntranslatableFragment('Concat([Month End], "trend")'), false); // masked
+  });
+
+  test('tableauFormulaToSigma end-to-end: entities + IN + concat + DateTrunc weekday arg', () => {
+    const out = tableauFormulaToSigma('If([Role] in ("A", "B"),&#10;"x" + [Id], "y")');
+    assert.match(out, /\[Role\] = "A" or \[Role\] = "B"/);
+    assert.match(out, /"x" & \[Id\]/);
+    assert.doesNotMatch(out, /&#10;|\bin\s*\(/);
+    const dt = tableauFormulaToSigma("DATETRUNC('week', [D], 'monday')");
+    assert.equal(dt, 'DateTrunc("week", [D])');
   });
 });
