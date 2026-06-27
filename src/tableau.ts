@@ -67,6 +67,32 @@ function connRelations(conn: any): any[] {
   return asArray(conn[pick]);
 }
 
+/** Resolve a possibly feature-flag-namespaced CHILD element. The encapsulated
+ *  object model keys children too — e.g. the object graph is
+ *  `_.fcp.ObjectModelEncapsulateLegacy.true...object-graph`, not `object-graph`,
+ *  and a column's owning object is under `...object-id` rather than `object-id`.
+ *  Prefer the bare key, then a `.true...` variant, then any `...<suffix>` key. */
+function nsChild(obj: any, suffix: string): any {
+  if (!obj) return undefined;
+  if (obj[suffix] != null) return obj[suffix];
+  const keys = Object.keys(obj).filter((k) => k.endsWith(`...${suffix}`));
+  if (keys.length === 0) return undefined;
+  return obj[keys.find((k) => k.includes('.true...')) || keys[0]];
+}
+
+/** attr() that also matches a feature-flag-namespaced ATTRIBUTE, e.g. a
+ *  relationship join op stored as `@__.fcp.RelationshipCalculations.true...op`
+ *  instead of `@_op`. Prefers the bare `@_<key>`, then the `.true...` variant
+ *  (bracketed column refs), then any namespaced match. */
+function nsAttr(node: any, key: string): string {
+  if (!node) return '';
+  const bare = node[`@_${key}`];
+  if (bare != null && bare !== '') return bare;
+  const keys = Object.keys(node).filter((k) => k.startsWith('@_') && k.endsWith(`...${key}`));
+  if (keys.length === 0) return '';
+  return node[keys.find((k) => k.includes('.true...')) || keys[0]] || '';
+}
+
 // ── LOD Expression Parser ────────────────────────────────────────────────────
 
 interface LODResult {
@@ -1270,16 +1296,41 @@ export function convertTableauToSigma(
       } else {
         // Build UUID→caption map keyed by FULL object-id (with hex hash) so role-playing
         // dimensions (two instances of the same table) remain distinguishable.
-        const metaByObjId: Record<string, Array<{ uuid: string; caption: string }>> = {};
+        // ALSO key by parent-name: the encapsulated-legacy object model (most modern
+        // .twb, incl. multi-custom-SQL workbooks) leaves <object-id> absent on the
+        // metadata-record and instead carries `parent-name` ("[Custom SQL Query1]")
+        // — which maps 1:1 to the child relation NAME — plus the object id under the
+        // namespaced `_.fcp.…true...object-id`. Grouping only by object-id collapsed
+        // every column onto the first element (the empty-stub-elements bug); group by
+        // parent-name so each of the N relations gets its own columns.
+        type MetaCol = { uuid: string; caption: string; objId?: string };
+        const metaByObjId: Record<string, MetaCol[]> = {};
+        const metaByParent: Record<string, MetaCol[]> = {};
         const metaRecords = asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || []);
+        const stripBrackets = (s: string) => s.replace(/^\[|\]$/g, '');
         for (const mr of metaRecords) {
           if (attr(mr, 'class') !== 'column') continue;
-          const uuid     = ((mr['remote-name'] as string) || '').trim();
-          const cap      = ((mr['caption']      as string) || '').trim();
-          const objIdRaw = ((mr['object-id']    as string) || '').replace(/^\[|\]$/g, '');
-          if (!uuid || !cap || !objIdRaw) continue;
-          if (!metaByObjId[objIdRaw]) metaByObjId[objIdRaw] = [];
-          metaByObjId[objIdRaw].push({ uuid, caption: cap });
+          const uuid = ((mr['remote-name'] as string) || '').trim();
+          // caption is often absent on the encapsulated model — fall back to the
+          // remote alias / local-name / remote-name so columns still get a name.
+          const cap = (((mr['caption'] as string) || (mr['remote-alias'] as string) ||
+            stripBrackets(((mr['local-name'] as string) || '')) || uuid) as string).trim();
+          // object-id may be bare OR under the namespaced `…object-id` key.
+          const objIdRaw = stripBrackets((((mr['object-id'] as string) ||
+            (nsChild(mr, 'object-id') as string) || '')).trim());
+          const parentRaw = stripBrackets(((mr['parent-name'] as string) || '').trim());
+          if (!uuid || !cap) continue;
+          // Skip a record whose only available name is a raw Tableau GUID (no
+          // caption/alias/local-name resolved to anything else). Such a "column"
+          // is an internal field id, not a real warehouse column — emitting it
+          // yields a `[TABLE/<guid>]` ref that can't resolve ("dependency not
+          // found" at POST). The pre-encapsulation path skipped these implicitly
+          // by requiring an object-id; relaxing that for the encapsulated variant
+          // let them leak in, so filter them explicitly.
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cap)) continue;
+          const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
+          if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
+          if (parentRaw) (metaByParent[parentRaw] ||= []).push(entry);
         }
 
         type EntryType = { element: any; colIdMap: Record<string, string>; cleanName: string; objId?: string | null };
@@ -1311,7 +1362,14 @@ export function convertTableauToSigma(
               matchingObjId = cands[idx];
             }
           }
-          const metaCols   = matchingObjId ? metaByObjId[matchingObjId] : [];
+          let metaCols: MetaCol[] = matchingObjId ? metaByObjId[matchingObjId] : [];
+          // Encapsulated-legacy / multi-custom-SQL: object-id is absent on the
+          // metadata-record, so the object-id match above finds nothing — match by
+          // parent-name, which equals the child relation name.
+          if (!metaCols.length) metaCols = metaByParent[fullName] || [];
+          // Adopt the object-id these columns carry so relationship wiring (keyed on
+          // object-ids from the object-graph) can resolve back to THIS element.
+          const relObjId = matchingObjId || metaCols.find(c => c.objId)?.objId || null;
 
           for (const { uuid, caption } of metaCols) {
             const cleanCaption = caption.replace(/\s*\(.*\)$/, '').trim(); // strip disambiguation suffix
@@ -1355,12 +1413,13 @@ export function convertTableauToSigma(
             warnings.push(`⚠ Custom SQL relation "${fullName}" has no inline SQL text — emitted as a table path "${path.join('.')}"; verify or replace with the query.`);
           }
           const el: any = { id: sigmaShortId(), kind: 'table', source, columns, order };
-          elementMap[fullName] = { element: el, colIdMap, cleanName, objId: matchingObjId || null };
+          elementMap[fullName] = { element: el, colIdMap, cleanName, objId: relObjId };
           elements.push(el);
         }
 
-        // Wire relationships from <object-graph><relationships>
-        const objGraph = (ds.ds as any)?.['object-graph'];
+        // Wire relationships from <object-graph><relationships>. The graph may be
+        // bare `object-graph` OR the namespaced encapsulated-legacy variant.
+        const objGraph = nsChild(ds.ds, 'object-graph');
         const relsList  = asArray(objGraph?.relationships?.relationship || []);
 
         // Resolve object-id to an elementMap entry.
@@ -1399,30 +1458,6 @@ export function convertTableauToSigma(
           const secondEntry = findEntry(attr(secondEp, 'object-id'));
           if (!firstEntry || !secondEntry || firstEntry === secondEntry) continue;
 
-          // Expression structure: expression[op="="] > expression[op="col"] x2
-          const outerExprs = asArray(rel.expression || []);
-          const eqExpr     = outerExprs.find((e: any) => attr(e, 'op') === '=') || outerExprs[0];
-          if (!eqExpr) continue;
-          const innerExprs = asArray(eqExpr.expression || []);
-          if (innerExprs.length < 2) continue;
-
-          const srcOpRaw = attr(innerExprs[0], 'op') || '';
-          const tgtOpRaw = attr(innerExprs[1], 'op') || '';
-          const srcKey = parseOpRef(srcOpRaw);
-          const tgtKey = parseOpRef(tgtOpRaw);
-          if (!srcKey || !tgtKey) continue;
-
-          // A join key wrapped in a function (e.g. DATE([order_date])) is a computed
-          // key, not a plain physical column. Sigma relationships join on physical
-          // columns only; emitting one keyed on a derived value yields a dangling join
-          // whose cross-element refs all error-type. Route to manual authoring instead.
-          const isFnWrappedKey = (op: string) =>
-            /^[A-Za-z_]\w*\(\s*\[?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]?\s*\)$/i.test(op.trim());
-          if (isFnWrappedKey(srcOpRaw) || isFnWrappedKey(tgtOpRaw)) {
-            warnings.push(`⚠ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} joins on a computed key (${(srcOpRaw || tgtOpRaw).slice(0, 40)}); Sigma joins on physical columns only — skipped, needs manual authoring.`);
-            continue;
-          }
-
           const ensureCol = (entry: EntryType, key: string): string => {
             let id = entry.colIdMap[key] || entry.colIdMap[key.replace(/-/g, '_')];
             if (!id) {
@@ -1446,17 +1481,58 @@ export function convertTableauToSigma(
             return id;
           };
 
-          const srcColId = ensureCol(firstEntry,  srcKey);
-          const tgtColId = ensureCol(secondEntry, tgtKey);
+          // The join condition is either a single equality (expression[op="="])
+          // or a composite AND/OR of several equalities (expression[op="AND"] >
+          // expression[op="="] × N). Flatten to the leaf equalities.
+          const collectEqs = (expr: any, acc: any[]): void => {
+            const op   = nsAttr(expr, 'op');
+            const kids = asArray(expr.expression || []);
+            if (op === '=' && kids.length >= 2) { acc.push(expr); return; }
+            for (const k of kids) collectEqs(k, acc); // AND / OR / nested
+          };
+          const eqExprs: any[] = [];
+          for (const oe of asArray(rel.expression || [])) collectEqs(oe, eqExprs);
+          if (eqExprs.length === 0) continue;
+
+          // A side is a plain physical column iff its op is a bare bracketed ref
+          // `[COL]`. Anything else — an IF/DATETRUNC formula (stored under the
+          // namespaced RelationshipCalculations op), DATE([uuid]), a concatenation —
+          // is a computed key Sigma can't join on. Wire physical equalities as keys;
+          // drop computed ones (warn); skip the whole relationship if NONE are
+          // physical (never fake a join on a synthetic "=" column).
+          const isPhysical = (op: string) => /^\[[^\]]+\]$/.test(op.trim());
+          const keys: Array<{ sourceColumnId: string; targetColumnId: string }> = [];
+          let skippedComputed = 0;
+          for (const eq of eqExprs) {
+            const inner = asArray(eq.expression || []);
+            if (inner.length < 2) continue;
+            const srcOpRaw = nsAttr(inner[0], 'op') || '';
+            const tgtOpRaw = nsAttr(inner[1], 'op') || '';
+            if (!isPhysical(srcOpRaw) || !isPhysical(tgtOpRaw)) { skippedComputed++; continue; }
+            const srcKey = parseOpRef(srcOpRaw), tgtKey = parseOpRef(tgtOpRaw);
+            if (!srcKey || !tgtKey) continue;
+            keys.push({
+              sourceColumnId: ensureCol(firstEntry,  srcKey),
+              targetColumnId: ensureCol(secondEntry, tgtKey),
+            });
+          }
+
+          if (keys.length === 0) {
+            warnings.push(`⚠ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} joins only on computed key(s) (e.g. IF/DATETRUNC expression); Sigma joins on physical columns only — NOT wired. Needs a computed join column or manual authoring.`);
+            continue;
+          }
+          if (skippedComputed > 0) {
+            warnings.push(`⚠ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName}: wired ${keys.length} physical key(s); ${skippedComputed} computed condition(s) dropped — verify join grain in Sigma.`);
+          }
 
           if (!firstEntry.element.relationships) firstEntry.element.relationships = [];
           firstEntry.element.relationships.push({
             id: sigmaShortId(),
             targetElementId: secondEntry.element.id,
-            keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
+            keys,
             name: secondEntry.cleanName,
           });
-          warnings.push(`ℹ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} on ${srcKey} = ${tgtKey}`);
+          warnings.push(`ℹ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} wired on ${keys.length} physical key(s).`);
         }
 
         // Sort: dims first, fact last

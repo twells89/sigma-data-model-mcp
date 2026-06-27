@@ -54,28 +54,73 @@ async function sigmaToken() {
   return _token;
 }
 
-async function sigmaPost(spec, name) {
-  const token = await sigmaToken();
-  const body = { ...spec, name, folderId: TEST_FOLDER_ID };
-  const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/spec`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await resp.text();
-  if (!resp.ok) return { success: false, status: resp.status, error: txt };
-  let j;
-  try { j = JSON.parse(txt); } catch { return { success: false, error: 'non-JSON response: ' + txt.slice(0, 200) }; }
-  return { success: true, dataModelId: j.dataModelId };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retry only genuinely transient, spec-independent failures: 5xx, 429, and
+// network blips. Deliberately do NOT retry 400 "schema error / dependency not
+// found" — those are deterministic spec problems (a real converter regression
+// produced exactly that), and retrying them would MASK regressions while just
+// burning time. A transient infra blip recovers; a bad spec fails every attempt
+// and must surface.
+function isTransientPostError(status /* , body */) {
+  return status >= 500 || status === 429;
 }
 
-async function sigmaGetColumns(dataModelId) {
-  const token = await sigmaToken();
-  const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/${dataModelId}/columns`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!resp.ok) throw new Error(`columns ${resp.status}: ${await resp.text()}`);
-  return resp.json();
+async function sigmaPost(spec, name, attempts = 3) {
+  const body = { ...spec, name, folderId: TEST_FOLDER_ID };
+  let last = { success: false, error: 'no attempt made' };
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const token = await sigmaToken();
+      const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/spec`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const txt = await resp.text();
+      if (resp.ok) {
+        try { return { success: true, dataModelId: JSON.parse(txt).dataModelId }; }
+        catch { return { success: false, error: 'non-JSON response: ' + txt.slice(0, 200) }; }
+      }
+      last = { success: false, status: resp.status, error: txt };
+      if (i < attempts && isTransientPostError(resp.status, txt)) {
+        console.warn(`  POST attempt ${i}/${attempts} transient (${resp.status}); retrying…`);
+        await sleep(2000 * i);
+        continue;
+      }
+      return last;
+    } catch (e) {
+      last = { success: false, error: `network: ${e.message}` };
+      if (i < attempts) { await sleep(2000 * i); continue; }
+      return last;
+    }
+  }
+  return last;
+}
+
+async function sigmaGetColumns(dataModelId, attempts = 3) {
+  // Idempotent read — retry on transient infra (5xx/429, network/connection
+  // refused). Observed: a 503 "upstream connect error … Connection refused" on
+  // this endpoint failed an otherwise-clean run; the next run passed.
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const token = await sigmaToken();
+      const resp = await fetch(`${SIGMA_BASE_URL}/v2/dataModels/${dataModelId}/columns`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (resp.ok) return resp.json();
+      const body = await resp.text();
+      lastErr = new Error(`columns ${resp.status}: ${body}`);
+      if (i < attempts && isTransientPostError(resp.status)) { await sleep(2000 * i); continue; }
+      throw lastErr;
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts) { await sleep(2000 * i); continue; }
+      throw lastErr;
+    }
+  }
+  throw lastErr;
 }
 
 async function sigmaDelete(dataModelId) {
