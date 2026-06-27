@@ -16,7 +16,15 @@ import {
   tableauWindowToSigmaChart, tableauWindowUntranslatable,
   SIGMA_CHART_ONLY_WINDOW_RE, TABLEAU_TABLE_CALC_TOKEN_RE,
   decodeXmlEntities, formulaHasUntranslatableFragment, tableauTextConcatToSigma,
+  tableauParamSwitchToSigma,
 } from './formulas.js';
+
+/** Deterministic Sigma control id for a Tableau parameter (by raw name): the
+ *  build layer materialises the control under this id and the param-switch
+ *  formula references it. e.g. "Parameter 17" → "ctl-parameter-17". */
+function paramControlId(rawName: string): string {
+  return 'ctl-' + rawName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+}
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
 
@@ -1192,7 +1200,12 @@ export function convertTableauToSigma(
         const rawName = attr(col, 'name') || '';
         const colType = attr(col, 'datatype') || 'string';
         const domainType = attr(col, 'param-domain-type') || 'all';
-        const members = asArray(col.member).map((m: any) => attr(m, 'value')).filter(Boolean);
+        // Allowable values live under <members><member value='…'/></members> (NOT a
+        // direct <member> child). Tableau wraps string values in quotes and encodes
+        // them (&quot;) — decode + unquote so the value matches the case-when literal
+        // the param-switch tests against ("Signs", not "\"Signs\"").
+        const unq = (v: string): string => decodeXmlEntities(v).replace(/\\(.)/g, '$1').replace(/^"|"$/g, '');
+        const members = asArray(col.members?.member).map((m: any) => unq(attr(m, 'value'))).filter(Boolean);
         const calcEl = col.calculation;
         parameters.push({
           name: colName.replace(/^\[|\]$/g, ''),
@@ -1200,6 +1213,7 @@ export function convertTableauToSigma(
           type: colType,
           domainType,
           members,
+          currentValue: unq(attr(col, 'value')),
           defaultVal: calcEl ? attr(calcEl, 'formula') : ''
         });
       }
@@ -2809,13 +2823,35 @@ export function convertTableauToSigma(
         // [Parameters] reference ("not a sibling column" / "Invalid formula"). These
         // must be built in the workbook layer as a control-driven Switch over
         // [ctl-param-…], so report them in workbookPatterns and skip the DM emit.
-        if (/\[Parameters?\]\s*\.\s*\[/i.test(formula)) {
+        const paramRef = formula.match(/\[Parameters?\]\s*\.\s*\[([^\]]+)\]/i);
+        if (paramRef) {
+          const ctlId = paramControlId(paramRef[1]);
+          // Measure/dimension picker: `case [Parameters].[P] when V then E … end`
+          // → a control-driven Switch (Sigma's native dynamic-field pattern). Emit it
+          // structured so the build layer materialises a control + Switch column and
+          // wires the charts that referenced this calc. (n4pi.8 measure-picker.)
+          const sw = tableauParamSwitchToSigma(formula, ctlId, warnings);
+          if (sw) {
+            workbookPatterns.push({
+              kind: 'param-switch', name: caption, source: formula.trim(),
+              paramName: sw.paramName, controlId: ctlId,
+              formula: sw.switchFormula, cases: sw.cases, elseExpr: sw.elseExpr,
+              requires: 'WORKBOOK element: a single-select list control + a Switch calc column on the master; charts referencing this calc plot the Switch column.',
+              note: `Tableau parameter measure-picker → Sigma control-driven Switch. Build control [${ctlId}] (values from parameter "${sw.paramName}") and master calc ${caption} = ${sw.switchFormula.slice(0, 120)}.`,
+            } as any);
+            warnings.push(`🔀 "${caption}" → control-driven Switch over [${ctlId}] (param "${sw.paramName}", ${sw.cases.length} case(s)) — reported in result.workbookPatterns for the workbook layer.`);
+            continue;
+          }
+          // Plain parameter reference (a param-driven FILTER / nav toggle, not a
+          // case-switch) → a workbook control bound as a filter (target the source
+          // table, never a viz). Reported for the build layer.
           workbookPatterns.push({
-            kind: 'unsupported', name: caption, source: formula.trim(),
-            requires: 'WORKBOOK element — build as a control-driven Switch over the parameter ([ctl-param-…]); NOT a DM column/metric',
-            note: 'Formula references a Tableau parameter; parameters become Sigma workbook controls, so this calc cannot live in the data model (params do not resolve there). Build it in the workbook layer as Switch([ctl-param-…], …).',
-          });
-          warnings.push(`ℹ "${caption}" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).`);
+            kind: 'param-filter', name: caption, source: formula.trim(),
+            paramName: paramRef[1], controlId: ctlId,
+            requires: 'WORKBOOK control bound as a filter on the source element/table (not on a viz — control→viz filters 400).',
+            note: `Formula references Tableau parameter "${paramRef[1]}"; build a control [${ctlId}] and apply it as a filter on the master/source element.`,
+          } as any);
+          warnings.push(`ℹ "${caption}" references Tableau parameter "${paramRef[1]}" → reported as a param-filter control [${ctlId}] for the workbook layer; NOT a DM column.`);
           continue;
         }
 
@@ -3255,6 +3291,7 @@ export function convertTableauToSigma(
     warnings,
     ...(security.length ? { security } : {}),
     ...(workbookPatterns.length ? { workbookPatterns } : {}),
+    ...(parameters.length ? { parameters } : {}),
     stats: {
       datasources: datasources.length,
       elements: elements.length,
