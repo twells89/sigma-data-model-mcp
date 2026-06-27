@@ -15,6 +15,7 @@ import {
   tableauFormulaToSigma, tableauIsAggregate, tableauFormulaIsRls,
   tableauWindowToSigmaChart, tableauWindowUntranslatable,
   SIGMA_CHART_ONLY_WINDOW_RE, TABLEAU_TABLE_CALC_TOKEN_RE,
+  decodeXmlEntities, formulaHasUntranslatableFragment, tableauTextConcatToSigma,
 } from './formulas.js';
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
@@ -1273,6 +1274,10 @@ export function convertTableauToSigma(
   // virtual connection invents on the fact relation can be recognised and skipped
   // (they belong to a related DIM element, not the physical fact table).
   const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // colId → Tableau local-type ('integer'|'real'|'date'|'string'|'boolean'). Hoisted
+  // to datasource scope so the calc post-pass (type-aware text-concat) can read it,
+  // in addition to the blend-collapse's SUM-vs-MAX grain decision. Populated below.
+  const colTypeById: Record<string, string> = {};
   const guidCaption: Record<string, string> = {};   // guid(lower) → display caption (suffix-stripped)
   // Subset of guidCaption restricted to REAL physical columns Tableau merely renamed to a
   // GUID — i.e. a datasource-level <column caption='…' name='[GUID]'> with NO <calculation>
@@ -1314,6 +1319,24 @@ export function convertTableauToSigma(
     }
   }
 
+  // Internal calc-field NAME → the caption the calc column is emitted with, so a
+  // calc-on-calc reference (`[Calculation_NNN]`, `[Foo (copy)_<bigint>]`) resolves
+  // to its sibling column. Tableau formulas reference other calcs by their opaque
+  // internal `name` attribute, not the user-facing caption; without this rewrite
+  // those refs dangle and the calc column type-errors. Emitted name mirrors the
+  // calc-emit path: caption when present, else the bracket-stripped raw name.
+  const calcNameToCaption: Record<string, string> = {};
+  for (const col of asArray(ds.ds?.column || [])) {
+    if (!col.calculation) continue;
+    const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
+    if (!nm) continue;
+    const emitted = (attr(col, 'caption') || nm).trim();
+    if (emitted) calcNameToCaption[nm] = emitted;
+  }
+  // A calc-field internal name is either `Calculation_<digits>` or any name ending
+  // in a `_<long digit run>` GUID-ish disambiguation suffix (Tableau's "(copy)_NNN").
+  const CALC_REF_RE = /^(Calculation_\d+|.+_\d{6,})$/;
+
   // The relation name of the fact (the relation that carries physical measure columns,
   // i.e. the one whose <relation> child declares its own <columns>). Set in the
   // collection branch below; used to decide whether a GUID column is a genuine fact
@@ -1341,8 +1364,19 @@ export function convertTableauToSigma(
   // Rewrite bare [GUID] references in a Tableau formula to [Caption] so the
   // downstream formula translator + cross-element placement work on display names.
   const rewriteGuidRefs = (formula: string): string =>
-    formula.replace(/\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/gi,
-      (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; });
+    decodeXmlEntities(formula)
+      // GUID refs → caption.
+      .replace(/\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/gi,
+        (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; })
+      // Internal calc-field-name refs (Calculation_NNN / Foo (copy)_NNN) → caption,
+      // so calc-on-calc dependency chains reference their sibling column by the name
+      // it is emitted with. Only rewrites refs that match the internal-name shape AND
+      // resolve in the map — plain caption/physical refs pass through untouched.
+      .replace(/\[([^\]]+)\]/g, (m, name) => {
+        if (!CALC_REF_RE.test(name)) return m;
+        const cap = calcNameToCaption[name];
+        return cap ? `[${cap}]` : m;
+      });
 
   // ── Build elements from relation structure ──────────────────────────────
   const rootRelation = ds.connection ? (connRelations(ds.connection)[0] || null) : null;
@@ -1474,10 +1508,6 @@ export function convertTableauToSigma(
         type MetaCol = { uuid: string; caption: string; objId?: string; localType?: string; remoteAlias?: string };
         const metaByObjId: Record<string, MetaCol[]> = {};
         const metaByParent: Record<string, MetaCol[]> = {};
-        // colId → Tableau local-type ('integer'|'real'|'date'|'string'|'boolean').
-        // Used by the blend-collapse to pick SUM (additive measures) vs MAX (dims)
-        // when pre-aggregating a secondary island to its link grain.
-        const colTypeById: Record<string, string> = {};
         // colId → the EXACT SQL-output column name (Tableau remote-alias, incl. any
         // " (Disambig)" suffix, e.g. "ROLE (PRESALE_PRODUCT_GOALS)"). The Sigma column
         // formula uses the STRIPPED clean name; the blend-collapse must read each
@@ -2514,6 +2544,14 @@ export function convertTableauToSigma(
         const physCol = normalizeColumnName(fieldKey);
         const displayName = caption || sigmaDisplayName(physCol);
         if (!displayNameMap[displayName.toUpperCase()] && !displayNameMap[physCol]) {
+          // A kind:'sql' fact (e.g. a collapsed multi-source blend) has a FIXED
+          // generated SELECT — we cannot invent a physical column that isn't in it.
+          // Emitting a `[FACT/<caption>]` cross-element ref here produces a NAMELESS
+          // column pointing at a non-existent "FACT" element that type-errors the
+          // whole element at POST. Skip it; a calc that references this field is
+          // remapped to a real output column by the normalized-ref post-pass below
+          // (or left honestly unresolved if the field truly isn't in the SQL).
+          if (factEl.source?.kind === 'sql') continue;
           const colId = sigmaInodeId(physCol);
           factEl.columns.push({ id: colId, formula: `[${factTableName}/${displayName}]` });
           factEl.order.push(colId);
@@ -2789,8 +2827,8 @@ export function convertTableauToSigma(
         // table-calc tokens embedded in a larger expression) must NEVER land in
         // a DM column/metric — they silently error there. Route to
         // workbookPatterns / loud warning instead.
-        if (SIGMA_CHART_ONLY_WINDOW_RE.test(sigmaFormula) || TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula)) {
-          const clean = !TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula);
+        if (SIGMA_CHART_ONLY_WINDOW_RE.test(sigmaFormula) || formulaHasUntranslatableFragment(sigmaFormula)) {
+          const clean = !formulaHasUntranslatableFragment(sigmaFormula);
           workbookPatterns.push({
             kind: clean ? 'window' : 'unsupported', name: caption, source: formula.trim(),
             ...(clean ? { formula: sigmaFormula } : {}),
@@ -2866,6 +2904,167 @@ export function convertTableauToSigma(
           factEl.order.push(colId);
           warnings.push(`ℹ "${caption}" → calculated column. Review: ${sigmaFormula.slice(0, 60)}`);
         }
+      }
+    }
+
+    // ── Normalized sibling-ref reconciliation (caption ↔ SQL-alias) ─────────
+    // A collapsed-blend / custom-SQL fact names its physical columns by SQL output
+    // alias (SALES_OWNER, WORKING_DAYS), but Tableau calc formulas reference those
+    // same fields by friendly caption ([Sales Owner], [Working Days]) — and Sigma
+    // resolves sibling refs by EXACT display name, so the caption ref dangles and
+    // the calc column type-errors. Reconcile by rewriting each unresolved sibling
+    // ref to the actual column name via a space/underscore/case-insensitive match
+    // (also tolerating a trailing " (disambiguation)" suffix on the ref). Runs on
+    // the fact element's calc columns + metrics only; cross-element [A/B] refs and
+    // refs that already match a column name exactly are left untouched.
+    {
+      const normKey = (s: string): string => s.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+      const stripSuffix = (s: string): string => s.replace(/\s*\([^()]*\)\s*$/, '').trim();
+      const exactNames = new Set<string>();
+      const normIndex: Record<string, string> = {};   // normalized → canonical column name
+      for (const c of (factEl.columns || [])) {
+        if (!c.name) continue;
+        exactNames.add(c.name.toLowerCase());
+        const k = normKey(c.name);
+        if (k && !(k in normIndex)) normIndex[k] = c.name;   // first (physical alias) wins
+      }
+      let rewrites = 0;
+      const reconcile = (formula: string, ownName?: string): string => {
+        if (typeof formula !== 'string') return formula;
+        return formula.replace(/\[([^\]]+)\]/g, (m, ref) => {
+          if (ref.includes('/')) return m;                       // cross-element ref
+          // Self-reference: a rename calc whose caption collides with the physical
+          // column it wraps (e.g. calc "Market Maker" → If([Market Maker]=True,1,0)).
+          // Redirect to the same-normalized PHYSICAL column instead of looping back
+          // onto itself (which errors). normIndex prefers the alias column (built first).
+          if (ownName && ref.toLowerCase() === ownName.toLowerCase()) {
+            const alt = normIndex[normKey(ref)];
+            if (alt && alt.toLowerCase() !== ownName.toLowerCase()) { rewrites++; return `[${alt}]`; }
+            return m;
+          }
+          if (exactNames.has(ref.toLowerCase())) return m;       // already resolves
+          const hit = normIndex[normKey(ref)] || normIndex[normKey(stripSuffix(ref))];
+          if (hit) { rewrites++; return `[${hit}]`; }
+          return m;
+        });
+      };
+      const isAliasFormula = (f: any): boolean =>
+        typeof f === 'string' && /^\[(Custom SQL|[^\]\/]+)\/[^\]]+\]$/.test(f);
+      for (const c of (factEl.columns || [])) {
+        if (isAliasFormula(c.formula)) continue;                 // plain passthrough alias
+        c.formula = reconcile(c.formula, c.name);
+      }
+      for (const m of ((factEl as any).metrics || [])) {
+        m.formula = reconcile(m.formula, m.name);
+      }
+      if (rewrites > 0) {
+        warnings.push(`ℹ Reconciled ${rewrites} calc-formula field reference(s) to their SQL-alias column names (caption↔alias) on "${factEl.name}".`);
+      }
+
+      // ── Type-aware text concat: [textCol] + [textCol] → & ─────────────────
+      // The translator already converted literal/text-function `+` chains; here we
+      // resolve ref-only chains (e.g. [CW_COUNTRY] + [ROLE]) using the captured
+      // warehouse column types, since `+` on text errors in Sigma (needs &/Concat).
+      {
+        const typeByName: Record<string, string> = {};
+        for (const c of (factEl.columns || [])) {
+          if (c.name && colTypeById[c.id]) typeByName[c.name.toLowerCase()] = colTypeById[c.id];
+        }
+        const isTextRef = (name: string): boolean => typeByName[name.toLowerCase()] === 'string';
+        for (const c of (factEl.columns || [])) {
+          if (isAliasFormula(c.formula)) continue;
+          c.formula = tableauTextConcatToSigma(c.formula, isTextRef);
+        }
+        for (const m of ((factEl as any).metrics || [])) m.formula = tableauTextConcatToSigma(m.formula, isTextRef);
+      }
+
+      // ── Drop self-referential rename calcs ────────────────────────────────
+      // A Tableau rename calc (formula = a bare GUID that resolves to the column's
+      // OWN caption) collapses to `[Self]` after ref-rewriting — a circular ref
+      // that errors. The underlying physical column is already present as an alias
+      // column, so the rename is redundant: drop it.
+      {
+        const before = (factEl.columns || []).length;
+        factEl.columns = (factEl.columns || []).filter((c: any) => {
+          const self = c.name && typeof c.formula === 'string' && c.formula.trim().toLowerCase() === `[${c.name}]`.toLowerCase();
+          if (self) { factEl.order = (factEl.order || []).filter((id: string) => id !== c.id); }
+          return !self;
+        });
+        const n = before - factEl.columns.length;
+        if (n) warnings.push(`ℹ Dropped ${n} self-referential rename calc(s) on "${factEl.name}" (redundant — the physical column is already present).`);
+      }
+
+      // ── Promote aggregate-of-aggregate columns to metrics ─────────────────
+      // A calc COLUMN that references a metric (e.g. [Signs - Actuals]/[Active HC -
+      // Actuals]) is an aggregate ratio — Sigma errors it as a row-level column but
+      // evaluates it correctly as a metric. Move such columns to metrics, iterating
+      // so a column referencing a just-promoted metric also promotes (fixed point).
+      {
+        const metricNames = new Set<string>(((factEl as any).metrics || []).map((m: any) => (m.name || '').toLowerCase()));
+        const validNames = new Set<string>();
+        for (const c of (factEl.columns || [])) if (c.name) validNames.add(c.name.toLowerCase());
+        for (const n of metricNames) validNames.add(n);
+        const sib = (f: any): string[] => typeof f === 'string'
+          ? (f.match(/\[([^\]]+)\]/g) || []).map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
+        let promoted = 0, moved = true;
+        while (moved) {
+          moved = false;
+          for (let i = (factEl.columns || []).length - 1; i >= 0; i--) {
+            const c = factEl.columns[i];
+            if (isAliasFormula(c.formula)) continue;
+            const refs = sib(c.formula);
+            if (refs.length && refs.every(r => validNames.has(r.toLowerCase())) && refs.some(r => metricNames.has(r.toLowerCase()))) {
+              if (!(factEl as any).metrics) (factEl as any).metrics = [];
+              (factEl as any).metrics.push({ id: c.id, formula: c.formula, name: c.name, ...(c.format ? { format: c.format } : {}) });
+              metricNames.add((c.name || '').toLowerCase());
+              factEl.columns.splice(i, 1);
+              factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+              promoted++; moved = true;
+            }
+          }
+        }
+        if (promoted) warnings.push(`ℹ Promoted ${promoted} aggregate-ratio calc column(s) to metrics on "${factEl.name}" (they reference aggregate metrics — invalid as row-level columns).`);
+      }
+
+      // ── Drop-and-surface unresolved calc columns/metrics (transitive) ─────
+      // After reconciliation a calc may still reference a field that isn't in the
+      // collapsed SQL output (a param-driven calc routed to the workbook, or a
+      // field genuinely absent from every island). Such a calc type-errors the
+      // whole element at POST, so drop it — and any calc that depended on it —
+      // iterating to a fixed point. Never silent: every drop is surfaced with the
+      // unresolved reference so it shows up in the migration's "not migrated" log.
+      const valid = new Set<string>();
+      for (const c of (factEl.columns || [])) if (c.name) valid.add(c.name.toLowerCase());
+      for (const mt of ((factEl as any).metrics || [])) if (mt.name) valid.add(mt.name.toLowerCase());
+      const siblingRefs = (f: any): string[] =>
+        typeof f === 'string' ? (f.match(/\[([^\]]+)\]/g) || [])
+          .map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
+      const dropped: { name: string; bad: string }[] = [];
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const dropCol = (arr: any[], isMetric: boolean) => {
+          for (let i = arr.length - 1; i >= 0; i--) {
+            const c = arr[i];
+            if (!isMetric && isAliasFormula(c.formula)) continue;   // physical passthrough
+            const bad = siblingRefs(c.formula).find(r => !valid.has(r.toLowerCase()));
+            if (bad) {
+              dropped.push({ name: c.name || '(unnamed)', bad });
+              if (c.name) valid.delete(c.name.toLowerCase());
+              if (!isMetric) factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+              arr.splice(i, 1);
+              changed = true;
+            }
+          }
+        };
+        dropCol(factEl.columns || [], false);
+        if ((factEl as any).metrics) dropCol((factEl as any).metrics, true);
+      }
+      for (const d of dropped) {
+        warnings.push(`⚠ Dropped calc "${d.name}" — references [${d.bad}] which is not a resolvable column in the collapsed model (param-driven or field absent from the SQL). NOT migrated; recreate in the workbook layer if needed.`);
+      }
+      if (dropped.length) {
+        warnings.push(`ℹ Dropped ${dropped.length} unresolvable calc column(s)/metric(s) on "${factEl.name}" after caption↔alias reconciliation (see per-calc warnings above).`);
       }
     }
 
