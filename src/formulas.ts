@@ -593,8 +593,11 @@ export function tableauWindowToSigmaChart(formula: string): TableauWindowChartRe
   if (!f || tableauWindowUntranslatable(f)) return null;
   let m: RegExpMatchArray | null;
 
-  // AGG([x]) / WINDOW_SUM(AGG([x]))  →  PercentOfTotal(Agg([x]), "grand_total")
-  m = f.match(new RegExp(`^${_TC_AGG_EXPR}\\s*\\/\\s*WINDOW_SUM\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)$`, 'i'));
+  // AGG([x]) / TOTAL(AGG([x]))  (or / WINDOW_SUM(AGG([x])))
+  //   →  PercentOfTotal(Agg([x]), "grand_total")
+  // Tableau's TOTAL(SUM(x)) and WINDOW_SUM(SUM(x)) are the same grand-total
+  // denominator under default (Table) addressing — both map to grand_total.
+  m = f.match(new RegExp(`^${_TC_AGG_EXPR}\\s*\\/\\s*(?:TOTAL|WINDOW_SUM)\\s*\\(\\s*${_TC_AGG_EXPR}\\s*\\)$`, 'i'));
   if (m && m[1].toUpperCase() === m[3].toUpperCase() && _tcSameRef(m[2], m[4])) {
     return { formula: `PercentOfTotal(${_tcAgg(m[1], m[2])}, "grand_total")`, kind: 'percent-of-total' };
   }

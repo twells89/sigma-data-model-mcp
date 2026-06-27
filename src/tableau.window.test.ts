@@ -85,6 +85,10 @@ describe('tableau window fns: percent-of-total ratios', () => {
     const { out } = conv('SUM([SALES]) / WINDOW_SUM(SUM([SALES]))');
     assert.equal(out, 'PercentOfTotal(Sum([Sales]), "grand_total")');
   });
+  test('SUM(x) / TOTAL(SUM(x)) → PercentOfTotal(Sum(x), "grand_total")', () => {
+    const { out } = conv('SUM([SALES]) / TOTAL(SUM([SALES]))');
+    assert.equal(out, 'PercentOfTotal(Sum([Sales]), "grand_total")');
+  });
   test('RUNNING_SUM(agg) / TOTAL(agg) → CumulativeSum(PercentOfTotal(agg, "grand_total"))', () => {
     const { out } = conv('RUNNING_SUM(SUM([SALES])) / TOTAL(SUM([SALES]))');
     assert.equal(out, 'CumulativeSum(PercentOfTotal(Sum([Sales]), "grand_total"))');
