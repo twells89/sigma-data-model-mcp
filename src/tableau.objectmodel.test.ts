@@ -176,4 +176,106 @@ describe('encapsulated-legacy object model (DDMX-class)', () => {
       (out.warnings || []).some((w: string) => /computed condition\(s\) dropped/i.test(w)),
       'a warning surfaces the dropped computed join condition');
   });
+
+  test('a single secondary island is NOT collapsed (stays a native relationship)', () => {
+    // Only multi-source blends (≥2 secondaries) collapse; a fact+dim stays 2 elements.
+    assert.equal(els.length, 2, 'fact + single dim remain two elements with a relationship');
+  });
+});
+
+// ── Multi-source blend collapse (epic n4pi.2, fork b) ──────────────────────────
+// A fact joined to ≥2 custom-SQL goal islands of MIXED grain. A Sigma master can
+// source only one element, so cross-island chart refs ("master/goal") fail and
+// the dashboard is blank. The converter must collapse the blend into ONE wide
+// kind:'sql' element: each secondary pre-aggregated to its link grain (SUM for
+// additive measures, MAX for dims) then LEFT JOINed onto the fact.
+const blendTwb = `<?xml version='1.0' encoding='utf-8'?>
+<workbook>
+  <datasources>
+    <datasource caption='DS' name='federated.x'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection name='snow'><connection class='snowflake' dbname='DB' schema='SC'/></named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+          <relation connection='snow' name='Custom SQL Query1' type='text'>select ROLE, WK, SALES from FACT_TBL</relation>
+          <relation connection='snow' name='Custom SQL Query2' type='text'>select ROLE_G, WK_G, GOAL from WEEKLY_GOALS</relation>
+          <relation connection='snow' name='Custom SQL Query3' type='text'>select ROLE_P, PRODUCT, PGOAL from PRODUCT_GOALS</relation>
+        </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+        <metadata-records>
+          ${MR('ROLE',    'Custom SQL Query1', 'F (DB.F)_AAAA', 'string')}
+          ${MR('WK',      'Custom SQL Query1', 'F (DB.F)_AAAA', 'integer')}
+          ${MR('SALES',   'Custom SQL Query1', 'F (DB.F)_AAAA', 'real')}
+          ${MR('ROLE_G',  'Custom SQL Query2', 'G (DB.G)_BBBB', 'string')}
+          ${MR('WK_G',    'Custom SQL Query2', 'G (DB.G)_BBBB', 'integer')}
+          ${MR('GOAL',    'Custom SQL Query2', 'G (DB.G)_BBBB', 'real')}
+          ${MR('ROLE_P',  'Custom SQL Query3', 'P (DB.P)_CCCC', 'string')}
+          ${MR('PRODUCT', 'Custom SQL Query3', 'P (DB.P)_CCCC', 'string')}
+          ${MR('PGOAL',   'Custom SQL Query3', 'P (DB.P)_CCCC', 'real')}
+        </metadata-records>
+      </connection>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+        <objects>
+          <object caption='F' id='F (DB.F)_AAAA'><properties/></object>
+          <object caption='G' id='G (DB.G)_BBBB'><properties/></object>
+          <object caption='P' id='P (DB.P)_CCCC'><properties/></object>
+        </objects>
+        <relationships>
+          <relationship>
+            <first-end-point object-id='F (DB.F)_AAAA'/>
+            <second-end-point object-id='G (DB.G)_BBBB'/>
+            <expression op='AND'>
+              <expression op='='><expression op='[ROLE]'/><expression op='[ROLE_G]'/></expression>
+              <expression op='='><expression op='[WK]'/><expression op='[WK_G]'/></expression>
+            </expression>
+          </relationship>
+          <relationship>
+            <first-end-point object-id='F (DB.F)_AAAA'/>
+            <second-end-point object-id='P (DB.P)_CCCC'/>
+            <expression op='='><expression op='[ROLE]'/><expression op='[ROLE_P]'/></expression>
+          </relationship>
+        </relationships>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+    </datasource>
+  </datasources>
+</workbook>`;
+
+describe('multi-source blend → one wide JOIN element', () => {
+  const out: any = convertTableauToSigma(blendTwb, { connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0 });
+  const sqlEls = (out.model?.pages?.[0]?.elements || []).filter((e: any) => e.source?.kind === 'sql');
+
+  test('collapses to a SINGLE kind:sql element (no isolated islands, no relationships)', () => {
+    assert.equal(sqlEls.length, 1, 'one merged element');
+    assert.ok(!(sqlEls[0].relationships?.length), 'relationships folded into the JOIN');
+  });
+
+  test('statement is a WITH + LEFT JOIN over pre-aggregated secondaries', () => {
+    const s = sqlEls[0].source.statement;
+    assert.match(s, /WITH __f AS/, 'fact CTE');
+    assert.equal((s.match(/LEFT JOIN/g) || []).length, 2, 'one LEFT JOIN per secondary');
+    assert.match(s, /GROUP BY/, 'secondaries pre-aggregated to link grain');
+  });
+
+  test('additive measures use SUM, the product dimension uses MAX (m:m guard)', () => {
+    const s = sqlEls[0].source.statement;
+    assert.match(s, /SUM\("GOAL"\)/, 'weekly goal summed to (role,wk) grain');
+    assert.match(s, /SUM\("PGOAL"\)/, 'product goal summed to (role) grain');
+    assert.match(s, /MAX\("PRODUCT"\)/, 'product dimension (m:m) collapsed with MAX, not fanned out');
+  });
+
+  test('every emitted column resolves to a SELECT output alias (no error columns)', () => {
+    const s = sqlEls[0].source.statement;
+    const aliases = new Set([...s.matchAll(/AS "([^"]+)"/g)].map((m: any) => m[1]));
+    for (const c of sqlEls[0].columns) {
+      const m = c.formula.match(/^\[Custom SQL\/(.+)\]$/);
+      assert.ok(m, `blend column uses [Custom SQL/...]: ${c.formula}`);
+      assert.ok(aliases.has(m[1]), `column alias "${m[1]}" exists in the SELECT output`);
+    }
+  });
+
+  test('fact columns are all present in the merged element', () => {
+    const names = sqlEls[0].columns.map((c: any) => c.name);
+    for (const f of ['ROLE', 'WK', 'SALES']) assert.ok(names.includes(f), `fact col ${f} present`);
+    assert.ok(names.includes('GOAL') && names.includes('PGOAL'), 'secondary goal measures surfaced');
+  });
 });
