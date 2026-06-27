@@ -1393,11 +1393,22 @@ export function convertTableauToSigma(
           // object-ids from the object-graph) can resolve back to THIS element.
           const relObjId = matchingObjId || metaCols.find(c => c.objId)?.objId || null;
 
+          // A `type='text'` child is a Custom SQL relation → it lowers to a
+          // kind:'sql' element below. Sigma requires a kind:'sql' element's OWN
+          // columns to use the literal source alias `Custom SQL` as the formula
+          // prefix (data-model-spec.md rule 3) — NOT the relation name. The
+          // relation name (e.g. "Custom SQL Query1") is a Tableau federation
+          // label, not a warehouse path; using it as the prefix compiles every
+          // column to type=error. Cross-element refs still go through the named
+          // relationships wired below. (warehouse-table elements keep cleanName.)
+          const isCustomSqlRel = attr(rel, 'type') === 'text';
+          const colPrefix = isCustomSqlRel ? 'Custom SQL' : cleanName;
+
           for (const { uuid, caption } of metaCols) {
             const cleanCaption = caption.replace(/\s*\(.*\)$/, '').trim(); // strip disambiguation suffix
             const idKey = uuid.toUpperCase();
             const id    = sigmaInodeId(idKey);
-            columns.push({ id, formula: `[${cleanName}/${cleanCaption}]`, name: cleanCaption });
+            columns.push({ id, formula: `[${colPrefix}/${cleanCaption}]`, name: cleanCaption });
             order.push(id);
             colIdMap[idKey] = id;
             colIdMap[uuid.toUpperCase().replace(/-/g, '_')] = id;
@@ -1415,7 +1426,7 @@ export function convertTableauToSigma(
               const id          = sigmaInodeId(key);
               const capAttr     = attr(col, 'caption');
               const displayName = isUuid ? (capAttr || rawCol) : sigmaDisplayName(key);
-              columns.push({ id, formula: `[${cleanName}/${displayName}]` });
+              columns.push({ id, formula: `[${colPrefix}/${displayName}]` });
               order.push(id);
               colIdMap[rawCol.toUpperCase()] = id;
               colIdMap[key] = id;
@@ -1426,7 +1437,7 @@ export function convertTableauToSigma(
           // element's #text. Emit a kind:'sql' element with that statement rather
           // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
           // is not a real table, so a warehouse-table path would fail at migration).
-          const isCustomSql = attr(rel, 'type') === 'text';
+          const isCustomSql = isCustomSqlRel;
           const sqlText = isCustomSql ? String(rel['#text'] ?? '').trim() : '';
           const source = (isCustomSql && sqlText)
             ? { connectionId: connId, kind: 'sql', statement: sqlText }
