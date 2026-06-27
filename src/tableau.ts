@@ -3180,7 +3180,24 @@ export function convertTableauToSigma(
         for (const n of metricNames) validNames.add(n);
         const sib = (f: any): string[] => typeof f === 'string'
           ? (f.match(/\[([^\]]+)\]/g) || []).map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
-        let promoted = 0, moved = true;
+        // An aggregate-derived calc whose OUTPUT is a text bucket or boolean flag
+        // (e.g. If([Margin Pct]>0.3,"High","Low") — Margin Pct an aggregate ratio)
+        // is a DIMENSION, not a measure. Promoting it to a metric is wrong: a
+        // Sigma metric cannot be a grouping dimension, so a bar grouped by it gets
+        // viz-pruned (y9rd.11). It also can't be a DM row-level column (it
+        // references an aggregate). It only resolves in CHART/grouped-element
+        // context — bucket the aggregate at the chart grain — so report it as a
+        // workbookPattern for the build layer instead.
+        const isDimLike = (f: any): boolean => {
+          if (typeof f !== 'string') return false;
+          const s = f.trim();
+          // Bucketing branch returns a string literal ("High"/"Low"/…).
+          if (/^(If|Iif|Case|Switch)\b/i.test(s) && /"[^"]*"/.test(s)) return true;
+          // Bare boolean flag: a single top-level comparison against a constant.
+          if (/^\[[^\]]+\]\s*(<=|>=|<>|!=|<|>|=)\s*-?[\d.]+\s*$/.test(s)) return true;
+          return false;
+        };
+        let promoted = 0, aggDims = 0, moved = true;
         while (moved) {
           moved = false;
           for (let i = (factEl.columns || []).length - 1; i >= 0; i--) {
@@ -3188,6 +3205,18 @@ export function convertTableauToSigma(
             if (isAliasFormula(c.formula)) continue;
             const refs = sib(c.formula);
             if (refs.length && refs.every(r => validNames.has(r.toLowerCase())) && refs.some(r => metricNames.has(r.toLowerCase()))) {
+              if (isDimLike(c.formula)) {
+                const aggRefs = refs.filter(r => metricNames.has(r.toLowerCase()));
+                workbookPatterns.push({
+                  kind: 'aggregate-dimension', name: c.name, source: c.formula, formula: c.formula,
+                  requires: 'GROUPED workbook element: bucket the referenced aggregate metric(s) at the chart grain in the grouping context — NOT valid as a DM column or as a metric (a metric cannot be a grouping dimension).',
+                  note: `Aggregate-derived dimension: buckets aggregate metric(s) [${aggRefs.join('], [')}]. Group the chart by this binned aggregate (compute the metric at the viz grain, then bucket); the DM cannot express it row-level.`,
+                } as any);
+                factEl.columns.splice(i, 1);
+                factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+                aggDims++; moved = true;
+                continue;
+              }
               if (!(factEl as any).metrics) (factEl as any).metrics = [];
               (factEl as any).metrics.push({ id: c.id, formula: c.formula, name: c.name, ...(c.format ? { format: c.format } : {}) });
               metricNames.add((c.name || '').toLowerCase());
@@ -3198,6 +3227,7 @@ export function convertTableauToSigma(
           }
         }
         if (promoted) warnings.push(`ℹ Promoted ${promoted} aggregate-ratio calc column(s) to metrics on "${factEl.name}" (they reference aggregate metrics — invalid as row-level columns).`);
+        if (aggDims) warnings.push(`ℹ "${factEl.name}": ${aggDims} aggregate-derived dimension(s) (bucket an aggregate metric) → reported in result.workbookPatterns — CHART/grouped-element context only; group the viz by the binned aggregate (NOT a DM column or metric).`);
       }
 
       // ── Drop-and-surface unresolved calc columns/metrics (transitive) ─────
