@@ -72,3 +72,98 @@ describe('modern object-model (FCP-namespaced) datasource', () => {
     assert.equal(fakePath, undefined, 'no fake warehouse-table path for a Custom SQL relation');
   });
 });
+
+// ── Encapsulated-legacy variant (DDMX-class: multi-custom-SQL, parent-name
+//    grouping, composite relationships, GUID-only columns) ───────────────────
+// This is the shape that produced "1 populated element + N empty stubs + 0
+// relationships" until the per-object column distribution + composite-relationship
+// wiring fixes. metadata-records here carry NO <object-id> (only the namespaced
+// `…object-id`) and group by <parent-name> = the relation name.
+const MR = (remote: string, parent: string, objHash: string, type = 'string', localName?: string) => `
+    <metadata-record class='column'>
+      <remote-name>${remote}</remote-name>
+      <local-name>[${localName ?? remote}]</local-name>
+      <parent-name>[${parent}]</parent-name>
+      <local-type>${type}</local-type>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[${objHash}]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+    </metadata-record>`;
+
+const FACT_OBJ = 'FACT (DB.FACT)_AAAA1111';
+const DIM_OBJ  = 'DIM (DB.DIM)_BBBB2222';
+const GUID_COL = 'c2ec6b07-897e-39ab-9422-aa895d35a627';
+
+const encapsulatedTwb = `<?xml version='1.0' encoding='utf-8'?>
+<workbook>
+  <datasources>
+    <datasource caption='DS' name='federated.x'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection name='snow'><connection class='snowflake' dbname='DB' schema='SC'/></named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+          <relation connection='snow' name='Custom SQL Query1' type='text'>select QTR_YR from FACT_TBL</relation>
+          <relation connection='snow' name='Custom SQL Query2' type='text'>select QTR_YR_DIM, LABEL from DIM_TBL</relation>
+        </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+        <metadata-records>
+          ${MR('QTR_YR', 'Custom SQL Query1', FACT_OBJ)}
+          ${MR(GUID_COL, 'Custom SQL Query1', FACT_OBJ, 'date')}
+          ${MR('QTR_YR_DIM', 'Custom SQL Query2', DIM_OBJ)}
+          ${MR('LABEL', 'Custom SQL Query2', DIM_OBJ)}
+        </metadata-records>
+      </connection>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+        <objects>
+          <object caption='FACT' id='${FACT_OBJ}'><properties/></object>
+          <object caption='DIM' id='${DIM_OBJ}'><properties/></object>
+        </objects>
+        <relationships>
+          <relationship>
+            <first-end-point object-id='${FACT_OBJ}'/>
+            <second-end-point object-id='${DIM_OBJ}'/>
+            <expression op='AND'>
+              <expression op='='>
+                <expression op='[QTR_YR]'/>
+                <expression op='[QTR_YR_DIM]'/>
+              </expression>
+              <expression op='='>
+                <expression _.fcp.RelationshipCalculations.true...op='DATE([QTR_YR])'/>
+                <expression op='[LABEL]'/>
+              </expression>
+            </expression>
+          </relationship>
+        </relationships>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+    </datasource>
+  </datasources>
+</workbook>`;
+
+describe('encapsulated-legacy object model (DDMX-class)', () => {
+  const out: any = convertTableauToSigma(encapsulatedTwb, { connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0 });
+  const els = (out.model?.pages?.[0]?.elements || []).filter((e: any) => e.source?.kind === 'sql');
+
+  test('columns distribute per object via parent-name (not all on element[0])', () => {
+    assert.equal(els.length, 2, 'two custom-SQL elements');
+    const populated = els.filter((e: any) => (e.columns || []).length > 0);
+    assert.equal(populated.length, 2, 'BOTH elements populated (was 1 + empty stub)');
+    const allFormulas = els.flatMap((e: any) => (e.columns || []).map((c: any) => c.formula)).join(' ');
+    assert.match(allFormulas, /QTR_YR_DIM/, 'dim object got its own column');
+  });
+
+  test('GUID-only metadata column is skipped (no unresolvable [TABLE/<guid>] ref)', () => {
+    const allCols = els.flatMap((e: any) => e.columns || []);
+    const guidCol = allCols.find((c: any) =>
+      (c.name && new RegExp(GUID_COL, 'i').test(c.name)) ||
+      (c.formula && new RegExp(GUID_COL, 'i').test(c.formula)));
+    assert.equal(guidCol, undefined, 'GUID-named column must not be emitted');
+  });
+
+  test('composite relationship wires the physical key, drops the computed condition', () => {
+    const withRels = els.find((e: any) => (e.relationships || []).length > 0);
+    assert.ok(withRels, 'a relationship was wired (object-graph found under namespaced key)');
+    const rel = withRels.relationships[0];
+    assert.equal(rel.keys.length, 1, 'one physical key wired (the computed DATE(...) condition dropped)');
+    assert.ok(
+      (out.warnings || []).some((w: string) => /computed condition\(s\) dropped/i.test(w)),
+      'a warning surfaces the dropped computed join condition');
+  });
+});
