@@ -1333,21 +1333,22 @@ export function convertTableauToSigma(
           if (!uuid || !cap) continue;
           // A record whose only available name is a raw Tableau GUID (no
           // caption/alias/local-name resolved to anything else). Some of these are
-          // REAL physical columns Tableau merely renamed to a GUID — the user-facing
-          // caption lives in a datasource-level <column caption='…' name='[GUID]'> def
-          // (physicalGuidCaption), separate from the connection's metadata-records.
-          // Recover the real caption when we have one, so we don't silently drop a real
-          // column. Only when NO physical caption is found do we skip — and we WARN, never
-          // skip silently (an unresolved GUID would emit a `[TABLE/<guid>]` ref that fails
-          // "dependency not found" at POST, the case #68 fixed).
+          // A bare-GUID column name is an internal Tableau field id, not a real
+          // warehouse column. Even when a user-facing caption exists (e.g. a date
+          // field Tableau renamed + date-parsed, like "Order Date"), the column's
+          // resolvable identity in Sigma derives from its warehouse identifier (the
+          // GUID), NOT the caption — so emitting it under the caption yields a
+          // `[TABLE/Order Date]` ref that fails "dependency not found" at POST
+          // (CI-verified: recovering it re-broke tableau/rls_group_filter). So we
+          // still SKIP — but WARN with the recovered caption when we have one, so
+          // the drop is visible (never silent) and actionable. Truly recovering
+          // these needs warehouse-identifier→display aliasing (a separate feature).
           if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cap)) {
-            const recovered = physicalGuidCaption[uuid.toLowerCase()];
-            if (recovered) {
-              cap = recovered;   // real physical column — emit with its real name
-            } else {
-              warnings.push(`⚠ Dropped column "${uuid}" — referenced only by an internal Tableau GUID with no recoverable physical-column caption; emitting it would produce an unresolvable [TABLE/${uuid}] reference.`);
-              continue;
-            }
+            const known = physicalGuidCaption[uuid.toLowerCase()];
+            warnings.push(known
+              ? `⚠ Dropped column "${known}" (Tableau-renamed to internal GUID ${uuid}): its warehouse identity is the GUID, so a [TABLE/${known}] ref won't resolve in Sigma. Re-add manually if needed (needs warehouse-column→display aliasing).`
+              : `⚠ Dropped column "${uuid}" — referenced only by an internal Tableau GUID with no recoverable caption; emitting it would produce an unresolvable [TABLE/${uuid}] reference.`);
+            continue;
           }
           const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
           if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
