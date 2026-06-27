@@ -268,6 +268,20 @@ describe('multi-source blend → one wide JOIN element', () => {
     assert.match(s, /MAX\("PRODUCT"\)/, 'product dimension (m:m) collapsed with MAX, not fanned out');
   });
 
+  test('additive secondary measures are DE-FANNED (÷ link-group row count) so Sum aggregates once per link key', () => {
+    const s = sqlEls[0].source.statement;
+    // The CTE sums GOAL to (role,wk) grain; the LEFT JOIN then broadcasts that one
+    // value onto every fact row in the group — so the outer SELECT must divide by
+    // the group's fact-row count, else Sum([Goal]) over-counts by the row count.
+    assert.match(s, /"GOAL"\s*\/\s*NULLIF\(COUNT\(\*\) OVER \(PARTITION BY [^)]*__f\."ROLE"[^)]*__f\."WK"[^)]*\), 0\)/,
+      'weekly goal de-fanned over (role, wk)');
+    assert.match(s, /"PGOAL"\s*\/\s*NULLIF\(COUNT\(\*\) OVER \(PARTITION BY [^)]*__f\."ROLE"[^)]*\), 0\)/,
+      'product goal de-fanned over (role)');
+    // The product DIMENSION (text, MAX-aggregated, a lookup) must NOT be divided —
+    // it needs its literal value on every row for grouping/display.
+    assert.doesNotMatch(s, /"PRODUCT"\s*\/\s*NULLIF/, 'text dimension is not de-fanned');
+  });
+
   test('every emitted column resolves to a SELECT output alias (no error columns)', () => {
     const s = sqlEls[0].source.statement;
     const aliases = new Set([...s.matchAll(/AS "([^"]+)"/g)].map((m: any) => m[1]));
