@@ -1863,6 +1863,26 @@ export function convertTableauToSigma(
             if (consumed.has(elements[i].id)) elements.splice(i, 1);
           }
           elements.push(blend.mergedElement);
+        } else {
+          // beads-sigma-htu7: a SINGLE-SOURCE custom-SQL datasource never reaches the
+          // collapse (no blend), so its lone kind:'sql' element kept the in-loop
+          // [Custom SQL/<caption>] self-refs + NO name — and Sigma resolves a
+          // kind:'sql' element's refs against the SQL's RAW OUTPUT columns, so those
+          // caption refs 400 at DM POST ("dependency not found: custom sql/<col>").
+          // The collapse path already does this remap (via colSqlNameById) + names
+          // its merged element; mirror that for the lone element here. Display names
+          // stay the captions (c.name); only the formula ALIAS becomes the raw SQL
+          // output name. Scoped to exactly one sql element so "Custom SQL" can't
+          // collide; warehouse-table elements (caption == column name) are untouched.
+          const sqlEls = elements.filter(e => (e as any).source?.kind === 'sql');
+          if (sqlEls.length === 1) {
+            const el: any = sqlEls[0];
+            if (!el.name) el.name = 'Custom SQL';
+            for (const c of (el.columns || [])) {
+              const raw = colSqlNameById[c.id];
+              if (raw) c.formula = `[Custom SQL/${raw}]`;
+            }
+          }
         }
 
         if (!dbOverride || !schOverride) {

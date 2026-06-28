@@ -1,0 +1,5 @@
+{
+  "description": "beads-sigma-htu7 regression: a SINGLE-SOURCE custom-SQL datasource (one object-model type='text' relation, no blend) must migrate. Before the fix the lone kind:sql element was unnamed and its columns kept [Custom SQL/<caption>] self-refs (display names, not the raw SQL output names) -> DM POST 400 'dependency not found: custom sql/<col>'. Fix names it 'Custom SQL' and remaps formulas to the raw output names via colSqlNameById. Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "TJ", "schema": "PUBLIC" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}
