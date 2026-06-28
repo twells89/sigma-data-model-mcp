@@ -1,0 +1,231 @@
+
+== 1. converter (local build, collapse) ==
+stats: {"datasources":1,"elements":1,"columns":226,"metrics":74,"relationships":0,"controls":22,"parameters":22,"lodChildElements":0}
+fixup: fixed=0 dropped=43
+  prune: dropped 82 leaked col(s), 45 leaked metric(s); kept 129 col(s)
+
+== 2. POST DM ==
++ ruby /Users/tjwells/sigma-migration-skills/plugins/tableau-to-sigma/skills/tableau-to-sigma/scripts/post-and-readback.rb --type datamodel --spec /tmp/wt-blend/_e2e/run1/dm-spec.json --out /tmp/wt-blend/_e2e/run1/dm-ids.json --workdir /tmp/wt-blend/_e2e/run1
+
+_MANAGER",
+            "OWNER_ROLE_OFFICIAL_TITLE_2",
+            "SDR_COUNTRY",
+            "IS_DASHPASS",
+            "NARR",
+            "NARR_2",
+            "CW_WEEK",
+            "USER_ID",
+            "WEEK_OF",
+            "REP_ROLE",
+            "MX_ONBOARDING_LINK_SENT_DATE",
+            "MANAGER_NAME",
+            "COUNTRY_3",
+            "REP_RANK",
+            "CLOSES",
+            "SFDC_SOURCE",
+            "OWNER_TEAM",
+            "DAYS_OFF",
+            "YR_2",
+            "LEAD_LIST_CUSTOMIZED",
+            "INITIATIVE",
+            "IS_ADS",
+            "INITIATIVE_2",
+            "WORK_ORDER_ID",
+            "QTR",
+            "WEEK_GOAL_SP_3",
+            "SUBMARKET",
+            "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+            "WEEK_GOAL_ACTIVATIONS",
+            "WORKING_DAYS",
+            "INITIATIVE_GOAL_3",
+            "OPPORTUNITY_ID",
+            "BUSINESS_NAME",
+            "SFDC_COMMISSION",
+            "WEEK_GOAL",
+            "COUNTRY_4",
+            "DECK_RANK",
+            "SDR_OWNER",
+            "IS_STOREFRONT",
+            "PRODUCT",
+            "INCREMENTAL_SIGN_TAM",
+            "IS_TRIAL",
+            "WEEK_OF_2",
+            "WEEK_GOAL_SP",
+            "BASED",
+            "INITIATIVE_GOAL",
+            "QTR_YR_SP_3",
+            "ROLE_SP_2",
+            "WEEK_OF_3",
+            "ROLE_SP_3",
+            "CW_OWNER_ROLE_OFFICIAL_TITLE",
+            "MARKET_MAKER",
+            "COUNTRY",
+            "DASHPASS_COMMISSION",
+            "READINESS_CHECK_COMPLETE_DATE",
+            "PRODUCT_LIST",
+            "IS_ADS_PROMOS",
+            "YR",
+            "FULL_NAME",
+            "QTR_YR_SP",
+            "SALES_OWNER_ID",
+            "PACKAGE_SOLD",
+            "LAST_ETL_RUN",
+            "CLEAN_COUNTRY",
+            "ROLE",
+            "QTR_YR_SP_2",
+            "QUARTER_YEAR",
+            "AHC_GOAL",
+            "ACTIVATION_BONUS_AMOUNT",
+            "IS_GNC",
+            "IS_PROMO"
+          ]
+        }
+      ]
+    }
+  ]
+}
+DM 0afc947d-9f0e-4557-b7ea-a70607ca0248: 23 element(s); fact='presales_cw_level' (129 labels)
+
+== 3. derive_master ==
+master: 129 column(s)
++ python3 /private/tmp/wt-blend/_e2e/enrich-mmap.py /tmp/wt-blend/_e2e/run1
+
+
+== 4. build-charts ==
++ ruby /Users/tjwells/sigma-migration-skills/plugins/tableau-to-sigma/skills/tableau-to-sigma/scripts/build-charts-from-signals.rb --tableau-dir /tmp/wt-blend/_e2e/run1 --layout /tmp/wt-blend/_e2e/run1/layout.json --master-map /tmp/wt-blend/_e2e/run1/master-map.json --master-element-id master --page-per-dashboard --out /tmp/wt-blend/_e2e/run1/chart-specs.json --coverage-out /tmp/wt-blend/_e2e/run1/coverage.json --meta /tmp/wt-blend/_e2e/run1/layout-meta.json --auto-controls
+le Param' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Mx Metric Param' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Drill-down Level' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Mx Health Sheet Toggle' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Sort By' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Input' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Number of Weeks' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'QTD Select Week' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'QTD Select Quarter' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Product Param' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Signs v Goals Param' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Signs Goals Toggle Param Week' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+  NOTE  parameter 'Product Color Param' is defined in Tableau but not referenced by any worksheet calc — skipped auto-control (orphan parameter)
+wrote /tmp/wt-blend/_e2e/run1/chart-specs-actions.md (17 action entries)
+wrote /tmp/wt-blend/_e2e/run1/coverage.json (71 element(s) built; 584 dropped, 1 degraded, 0 approximated)
+
+== 5. build-workbook-spec ==
++ ruby /Users/tjwells/sigma-migration-skills/plugins/tableau-to-sigma/skills/tableau-to-sigma/scripts/build-workbook-spec.rb --chart-specs /tmp/wt-blend/_e2e/run1/chart-specs.json --dm-ids /tmp/wt-blend/_e2e/run1/dm-ids.json --master-cols /tmp/wt-blend/_e2e/run1/master-cols.yaml --workbook-name DDMX Blend E2E (n4pi) --folder-id 57e59735-86b9-40b0-b029-217205406f57 --mode dashboard --dm-element-name presales_cw_level --out /tmp/wt-blend/_e2e/run1/wb-spec.json
+
+viz prune: dropped 35 element(s) referencing untranslated calcs/params (n4pi.4)
+
+== 6. POST workbook ==
++ ruby /Users/tjwells/sigma-migration-skills/plugins/tableau-to-sigma/skills/tableau-to-sigma/scripts/post-and-readback.rb --type workbook --spec /tmp/wt-blend/_e2e/run1/wb-spec.json --out /tmp/wt-blend/_e2e/run1/wb-ids.json --workdir /tmp/wt-blend/_e2e/run1
+esolving `filters` target and no [controlId] reference in any non-control element — a user changes it and nothing reacts; wire it (filters: [{source:{elementId}, columnId}]) or, if the bound column genuinely does not exist on any element, REMOVE the control (honest) instead of shipping furniture
+  - dead control: control "Deck Rank Signs vs % Param" (el-param-deck-rank-signs-vs-param-total-pre-sale-org) [ctl-param-deck-rank-signs-vs-param-total-pre-sale-org] on page "Total Pre-Sale Org" has no resolving `filters` target and no [controlId] reference in any non-control element — a user changes it and nothing reacts; wire it (filters: [{source:{elementId}, columnId}]) or, if the bound column genuinely does not exist on any element, REMOVE the control (honest) instead of shipping furniture
+  - missing control: control-scope.json expects control "ctl-param-sgl-nav-param" (source: "tableau parameter 'SGL Nav Param' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+  - missing control: control-scope.json expects control "ctl-param-can-switch-medals-and-tiers-param" (source: "tableau parameter 'CAN Switch Medals and Tiers PARAM' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+  - missing control: control-scope.json expects control "ctl-param-activations-country" (source: "tableau parameter 'Activations Country' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+Fix the control wiring and re-PUT before continuing: dead controls -> add
+filters targets ({source:{elementId}, columnId}) or remove the control;
+partial reach -> wire the uncovered elements or annotate controlScope in
+control-scope.json (see scripts/lib/control_lint.rb CONTRACT). The workbook
+DID post — fix with PUT /v2/workbooks/<id>/spec (re-POSTing creates an orphan).
+========================================
+o",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-taskus",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-concentrix",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-movate",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs with SDR",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        },
+        {
+          "id": "el-scale-team",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "columnLabels": [
+            "WEEK_OF",
+            "AHC_GOAL",
+            "Signs - Actuals",
+            "CLOSES",
+            "HC",
+            "INCREMENTAL_SIGN_TAM",
+            "NARR",
+            "SFDC_COMMISSION"
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+== POST workbook stderr tail (resolution errors) ==
+POST ok: workbookId=8d0a5d07-e21e-4059-aa16-e79cb00aa1e0
+column-type guard: 379 columns clean (no `error` types)
+layout lint: clean (raw-id names / orphan controls / dead zones)
+
+========================================
+FAIL — control lint: 6 violation(s):
+  - dead control: control "Deck Rank Signs vs % Param" (el-param-deck-rank-signs-vs-param-canada-only-view) [ctl-param-deck-rank-signs-vs-param-canada-only-view] on page "Canada Only View" has no resolving `filters` target and no [controlId] reference in any non-control element — a user changes it and nothing reacts; wire it (filters: [{source:{elementId}, columnId}]) or, if the bound column genuinely does not exist on any element, REMOVE the control (honest) instead of shipping furniture
+  - dead control: control "Selection Param" (el-param-selection-param-selection-strategy) [ctl-param-selection-param-selection-strategy] on page "Selection Strategy" has no resolving `filters` target and no [controlId] reference in any non-control element — a user changes it and nothing reacts; wire it (filters: [{source:{elementId}, columnId}]) or, if the bound column genuinely does not exist on any element, REMOVE the control (honest) instead of shipping furniture
+  - dead control: control "Deck Rank Signs vs % Param" (el-param-deck-rank-signs-vs-param-total-pre-sale-org) [ctl-param-deck-rank-signs-vs-param-total-pre-sale-org] on page "Total Pre-Sale Org" has no resolving `filters` target and no [controlId] reference in any non-control element — a user changes it and nothing reacts; wire it (filters: [{source:{elementId}, columnId}]) or, if the bound column genuinely does not exist on any element, REMOVE the control (honest) instead of shipping furniture
+  - missing control: control-scope.json expects control "ctl-param-sgl-nav-param" (source: "tableau parameter 'SGL Nav Param' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+  - missing control: control-scope.json expects control "ctl-param-can-switch-medals-and-tiers-param" (source: "tableau parameter 'CAN Switch Medals and Tiers PARAM' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+  - missing control: control-scope.json expects control "ctl-param-activations-country" (source: "tableau parameter 'Activations Country' (referenced by worksheet calcs)") but the spec has no control with that controlId — the source filter was not migrated
+Fix the control wiring and re-PUT before continuing: dead controls -> add
+filters targets ({source:{elementId}, columnId}) or remove the control;
+partial reach -> wire the uncovered elements or annotate controlScope in
+control-scope.json (see scripts/lib/control_lint.rb CONTRACT). The workbook
+DID post — fix with PUT /v2/workbooks/<id>/spec (re-POSTing creates an orphan).
+========================================

@@ -15,7 +15,16 @@ import {
   tableauFormulaToSigma, tableauIsAggregate, tableauFormulaIsRls,
   tableauWindowToSigmaChart, tableauWindowUntranslatable,
   SIGMA_CHART_ONLY_WINDOW_RE, TABLEAU_TABLE_CALC_TOKEN_RE,
+  decodeXmlEntities, formulaHasUntranslatableFragment, tableauTextConcatToSigma,
+  tableauParamSwitchToSigma,
 } from './formulas.js';
+
+/** Deterministic Sigma control id for a Tableau parameter (by raw name): the
+ *  build layer materialises the control under this id and the param-switch
+ *  formula references it. e.g. "Parameter 17" → "ctl-parameter-17". */
+function paramControlId(rawName: string): string {
+  return 'ctl-' + rawName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+}
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
 
@@ -601,6 +610,189 @@ function normalizeColumnName(name: string): string {
   return name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
 }
 
+// ── Blend collapse (multi-source-blend → one wide JOIN element) ────────────────
+// A Tableau multi-source BLEND lowers to N isolated kind:'sql' islands plus
+// cross-island relationships wired onto the row-grain fact. A Sigma master can
+// only source ONE element, so it physically cannot see sibling-island columns —
+// every cross-island chart ref fails ("Dependency not found: master/<col>") and
+// the dashboard comes out blank. Collapse the blend into a SINGLE wide kind:'sql'
+// element: pre-aggregate each secondary island to its link grain in a CTE (so a
+// many-to-many link cannot fan out the fact or — as a raw Sigma m:1 relationship
+// would — return NULL), then LEFT JOIN every secondary onto the fact. The master
+// then sees every column as a local column. SUM is used for additive measures
+// (Tableau local-type integer/real), MAX for dimensions, mirroring how a Tableau
+// blend aggregates the secondary at the link grain.
+//
+// Pure + side-effect-free over its inputs (returns the new element + the ids it
+// consumed); the caller splices `elements`. Returns null when the datasource is
+// not a custom-SQL blend (≥1 sql→sql relationship on the fact), leaving the
+// star-schema / single-source path untouched.
+const _qid = (name: string) => `"${String(name).replace(/"/g, '""')}"`;
+const _isNumericType = (t?: string) => t === 'integer' || t === 'real';
+
+// Qualify 2-part FROM/JOIN table refs (schema.table, quoted or bare) to 3-part
+// (database.schema.table). A Tableau Custom SQL statement carries 2-part names
+// that resolved against the original connection's DEFAULT database. A Sigma
+// OAuth connection has no current database, so a 2-part ref fails at POST with
+// "This session does not have a current database". Only FROM/JOIN targets are
+// touched (never SELECT-list schema.column), and refs already 3-part (preceded
+// by `<db>.`) are left alone. No-op when no database override is known.
+function qualifyTwoPartFqns(sql: string, db: string): string {
+  if (!sql || !db) return sql;
+  const qdb = /[^A-Za-z0-9_$]/.test(db) ? `"${db}"` : db;
+  const part = `(?:"[^"]+"|[A-Za-z_$][\\w$]*)`;
+  // Capture the WHOLE dotted ref after FROM/JOIN, then decide by part count —
+  // avoids the partial-identifier backtracking that would double-qualify a
+  // 3-part name. Only a 2-part schema.table is rewritten; 1- and 3-part stay.
+  const re = new RegExp(`(\\b(?:FROM|JOIN)\\s+)(${part}(?:\\.${part})*)`, 'gi');
+  return sql.replace(re, (m, kw, ref) => {
+    const parts = ref.match(new RegExp(part, 'g')) || [];
+    return parts.length === 2 ? `${kw}${qdb}.${ref}` : m;
+  });
+}
+
+export function collapseCustomSqlBlend(
+  elements: any[],
+  connId: string,
+  colSqlNameById: Record<string, string>,
+  colTypeById: Record<string, string>,
+  warnings: string[],
+): { mergedElement: any; consumedIds: string[] } | null {
+  const elById = new Map<string, any>(elements.map(e => [e.id, e]));
+  // The fact is the element carrying relationships that target other kind:'sql'
+  // islands. (A star schema relates to warehouse-table dims — not collapsed.)
+  const fact = elements.find(e =>
+    e.source?.kind === 'sql' &&
+    Array.isArray(e.relationships) &&
+    e.relationships.some((r: any) => elById.get(r.targetElementId)?.source?.kind === 'sql'));
+  if (!fact) return null;
+
+  // The exact SQL-output name for a column id: the captured remote-alias, else the
+  // uppercase identifier baked into the inode id ("inode-<hash>/<NAME>").
+  const sqlName = (colId: string): string =>
+    colSqlNameById[colId] || colId.split('/').slice(1).join('/') || colId;
+  // The clean formula alias Sigma uses for a column ("[Custom SQL/<alias>]").
+  const cleanAlias = (col: any): string => {
+    const m = typeof col.formula === 'string' && col.formula.match(/\/([^\]]+)\]$/);
+    return (m ? m[1] : (col.name || sqlName(col.id))).trim();
+  };
+
+  // Dedup relationships: identical (target + key-set) links are role-played dups
+  // (e.g. 3 copies of the special-projects goal). Keep the first of each.
+  const seen = new Set<string>();
+  const rels = (fact.relationships as any[])
+    .filter(r => elById.get(r.targetElementId)?.source?.kind === 'sql')
+    .filter(r => {
+      const sig = r.targetElementId + '|' +
+        (r.keys || []).map((k: any) => `${k.sourceColumnId}=${k.targetColumnId}`).sort().join(',');
+      if (seen.has(sig)) return false;
+      seen.add(sig);
+      return true;
+    });
+  // Only collapse a genuine MULTI-source blend (≥2 distinct secondary islands).
+  // A fact + single dim is an ordinary star relationship Sigma resolves natively
+  // (m:1 lookup) — leave it as relationships so the idiomatic shape is preserved.
+  if (rels.length < 2) return null;
+
+  const ctes: string[] = [`__f AS (\n${fact.source.statement}\n)`];
+  const joins: string[] = [];
+  const outSelect: string[] = [];
+  const mergedColumns: any[] = [];
+  const order: string[] = [];
+  // Output-alias uniqueness: a secondary column that collides with one already
+  // emitted is suffixed (keeps name == SQL alias so the formula always resolves).
+  const usedOut = new Set<string>();
+  const uniq = (base: string): string => {
+    let a = base, i = 2;
+    while (usedOut.has(a.toUpperCase())) a = `${base}_${i++}`;
+    usedOut.add(a.toUpperCase());
+    return a;
+  };
+
+  const emit = (sqlRef: string, col: any) => {
+    const out = uniq(cleanAlias(col));
+    outSelect.push(`  ${sqlRef} AS ${_qid(out)}`);
+    mergedColumns.push({ id: col.id, name: out, formula: `[Custom SQL/${out}]` });
+    order.push(col.id);
+  };
+
+  // 1. Fact columns straight through.
+  for (const col of (fact.columns || [])) emit(`__f.${_qid(sqlName(col.id))}`, col);
+
+  // 2. Each secondary: pre-aggregate to the link grain, LEFT JOIN, surface non-key cols.
+  rels.forEach((r, i) => {
+    const sec = elById.get(r.targetElementId);
+    if (!sec) return;
+    const cte = `__s${i}`;
+    const keyPairs = (r.keys || []).map((k: any) => ({
+      factSql: sqlName(k.sourceColumnId),
+      secSql: sqlName(k.targetColumnId),
+    }));
+    const keySecNames = new Set(keyPairs.map((p: any) => p.secSql));
+    const nonKeyCols = (sec.columns || []).filter((c: any) => !keySecNames.has(sqlName(c.id)));
+
+    const subSel: string[] = [];
+    for (const p of keyPairs) subSel.push(`    ${_qid(p.secSql)} AS ${_qid(p.secSql)}`);
+    for (const c of nonKeyCols) {
+      const sn = sqlName(c.id);
+      const agg = _isNumericType(colTypeById[c.id]) ? 'SUM' : 'MAX';
+      subSel.push(`    ${agg}(${_qid(sn)}) AS ${_qid(sn)}`);
+    }
+    const grpBy = keyPairs.map((p: any) => _qid(p.secSql)).join(', ');
+    ctes.push(`${cte} AS (\n  SELECT\n${subSel.join(',\n')}\n  FROM (\n${sec.source.statement}\n) ${_qid(`__src_${i}`)}\n  GROUP BY ${grpBy}\n)`);
+    joins.push(`LEFT JOIN ${cte} ON ` +
+      keyPairs.map((p: any) => `__f.${_qid(p.factSql)} = ${cte}.${_qid(p.secSql)}`).join(' AND '));
+    // DE-FAN secondary MEASURES (fan-out fix): the CTE aggregates each secondary
+    // to its link grain (one row per key), but the LEFT JOIN re-broadcasts that
+    // single value onto EVERY fact row in the link group — so Sum([secondary
+    // measure]) over a cell would multiply by the fact-row count (a coarse-grain
+    // goal/target/budget reads ~0 against fact-grain revenue). Spread each
+    // numeric secondary measure evenly across its link-group rows
+    // (value / COUNT(*) OVER (PARTITION BY link keys)) so Sum restores exactly
+    // one per-group value at any display grain ⊇ the link grain — the canonical
+    // Sigma blend semantic (memory: sigma-blend-pattern). Keys and text/dim
+    // columns (MAX-aggregated) pass through unchanged so grouping/display works.
+    const partitionExpr = keyPairs.length
+      ? `PARTITION BY ${keyPairs.map((p: any) => `__f.${_qid(p.factSql)}`).join(', ')}`
+      : '';
+    let deFanned = 0;
+    // Emit ALL secondary columns — including the join keys (available in the CTE
+    // at link grain). Tableau worksheets group by the secondary's key field
+    // (e.g. "Role" → the goal table's ROLE), so dropping it leaves those chart
+    // refs unresolvable even though the value equals the fact-side key.
+    for (const c of (sec.columns || [])) {
+      const sn = sqlName(c.id);
+      const isKey = keySecNames.has(sn);
+      const isMeasure = !isKey && _isNumericType(colTypeById[c.id]);
+      const ref = (isMeasure && partitionExpr)
+        ? `${cte}.${_qid(sn)} / NULLIF(COUNT(*) OVER (${partitionExpr}), 0)`
+        : `${cte}.${_qid(sn)}`;
+      if (isMeasure && partitionExpr) deFanned++;
+      emit(ref, c);
+    }
+    if (deFanned > 0) {
+      warnings.push(`ℹ Blend secondary "${sec.name || cte}": ${deFanned} measure(s) de-fanned (value ÷ link-group row count) so Sum aggregates once per link key — coarse-grain goal/target measures now read correctly against fact-grain measures.`);
+    }
+  });
+
+  const statement =
+    `WITH ${ctes.join(',\n')}\nSELECT\n${outSelect.join(',\n')}\nFROM __f\n${joins.join('\n')}`;
+
+  // Name the merged element after the fact's base table (last FROM segment) so
+  // the master/derive_master step has a stable element name to source from.
+  const factFrom = String(fact.source?.statement || '').match(/\bFROM\s+(?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|([\w$]+)))*/i);
+  const mergedName = fact.name
+    || (factFrom && factFrom[1] ? factFrom[1].replace(/"/g, '') : 'BLEND')
+    || 'BLEND';
+
+  warnings.push(`ℹ Multi-source blend collapsed into one wide JOIN element: fact + ${rels.length} pre-aggregated secondary island(s) (link-grain SUM/MAX) → ${mergedColumns.length} columns. Charts can now resolve every column locally.`);
+
+  return {
+    mergedElement: { id: fact.id, name: mergedName, kind: 'table', source: { connectionId: connId, kind: 'sql', statement }, columns: mergedColumns, order },
+    consumedIds: [fact.id, ...rels.map(r => r.targetElementId)],
+  };
+}
+
 // ── Path Extraction ──────────────────────────────────────────────────────────
 
 function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
@@ -1034,7 +1226,12 @@ export function convertTableauToSigma(
         const rawName = attr(col, 'name') || '';
         const colType = attr(col, 'datatype') || 'string';
         const domainType = attr(col, 'param-domain-type') || 'all';
-        const members = asArray(col.member).map((m: any) => attr(m, 'value')).filter(Boolean);
+        // Allowable values live under <members><member value='…'/></members> (NOT a
+        // direct <member> child). Tableau wraps string values in quotes and encodes
+        // them (&quot;) — decode + unquote so the value matches the case-when literal
+        // the param-switch tests against ("Signs", not "\"Signs\"").
+        const unq = (v: string): string => decodeXmlEntities(v).replace(/\\(.)/g, '$1').replace(/^"|"$/g, '');
+        const members = asArray(col.members?.member).map((m: any) => unq(attr(m, 'value'))).filter(Boolean);
         const calcEl = col.calculation;
         parameters.push({
           name: colName.replace(/^\[|\]$/g, ''),
@@ -1042,6 +1239,7 @@ export function convertTableauToSigma(
           type: colType,
           domainType,
           members,
+          currentValue: unq(attr(col, 'value')),
           defaultVal: calcEl ? attr(calcEl, 'formula') : ''
         });
       }
@@ -1064,7 +1262,35 @@ export function convertTableauToSigma(
   // build ONE merged model (secondary pre-grouped to link grain, many-to-one
   // lookup) instead of silently converting only the first datasource.
   const blendResult = tryBuildBlendModel(parsed, datasources, dbOverride, schOverride, connectionId || '<CONNECTION_ID>');
-  if (blendResult) return blendResult;
+  if (blendResult) {
+    // The blend path returns BEFORE the single-datasource calc/pattern processor
+    // below, so a NATIVE-blend workbook never emits its param measure-pickers,
+    // window/LOD/percent-of-total chart-context patterns or RLS (bead y9rd.7 —
+    // empirically: 0 workbookPatterns on a blend that carries them). Re-run the
+    // single-DS path on a blend-stripped copy (tryBuildBlendModel then returns
+    // null → the full calc processor runs) and merge its workbookPatterns +
+    // security into the blend result. Best-effort: harvesting must never fail
+    // the blend conversion. Mirrors the synth-twb-e2e two-pass workaround,
+    // internalized so every caller benefits.
+    try {
+      const stripped = xmlContent.replace(/<datasource-relationships>[\s\S]*?<\/datasource-relationships>/g, '');
+      if (stripped !== xmlContent) {
+        const single = convertTableauToSigma(stripped, options);
+        // Harvested patterns reference the discarded single-DS model's elements;
+        // drop stale element pointers (they don't exist in the blend model).
+        const harvest = (single.workbookPatterns || []).map(({ elementId, elementName, ...rest }: any) => rest);
+        const base = blendResult.workbookPatterns || [];
+        const merged = [...base, ...harvest.filter((p: any) => !base.some(b => b.name === p.name && b.kind === p.kind))];
+        if (merged.length) blendResult.workbookPatterns = merged;
+        // NB: RLS/security harvesting is intentionally NOT merged here — a single-DS
+        // security rule's elementId points at the discarded model, and applying RLS
+        // to the right blend element is a separate element-targeting concern.
+        const n = merged.length - base.length;
+        if (n > 0) blendResult.warnings.push(`ℹ Native-blend workbook: recovered ${n} chart-context pattern(s) (param-switch/window/LOD/percent-of-total) from the primary datasource that the blend path would otherwise drop — reported in result.workbookPatterns (bead y9rd.7).`);
+      }
+    } catch { /* harvesting is best-effort — never block the blend conversion */ }
+    return blendResult;
+  }
 
   const dsIdx = Math.min(datasourceIndex, datasources.length - 1);
   const ds = datasources[dsIdx];
@@ -1116,6 +1342,10 @@ export function convertTableauToSigma(
   // virtual connection invents on the fact relation can be recognised and skipped
   // (they belong to a related DIM element, not the physical fact table).
   const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // colId → Tableau local-type ('integer'|'real'|'date'|'string'|'boolean'). Hoisted
+  // to datasource scope so the calc post-pass (type-aware text-concat) can read it,
+  // in addition to the blend-collapse's SUM-vs-MAX grain decision. Populated below.
+  const colTypeById: Record<string, string> = {};
   const guidCaption: Record<string, string> = {};   // guid(lower) → display caption (suffix-stripped)
   // Subset of guidCaption restricted to REAL physical columns Tableau merely renamed to a
   // GUID — i.e. a datasource-level <column caption='…' name='[GUID]'> with NO <calculation>
@@ -1157,6 +1387,24 @@ export function convertTableauToSigma(
     }
   }
 
+  // Internal calc-field NAME → the caption the calc column is emitted with, so a
+  // calc-on-calc reference (`[Calculation_NNN]`, `[Foo (copy)_<bigint>]`) resolves
+  // to its sibling column. Tableau formulas reference other calcs by their opaque
+  // internal `name` attribute, not the user-facing caption; without this rewrite
+  // those refs dangle and the calc column type-errors. Emitted name mirrors the
+  // calc-emit path: caption when present, else the bracket-stripped raw name.
+  const calcNameToCaption: Record<string, string> = {};
+  for (const col of asArray(ds.ds?.column || [])) {
+    if (!col.calculation) continue;
+    const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
+    if (!nm) continue;
+    const emitted = (attr(col, 'caption') || nm).trim();
+    if (emitted) calcNameToCaption[nm] = emitted;
+  }
+  // A calc-field internal name is either `Calculation_<digits>` or any name ending
+  // in a `_<long digit run>` GUID-ish disambiguation suffix (Tableau's "(copy)_NNN").
+  const CALC_REF_RE = /^(Calculation_\d+|.+_\d{6,})$/;
+
   // The relation name of the fact (the relation that carries physical measure columns,
   // i.e. the one whose <relation> child declares its own <columns>). Set in the
   // collection branch below; used to decide whether a GUID column is a genuine fact
@@ -1184,8 +1432,19 @@ export function convertTableauToSigma(
   // Rewrite bare [GUID] references in a Tableau formula to [Caption] so the
   // downstream formula translator + cross-element placement work on display names.
   const rewriteGuidRefs = (formula: string): string =>
-    formula.replace(/\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/gi,
-      (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; });
+    decodeXmlEntities(formula)
+      // GUID refs → caption.
+      .replace(/\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/gi,
+        (m, g) => { const cap = guidCaption[g.toLowerCase()]; return cap ? `[${cap}]` : m; })
+      // Internal calc-field-name refs (Calculation_NNN / Foo (copy)_NNN) → caption,
+      // so calc-on-calc dependency chains reference their sibling column by the name
+      // it is emitted with. Only rewrites refs that match the internal-name shape AND
+      // resolve in the map — plain caption/physical refs pass through untouched.
+      .replace(/\[([^\]]+)\]/g, (m, name) => {
+        if (!CALC_REF_RE.test(name)) return m;
+        const cap = calcNameToCaption[name];
+        return cap ? `[${cap}]` : m;
+      });
 
   // ── Build elements from relation structure ──────────────────────────────
   const rootRelation = ds.connection ? (connRelations(ds.connection)[0] || null) : null;
@@ -1314,9 +1573,14 @@ export function convertTableauToSigma(
         // namespaced `_.fcp.…true...object-id`. Grouping only by object-id collapsed
         // every column onto the first element (the empty-stub-elements bug); group by
         // parent-name so each of the N relations gets its own columns.
-        type MetaCol = { uuid: string; caption: string; objId?: string };
+        type MetaCol = { uuid: string; caption: string; objId?: string; localType?: string; remoteAlias?: string };
         const metaByObjId: Record<string, MetaCol[]> = {};
         const metaByParent: Record<string, MetaCol[]> = {};
+        // colId → the EXACT SQL-output column name (Tableau remote-alias, incl. any
+        // " (Disambig)" suffix, e.g. "ROLE (PRESALE_PRODUCT_GOALS)"). The Sigma column
+        // formula uses the STRIPPED clean name; the blend-collapse must read each
+        // island's column by its exact output name and re-alias it to the clean name.
+        const colSqlNameById: Record<string, string> = {};
         const metaRecords = asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || []);
         const stripBrackets = (s: string) => s.replace(/^\[|\]$/g, '');
         for (const mr of metaRecords) {
@@ -1330,6 +1594,10 @@ export function convertTableauToSigma(
           const objIdRaw = stripBrackets((((mr['object-id'] as string) ||
             (nsChild(mr, 'object-id') as string) || '')).trim());
           const parentRaw = stripBrackets(((mr['parent-name'] as string) || '').trim());
+          const localType = ((mr['local-type'] as string) || '').trim().toLowerCase();
+          // The exact SQL-output column name (preserves the " (Disambig)" suffix).
+          const remoteAlias = (((mr['remote-alias'] as string) ||
+            stripBrackets(((mr['local-name'] as string) || '')) || '') as string).trim();
           if (!uuid || !cap) continue;
           // A record whose only available name is a raw Tableau GUID (no
           // caption/alias/local-name resolved to anything else). Some of these are
@@ -1350,7 +1618,7 @@ export function convertTableauToSigma(
               : `⚠ Dropped column "${uuid}" — referenced only by an internal Tableau GUID with no recoverable caption; emitting it would produce an unresolvable [TABLE/${uuid}] reference.`);
             continue;
           }
-          const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined };
+          const entry: MetaCol = { uuid, caption: cap, objId: objIdRaw || undefined, localType: localType || undefined, remoteAlias: remoteAlias || undefined };
           if (objIdRaw) (metaByObjId[objIdRaw] ||= []).push(entry);
           if (parentRaw) (metaByParent[parentRaw] ||= []).push(entry);
         }
@@ -1393,11 +1661,30 @@ export function convertTableauToSigma(
           // object-ids from the object-graph) can resolve back to THIS element.
           const relObjId = matchingObjId || metaCols.find(c => c.objId)?.objId || null;
 
-          for (const { uuid, caption } of metaCols) {
+          // A `type='text'` child is a Custom SQL relation → it lowers to a
+          // kind:'sql' element below. Sigma requires a kind:'sql' element's OWN
+          // columns to use the literal source alias `Custom SQL` as the formula
+          // prefix (data-model-spec.md rule 3) — NOT the relation name. The
+          // relation name (e.g. "Custom SQL Query1") is a Tableau federation
+          // label, not a warehouse path; using it as the prefix compiles every
+          // column to type=error. Cross-element refs still go through the named
+          // relationships wired below. (warehouse-table elements keep cleanName.)
+          const isCustomSqlRel = attr(rel, 'type') === 'text';
+          const colPrefix = isCustomSqlRel ? 'Custom SQL' : cleanName;
+
+          for (const { uuid, caption, localType, remoteAlias } of metaCols) {
             const cleanCaption = caption.replace(/\s*\(.*\)$/, '').trim(); // strip disambiguation suffix
             const idKey = uuid.toUpperCase();
             const id    = sigmaInodeId(idKey);
-            columns.push({ id, formula: `[${cleanName}/${cleanCaption}]`, name: cleanCaption });
+            if (localType) colTypeById[id] = localType;
+            // exact SQL-output name for blend-collapse; fall back to the caption.
+            // Strip Tableau's disambiguation suffix (" (RelationName)") — that suffix
+            // is a display-layer artifact and does NOT appear in the Custom SQL output.
+            // Without this, a secondary CTE sub-select would reference a column as
+            // "REGION (Goals)" which doesn't exist in `select REGION from ...`.
+            const rawSqlName = (remoteAlias || caption).replace(/\s*\([^)]*\)\s*$/, '').trim();
+            colSqlNameById[id] = rawSqlName || cleanCaption;
+            columns.push({ id, formula: `[${colPrefix}/${cleanCaption}]`, name: cleanCaption });
             order.push(id);
             colIdMap[idKey] = id;
             colIdMap[uuid.toUpperCase().replace(/-/g, '_')] = id;
@@ -1415,7 +1702,7 @@ export function convertTableauToSigma(
               const id          = sigmaInodeId(key);
               const capAttr     = attr(col, 'caption');
               const displayName = isUuid ? (capAttr || rawCol) : sigmaDisplayName(key);
-              columns.push({ id, formula: `[${cleanName}/${displayName}]` });
+              columns.push({ id, formula: `[${colPrefix}/${displayName}]` });
               order.push(id);
               colIdMap[rawCol.toUpperCase()] = id;
               colIdMap[key] = id;
@@ -1426,8 +1713,10 @@ export function convertTableauToSigma(
           // element's #text. Emit a kind:'sql' element with that statement rather
           // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
           // is not a real table, so a warehouse-table path would fail at migration).
-          const isCustomSql = attr(rel, 'type') === 'text';
-          const sqlText = isCustomSql ? String(rel['#text'] ?? '').trim() : '';
+          const isCustomSql = isCustomSqlRel;
+          const sqlText = isCustomSql
+            ? qualifyTwoPartFqns(String(rel['#text'] ?? '').trim(), dbOverride)
+            : '';
           const source = (isCustomSql && sqlText)
             ? { connectionId: connId, kind: 'sql', statement: sqlText }
             : { connectionId: connId, kind: 'warehouse-table', path };
@@ -1564,6 +1853,18 @@ export function convertTableauToSigma(
           return aR === bR ? 0 : aR ? 1 : -1;
         });
 
+        // Multi-source-blend collapse: fold isolated kind:'sql' islands + their
+        // cross-island relationships into ONE wide JOIN element so a single Sigma
+        // master can resolve every column (see collapseCustomSqlBlend).
+        const blend = collapseCustomSqlBlend(elements, connId, colSqlNameById, colTypeById, warnings);
+        if (blend) {
+          const consumed = new Set(blend.consumedIds);
+          for (let i = elements.length - 1; i >= 0; i--) {
+            if (consumed.has(elements[i].id)) elements.splice(i, 1);
+          }
+          elements.push(blend.mergedElement);
+        }
+
         if (!dbOverride || !schOverride) {
           warnings.push('⚠ Virtual connection: pass database and schema parameters to set the full warehouse path.');
         }
@@ -1595,6 +1896,91 @@ export function convertTableauToSigma(
     }
 
     const factTableName = (factEl.source?.path?.[factEl.source.path.length - 1]) || 'FACT';
+
+    // For LOD/Top-N/window helpers that need to SELECT from the base, use a
+    // subquery when factEl is a kind:'sql' (object-model / collapsed-blend)
+    // element — it has no physical warehouse path, so `FROM FACT` would fail
+    // at DM POST with "Object FACT does not exist or not authorized."
+    // For warehouse-table elements the 3-part qualified path is used directly.
+    //
+    // Returns { fromClause, ctePrefix } where:
+    //   ctePrefix — zero or more "cte1 AS (...),\ncte2 AS (...),\n" lines (NO
+    //               leading WITH keyword) to prepend inside an outer WITH chain.
+    //               Empty string for a plain table path or plain-SELECT base.
+    //   fromClause — the token(s) to place after FROM in the outer SELECT.
+    //
+    // When the factEl is a collapsed-blend element whose statement already starts
+    // with WITH, we promote all its CTEs to the top level and reference a new
+    // wrapper CTE (__lod_base) that holds the collapsed SELECT. This avoids
+    // nesting a WITH-containing subquery inside a FROM clause. Callers that add
+    // their own CTEs (TopN/window helpers) prepend `WITH ` before ctePrefix;
+    // LOD helpers (plain SELECT) prepend `WITH ` + ctePrefix (minus trailing comma).
+    function _baseFromExpr(): { fromClause: string; ctePrefix: string } {
+      const fe = factEl as any;
+      if (fe?.source?.kind === 'sql' && fe.source.statement) {
+        const stmt: string = fe.source.statement;
+        // Find where the outermost SELECT starts (after all CTEs). Strategy: scan
+        // for "WITH" at the top, then find the last standalone SELECT not inside
+        // a balanced-paren CTE body. We do this by scanning paren depth.
+        const upperStmt = stmt.trimStart();
+        if (/^WITH\s/i.test(upperStmt)) {
+          // Walk through the statement tracking parenthesis depth to find the
+          // final top-level SELECT (the one that is NOT inside any CTE body).
+          let depth = 0;
+          let lastTopSelectIdx = -1;
+          for (let i = 0; i < stmt.length; i++) {
+            const ch = stmt[i];
+            if (ch === '(') { depth++; continue; }
+            if (ch === ')') { depth--; continue; }
+            if (depth === 0 && /^SELECT\b/i.test(stmt.slice(i))) {
+              lastTopSelectIdx = i;
+            }
+          }
+          if (lastTopSelectIdx > 0) {
+            // ctePart: everything before the final top-level SELECT (including "WITH ")
+            // We strip the leading "WITH " since callers will add their own "WITH ".
+            const ctePart = stmt.slice(0, lastTopSelectIdx)
+              .replace(/^\s*WITH\s+/i, '')   // drop leading WITH keyword
+              .replace(/,?\s*$/, '');         // drop trailing comma
+            const selectPart = stmt.slice(lastTopSelectIdx);
+            return {
+              ctePrefix: `${ctePart},\n__lod_base AS (\n${selectPart}\n),\n`,
+              fromClause: '__lod_base',
+            };
+          }
+        }
+        // Plain SELECT (no CTEs) or fallback — wrap as a subquery.
+        return { fromClause: `(\n${stmt}\n) __base`, ctePrefix: '' };
+      }
+      const fqPath = (fe?.source?.path && fe.source.path.length >= 2)
+        ? fe.source.path.join('.')
+        : factTableName;
+      return { fromClause: fqPath, ctePrefix: '' };
+    }
+
+    // When factEl is a collapsed-blend kind:'sql' element, its columns carry
+    // display names (e.g. "Region", "Net Revenue") as SQL-output aliases. LOD /
+    // Top-N / window helper SQL that selects from the __lod_base CTE must use
+    // these quoted aliases, not bare uppercase identifiers (REGION, NET_REVENUE),
+    // because Snowflake treats the quoted aliases case-sensitively.
+    // Build a lookup: PHYSICAL_UPPER → '"Display Name"' once, shared by all helpers.
+    const physToQuotedAlias: Record<string, string> = {};
+    if ((factEl as any)?.source?.kind === 'sql') {
+      for (const col of ((factEl as any)?.columns || [])) {
+        const dn: string = (col.name as string) || '';
+        if (!dn) continue;
+        const physUpper = dn.replace(/\s+/g, '_').toUpperCase();
+        physToQuotedAlias[physUpper] = `"${dn}"`;
+        physToQuotedAlias[dn.toUpperCase()] = `"${dn}"`;
+      }
+    }
+    // Rewrite bare uppercase SQL tokens in an expression to quoted display aliases
+    // when selecting from __lod_base (only used when factEl is kind:'sql').
+    const resolveBaseToken = (token: string): string =>
+      physToQuotedAlias[token] || physToQuotedAlias[token.toUpperCase()] || token;
+    const rewriteBaseExpr = (expr: string): string =>
+      expr.replace(/\b([A-Z][A-Z0-9_]*)\b/g, (_m: string, tok: string) => resolveBaseToken(tok));
+
     const lodChildElements: any[] = [];
 
     // ── LOD: build worksheet view-dim index and helper-element registry ───
@@ -1603,6 +1989,7 @@ export function convertTableauToSigma(
     const lodHelpers: Record<string, {
       element: any;
       groupDimNames: string[];        // ordered upper-case dim names (matches SELECT order)
+      groupDimDisplayNames: string[]; // display-name variant (e.g. "Region") for quoted CTE refs
       groupDimColIds: string[];       // helper column ids for the dim columns
       aggsByExpr: Record<string, { alias: string; aggFunc: string; aggExpr: string; calcId: string; caption: string }>;
       relationshipName: string;
@@ -1664,6 +2051,7 @@ export function convertTableauToSigma(
       lodHelpers[signatureKey] = {
         element: helperEl,
         groupDimNames: effectiveDims.slice(),
+        groupDimDisplayNames: dimResolved.map(d => d.displayName),
         groupDimColIds,
         aggsByExpr: {},
         relationshipName: relNameSuggestion,
@@ -1715,24 +2103,34 @@ export function convertTableauToSigma(
     }
 
     function _finalizeHelpers(): void {
-      const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
+      const { fromClause, ctePrefix } = _baseFromExpr();
+      const useBase = fromClause === '__lod_base';
       for (const sigKey of Object.keys(lodHelpers)) {
         const rec = lodHelpers[sigKey];
-        const dimList = rec.groupDimNames.join(', ');
+        // Use quoted display aliases when selecting from __lod_base; bare physical names otherwise.
+        const dimList = useBase
+          ? rec.groupDimDisplayNames.map(dn =>
+              physToQuotedAlias[dn.replace(/\s+/g, '_').toUpperCase()] || `"${dn}"`).join(', ')
+          : rec.groupDimNames.join(', ');
         const aggParts: string[] = [];
         for (const k of Object.keys(rec.aggsByExpr)) {
           const a = rec.aggsByExpr[k];
+          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : a.aggExpr;
           let sqlAggFunc = a.aggFunc;
-          if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + a.aggExpr + ')';
-          else sqlAggFunc = `${sqlAggFunc}(${a.aggExpr})`;
+          if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + safeExpr + ')';
+          else sqlAggFunc = `${sqlAggFunc}(${safeExpr})`;
           aggParts.push(`${sqlAggFunc} AS ${a.alias}`);
         }
         const groupByIdx = rec.groupDimNames.map((_d, i) => i + 1).join(', ');
+        // When CTEs were extracted (ctePrefix non-empty), emit:
+        //   WITH <promotedCtes>,\n__lod_base AS (...)\nSELECT ...
+        // ctePrefix ends with ",\n" for chaining; drop the trailing comma for the
+        // final CTE before the standalone SELECT.
+        const withPrefix = ctePrefix
+          ? `WITH ${ctePrefix.replace(/,\s*$/, '\n')}`
+          : '';
         rec.element.source.statement =
-          `SELECT ${dimList}, ${aggParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+          `${withPrefix}SELECT ${dimList}, ${aggParts.join(', ')} FROM ${fromClause} GROUP BY ${groupByIdx}`;
       }
     }
 
@@ -1857,27 +2255,33 @@ export function convertTableauToSigma(
 
       // Build the WITH agg / ranked / SELECT statement
       const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
-      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)];
+      const { fromClause: topNFrom, ctePrefix: topNCtePrefix } = _baseFromExpr();
+      const topNUseBase = topNFrom === '__lod_base';
+      // Resolve column references to quoted display aliases when selecting from __lod_base.
+      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)]
+        .map(c => topNUseBase ? (physToQuotedAlias[c] || c) : c);
       const groupByIdx = groupCols.map((_g, i) => i + 1).join(', ');
       let aggSql = top.byAggFunc;
-      if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${top.byField})`;
-      else aggSql = `${aggSql}(${top.byField})`;
+      const safeByField = topNUseBase ? rewriteBaseExpr(top.byField) : top.byField;
+      if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${safeByField})`;
+      else aggSql = `${aggSql}(${safeByField})`;
       const partBy = top.partitionBy.length > 0
         ? `PARTITION BY ${top.partitionBy.join(', ')} `
         : '';
       const overClause = `RANK() OVER (${partBy}ORDER BY s ${dirSql})`;
       const innerSelect =
-        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${topNFrom} GROUP BY ${groupByIdx}`;
       const rankedSelect =
         `SELECT ${groupCols.join(', ')}, s, ${overClause} AS RNK FROM agg`;
       const outerCols = emitIsTopNInSql
         ? `${groupCols.join(', ')}, s AS TOTAL, RNK, (RNK <= ${nLiteral}) AS IS_TOP_N`
         : `${groupCols.join(', ')}, s AS TOTAL, RNK`;
       const outerSelect = `SELECT ${outerCols} FROM ranked`;
-      const statement = `WITH agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`;
+      // If ctePrefix is non-empty, start a WITH chain with the promoted CTEs and
+      // append agg/ranked. Otherwise use a standalone WITH.
+      const statement = topNCtePrefix
+        ? `WITH ${topNCtePrefix}agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`
+        : `WITH agg AS (${innerSelect}), ranked AS (${rankedSelect}) ${outerSelect}`;
 
       const helperEl: any = {
         id: helperId,
@@ -2144,36 +2548,38 @@ export function convertTableauToSigma(
     }
 
     function _finalizeWindowHelpers(): void {
-      const fe = factEl as any;
-      const baseFqTable = (fe?.source?.path && fe.source.path.length >= 2)
-        ? fe.source.path.join('.')
-        : factTableName;
+      const { fromClause: winFrom, ctePrefix: winCtePrefix } = _baseFromExpr();
+      const winUseBase = winFrom === '__lod_base';
       for (const key of Object.keys(windowHelpers)) {
         const rec = windowHelpers[key];
         const selectParts: string[] = [];
-        // Partition dims (passed through bare)
-        for (const d of rec.partitionDimNames) selectParts.push(d);
+        // Partition dims (bare physical names, or quoted display aliases when from __lod_base)
+        for (const d of rec.partitionDimNames) {
+          selectParts.push(winUseBase ? (physToQuotedAlias[d] || d) : d);
+        }
         // Order dim (with optional DATE_TRUNC)
         if (rec.orderDimRaw && rec.orderDimAlias) {
+          const rawRef = winUseBase ? rewriteBaseExpr(rec.orderDimRaw) : rec.orderDimRaw;
           if (rec.orderDimDateTrunc) {
-            selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rec.orderDimRaw}) AS ${rec.orderDimAlias}`);
+            selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rawRef}) AS ${rec.orderDimAlias}`);
           } else {
-            selectParts.push(`${rec.orderDimRaw} AS ${rec.orderDimAlias}`);
+            selectParts.push(`${rawRef} AS ${rec.orderDimAlias}`);
           }
         }
         // Inner aggregates (e.g. SUM(SALES) AS SALES)
         for (const k of Object.keys(rec.innerAggs)) {
           const [aggFunc, exprSql] = k.split('::');
+          const safeExpr = winUseBase ? rewriteBaseExpr(exprSql) : exprSql;
           const a = rec.innerAggs[k];
           let sqlFn = aggFunc;
-          if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${exprSql})`;
-          else sqlFn = `${sqlFn}(${exprSql})`;
+          if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${safeExpr})`;
+          else sqlFn = `${sqlFn}(${safeExpr})`;
           selectParts.push(`${sqlFn} AS ${a.alias}`);
         }
         // Pre-aggregate happens in an inner subquery so OVER clauses see clean aliases.
         const groupByCount = rec.partitionDimNames.length + (rec.orderDimRaw ? 1 : 0);
         const groupByIdx = Array.from({ length: groupByCount }, (_, i) => i + 1).join(', ');
-        const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${baseFqTable} GROUP BY ${groupByIdx}`;
+        const baseSelect = `SELECT ${selectParts.join(', ')} FROM ${winFrom} GROUP BY ${groupByIdx}`;
 
         // Outer SELECT: pass through everything from the inner CTE plus the OVER aliases.
         const innerProjection: string[] = [
@@ -2182,8 +2588,10 @@ export function convertTableauToSigma(
           ...Object.values(rec.innerAggs).map((v: any) => v.alias),
         ];
         const outerProjection = innerProjection.concat(rec.windowOverParts);
-        rec.element.source.statement =
-          `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
+        // If ctePrefix is non-empty, start a WITH chain with promoted CTEs.
+        rec.element.source.statement = winCtePrefix
+          ? `WITH ${winCtePrefix}base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`
+          : `WITH base AS (${baseSelect}) SELECT ${outerProjection.join(', ')} FROM base`;
       }
     }
 
@@ -2316,6 +2724,14 @@ export function convertTableauToSigma(
         const physCol = normalizeColumnName(fieldKey);
         const displayName = caption || sigmaDisplayName(physCol);
         if (!displayNameMap[displayName.toUpperCase()] && !displayNameMap[physCol]) {
+          // A kind:'sql' fact (e.g. a collapsed multi-source blend) has a FIXED
+          // generated SELECT — we cannot invent a physical column that isn't in it.
+          // Emitting a `[FACT/<caption>]` cross-element ref here produces a NAMELESS
+          // column pointing at a non-existent "FACT" element that type-errors the
+          // whole element at POST. Skip it; a calc that references this field is
+          // remapped to a real output column by the normalized-ref post-pass below
+          // (or left honestly unresolved if the field truly isn't in the SQL).
+          if (factEl.source?.kind === 'sql') continue;
           const colId = sigmaInodeId(physCol);
           factEl.columns.push({ id: colId, formula: `[${factTableName}/${displayName}]` });
           factEl.order.push(colId);
@@ -2573,13 +2989,35 @@ export function convertTableauToSigma(
         // [Parameters] reference ("not a sibling column" / "Invalid formula"). These
         // must be built in the workbook layer as a control-driven Switch over
         // [ctl-param-…], so report them in workbookPatterns and skip the DM emit.
-        if (/\[Parameters?\]\s*\.\s*\[/i.test(formula)) {
+        const paramRef = formula.match(/\[Parameters?\]\s*\.\s*\[([^\]]+)\]/i);
+        if (paramRef) {
+          const ctlId = paramControlId(paramRef[1]);
+          // Measure/dimension picker: `case [Parameters].[P] when V then E … end`
+          // → a control-driven Switch (Sigma's native dynamic-field pattern). Emit it
+          // structured so the build layer materialises a control + Switch column and
+          // wires the charts that referenced this calc. (n4pi.8 measure-picker.)
+          const sw = tableauParamSwitchToSigma(formula, ctlId, warnings);
+          if (sw) {
+            workbookPatterns.push({
+              kind: 'param-switch', name: caption, source: formula.trim(),
+              paramName: sw.paramName, controlId: ctlId,
+              formula: sw.switchFormula, cases: sw.cases, elseExpr: sw.elseExpr,
+              requires: 'WORKBOOK element: a single-select list control + a Switch calc column on the master; charts referencing this calc plot the Switch column.',
+              note: `Tableau parameter measure-picker → Sigma control-driven Switch. Build control [${ctlId}] (values from parameter "${sw.paramName}") and master calc ${caption} = ${sw.switchFormula.slice(0, 120)}.`,
+            } as any);
+            warnings.push(`🔀 "${caption}" → control-driven Switch over [${ctlId}] (param "${sw.paramName}", ${sw.cases.length} case(s)) — reported in result.workbookPatterns for the workbook layer.`);
+            continue;
+          }
+          // Plain parameter reference (a param-driven FILTER / nav toggle, not a
+          // case-switch) → a workbook control bound as a filter (target the source
+          // table, never a viz). Reported for the build layer.
           workbookPatterns.push({
-            kind: 'unsupported', name: caption, source: formula.trim(),
-            requires: 'WORKBOOK element — build as a control-driven Switch over the parameter ([ctl-param-…]); NOT a DM column/metric',
-            note: 'Formula references a Tableau parameter; parameters become Sigma workbook controls, so this calc cannot live in the data model (params do not resolve there). Build it in the workbook layer as Switch([ctl-param-…], …).',
-          });
-          warnings.push(`ℹ "${caption}" references a Tableau parameter → reported in result.workbookPatterns for a control-driven Switch in the workbook; NOT emitted as a DM column/metric (parameters don't resolve in a data model).`);
+            kind: 'param-filter', name: caption, source: formula.trim(),
+            paramName: paramRef[1], controlId: ctlId,
+            requires: 'WORKBOOK control bound as a filter on the source element/table (not on a viz — control→viz filters 400).',
+            note: `Formula references Tableau parameter "${paramRef[1]}"; build a control [${ctlId}] and apply it as a filter on the master/source element.`,
+          } as any);
+          warnings.push(`ℹ "${caption}" references Tableau parameter "${paramRef[1]}" → reported as a param-filter control [${ctlId}] for the workbook layer; NOT a DM column.`);
           continue;
         }
 
@@ -2591,8 +3029,8 @@ export function convertTableauToSigma(
         // table-calc tokens embedded in a larger expression) must NEVER land in
         // a DM column/metric — they silently error there. Route to
         // workbookPatterns / loud warning instead.
-        if (SIGMA_CHART_ONLY_WINDOW_RE.test(sigmaFormula) || TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula)) {
-          const clean = !TABLEAU_TABLE_CALC_TOKEN_RE.test(sigmaFormula);
+        if (SIGMA_CHART_ONLY_WINDOW_RE.test(sigmaFormula) || formulaHasUntranslatableFragment(sigmaFormula)) {
+          const clean = !formulaHasUntranslatableFragment(sigmaFormula);
           workbookPatterns.push({
             kind: clean ? 'window' : 'unsupported', name: caption, source: formula.trim(),
             ...(clean ? { formula: sigmaFormula } : {}),
@@ -2668,6 +3106,197 @@ export function convertTableauToSigma(
           factEl.order.push(colId);
           warnings.push(`ℹ "${caption}" → calculated column. Review: ${sigmaFormula.slice(0, 60)}`);
         }
+      }
+    }
+
+    // ── Normalized sibling-ref reconciliation (caption ↔ SQL-alias) ─────────
+    // A collapsed-blend / custom-SQL fact names its physical columns by SQL output
+    // alias (SALES_OWNER, WORKING_DAYS), but Tableau calc formulas reference those
+    // same fields by friendly caption ([Sales Owner], [Working Days]) — and Sigma
+    // resolves sibling refs by EXACT display name, so the caption ref dangles and
+    // the calc column type-errors. Reconcile by rewriting each unresolved sibling
+    // ref to the actual column name via a space/underscore/case-insensitive match
+    // (also tolerating a trailing " (disambiguation)" suffix on the ref). Runs on
+    // the fact element's calc columns + metrics only; cross-element [A/B] refs and
+    // refs that already match a column name exactly are left untouched.
+    {
+      const normKey = (s: string): string => s.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+      const stripSuffix = (s: string): string => s.replace(/\s*\([^()]*\)\s*$/, '').trim();
+      const exactNames = new Set<string>();
+      const normIndex: Record<string, string> = {};   // normalized → canonical column name
+      for (const c of (factEl.columns || [])) {
+        if (!c.name) continue;
+        exactNames.add(c.name.toLowerCase());
+        const k = normKey(c.name);
+        if (k && !(k in normIndex)) normIndex[k] = c.name;   // first (physical alias) wins
+      }
+      let rewrites = 0;
+      const reconcile = (formula: string, ownName?: string): string => {
+        if (typeof formula !== 'string') return formula;
+        return formula.replace(/\[([^\]]+)\]/g, (m, ref) => {
+          if (ref.includes('/')) return m;                       // cross-element ref
+          // Self-reference: a rename calc whose caption collides with the physical
+          // column it wraps (e.g. calc "Market Maker" → If([Market Maker]=True,1,0)).
+          // Redirect to the same-normalized PHYSICAL column instead of looping back
+          // onto itself (which errors). normIndex prefers the alias column (built first).
+          if (ownName && ref.toLowerCase() === ownName.toLowerCase()) {
+            const alt = normIndex[normKey(ref)];
+            if (alt && alt.toLowerCase() !== ownName.toLowerCase()) { rewrites++; return `[${alt}]`; }
+            return m;
+          }
+          if (exactNames.has(ref.toLowerCase())) return m;       // already resolves
+          const hit = normIndex[normKey(ref)] || normIndex[normKey(stripSuffix(ref))];
+          if (hit) { rewrites++; return `[${hit}]`; }
+          return m;
+        });
+      };
+      const isAliasFormula = (f: any): boolean =>
+        typeof f === 'string' && /^\[(Custom SQL|[^\]\/]+)\/[^\]]+\]$/.test(f);
+      for (const c of (factEl.columns || [])) {
+        if (isAliasFormula(c.formula)) continue;                 // plain passthrough alias
+        c.formula = reconcile(c.formula, c.name);
+      }
+      for (const m of ((factEl as any).metrics || [])) {
+        m.formula = reconcile(m.formula, m.name);
+      }
+      if (rewrites > 0) {
+        warnings.push(`ℹ Reconciled ${rewrites} calc-formula field reference(s) to their SQL-alias column names (caption↔alias) on "${factEl.name}".`);
+      }
+
+      // ── Type-aware text concat: [textCol] + [textCol] → & ─────────────────
+      // The translator already converted literal/text-function `+` chains; here we
+      // resolve ref-only chains (e.g. [CW_COUNTRY] + [ROLE]) using the captured
+      // warehouse column types, since `+` on text errors in Sigma (needs &/Concat).
+      {
+        const typeByName: Record<string, string> = {};
+        for (const c of (factEl.columns || [])) {
+          if (c.name && colTypeById[c.id]) typeByName[c.name.toLowerCase()] = colTypeById[c.id];
+        }
+        const isTextRef = (name: string): boolean => typeByName[name.toLowerCase()] === 'string';
+        for (const c of (factEl.columns || [])) {
+          if (isAliasFormula(c.formula)) continue;
+          c.formula = tableauTextConcatToSigma(c.formula, isTextRef);
+        }
+        for (const m of ((factEl as any).metrics || [])) m.formula = tableauTextConcatToSigma(m.formula, isTextRef);
+      }
+
+      // ── Drop self-referential rename calcs ────────────────────────────────
+      // A Tableau rename calc (formula = a bare GUID that resolves to the column's
+      // OWN caption) collapses to `[Self]` after ref-rewriting — a circular ref
+      // that errors. The underlying physical column is already present as an alias
+      // column, so the rename is redundant: drop it.
+      {
+        const before = (factEl.columns || []).length;
+        factEl.columns = (factEl.columns || []).filter((c: any) => {
+          const self = c.name && typeof c.formula === 'string' && c.formula.trim().toLowerCase() === `[${c.name}]`.toLowerCase();
+          if (self) { factEl.order = (factEl.order || []).filter((id: string) => id !== c.id); }
+          return !self;
+        });
+        const n = before - factEl.columns.length;
+        if (n) warnings.push(`ℹ Dropped ${n} self-referential rename calc(s) on "${factEl.name}" (redundant — the physical column is already present).`);
+      }
+
+      // ── Promote aggregate-of-aggregate columns to metrics ─────────────────
+      // A calc COLUMN that references a metric (e.g. [Signs - Actuals]/[Active HC -
+      // Actuals]) is an aggregate ratio — Sigma errors it as a row-level column but
+      // evaluates it correctly as a metric. Move such columns to metrics, iterating
+      // so a column referencing a just-promoted metric also promotes (fixed point).
+      {
+        const metricNames = new Set<string>(((factEl as any).metrics || []).map((m: any) => (m.name || '').toLowerCase()));
+        const validNames = new Set<string>();
+        for (const c of (factEl.columns || [])) if (c.name) validNames.add(c.name.toLowerCase());
+        for (const n of metricNames) validNames.add(n);
+        const sib = (f: any): string[] => typeof f === 'string'
+          ? (f.match(/\[([^\]]+)\]/g) || []).map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
+        // An aggregate-derived calc whose OUTPUT is a text bucket or boolean flag
+        // (e.g. If([Margin Pct]>0.3,"High","Low") — Margin Pct an aggregate ratio)
+        // is a DIMENSION, not a measure. Promoting it to a metric is wrong: a
+        // Sigma metric cannot be a grouping dimension, so a bar grouped by it gets
+        // viz-pruned (y9rd.11). It also can't be a DM row-level column (it
+        // references an aggregate). It only resolves in CHART/grouped-element
+        // context — bucket the aggregate at the chart grain — so report it as a
+        // workbookPattern for the build layer instead.
+        const isDimLike = (f: any): boolean => {
+          if (typeof f !== 'string') return false;
+          const s = f.trim();
+          // Bucketing branch returns a string literal ("High"/"Low"/…).
+          if (/^(If|Iif|Case|Switch)\b/i.test(s) && /"[^"]*"/.test(s)) return true;
+          // Bare boolean flag: a single top-level comparison against a constant.
+          if (/^\[[^\]]+\]\s*(<=|>=|<>|!=|<|>|=)\s*-?[\d.]+\s*$/.test(s)) return true;
+          return false;
+        };
+        let promoted = 0, aggDims = 0, moved = true;
+        while (moved) {
+          moved = false;
+          for (let i = (factEl.columns || []).length - 1; i >= 0; i--) {
+            const c = factEl.columns[i];
+            if (isAliasFormula(c.formula)) continue;
+            const refs = sib(c.formula);
+            if (refs.length && refs.every(r => validNames.has(r.toLowerCase())) && refs.some(r => metricNames.has(r.toLowerCase()))) {
+              if (isDimLike(c.formula)) {
+                const aggRefs = refs.filter(r => metricNames.has(r.toLowerCase()));
+                workbookPatterns.push({
+                  kind: 'aggregate-dimension', name: c.name, source: c.formula, formula: c.formula,
+                  requires: 'GROUPED workbook element: bucket the referenced aggregate metric(s) at the chart grain in the grouping context — NOT valid as a DM column or as a metric (a metric cannot be a grouping dimension).',
+                  note: `Aggregate-derived dimension: buckets aggregate metric(s) [${aggRefs.join('], [')}]. Group the chart by this binned aggregate (compute the metric at the viz grain, then bucket); the DM cannot express it row-level.`,
+                } as any);
+                factEl.columns.splice(i, 1);
+                factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+                aggDims++; moved = true;
+                continue;
+              }
+              if (!(factEl as any).metrics) (factEl as any).metrics = [];
+              (factEl as any).metrics.push({ id: c.id, formula: c.formula, name: c.name, ...(c.format ? { format: c.format } : {}) });
+              metricNames.add((c.name || '').toLowerCase());
+              factEl.columns.splice(i, 1);
+              factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+              promoted++; moved = true;
+            }
+          }
+        }
+        if (promoted) warnings.push(`ℹ Promoted ${promoted} aggregate-ratio calc column(s) to metrics on "${factEl.name}" (they reference aggregate metrics — invalid as row-level columns).`);
+        if (aggDims) warnings.push(`ℹ "${factEl.name}": ${aggDims} aggregate-derived dimension(s) (bucket an aggregate metric) → reported in result.workbookPatterns — CHART/grouped-element context only; group the viz by the binned aggregate (NOT a DM column or metric).`);
+      }
+
+      // ── Drop-and-surface unresolved calc columns/metrics (transitive) ─────
+      // After reconciliation a calc may still reference a field that isn't in the
+      // collapsed SQL output (a param-driven calc routed to the workbook, or a
+      // field genuinely absent from every island). Such a calc type-errors the
+      // whole element at POST, so drop it — and any calc that depended on it —
+      // iterating to a fixed point. Never silent: every drop is surfaced with the
+      // unresolved reference so it shows up in the migration's "not migrated" log.
+      const valid = new Set<string>();
+      for (const c of (factEl.columns || [])) if (c.name) valid.add(c.name.toLowerCase());
+      for (const mt of ((factEl as any).metrics || [])) if (mt.name) valid.add(mt.name.toLowerCase());
+      const siblingRefs = (f: any): string[] =>
+        typeof f === 'string' ? (f.match(/\[([^\]]+)\]/g) || [])
+          .map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
+      const dropped: { name: string; bad: string }[] = [];
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const dropCol = (arr: any[], isMetric: boolean) => {
+          for (let i = arr.length - 1; i >= 0; i--) {
+            const c = arr[i];
+            if (!isMetric && isAliasFormula(c.formula)) continue;   // physical passthrough
+            const bad = siblingRefs(c.formula).find(r => !valid.has(r.toLowerCase()));
+            if (bad) {
+              dropped.push({ name: c.name || '(unnamed)', bad });
+              if (c.name) valid.delete(c.name.toLowerCase());
+              if (!isMetric) factEl.order = (factEl.order || []).filter((id: string) => id !== c.id);
+              arr.splice(i, 1);
+              changed = true;
+            }
+          }
+        };
+        dropCol(factEl.columns || [], false);
+        if ((factEl as any).metrics) dropCol((factEl as any).metrics, true);
+      }
+      for (const d of dropped) {
+        warnings.push(`⚠ Dropped calc "${d.name}" — references [${d.bad}] which is not a resolvable column in the collapsed model (param-driven or field absent from the SQL). NOT migrated; recreate in the workbook layer if needed.`);
+      }
+      if (dropped.length) {
+        warnings.push(`ℹ Dropped ${dropped.length} unresolvable calc column(s)/metric(s) on "${factEl.name}" after caption↔alias reconciliation (see per-calc warnings above).`);
       }
     }
 
@@ -2858,6 +3487,7 @@ export function convertTableauToSigma(
     warnings,
     ...(security.length ? { security } : {}),
     ...(workbookPatterns.length ? { workbookPatterns } : {}),
+    ...(parameters.length ? { parameters } : {}),
     stats: {
       datasources: datasources.length,
       elements: elements.length,

@@ -1,0 +1,4107 @@
+{
+  "name": "DDMX Blend E2E (n4pi)",
+  "schemaVersion": 1,
+  "folderId": "57e59735-86b9-40b0-b029-217205406f57",
+  "pages": [
+    {
+      "id": "page-data",
+      "name": "Data",
+      "elements": [
+        {
+          "id": "master",
+          "kind": "table",
+          "name": "Master",
+          "visibleAsSource": false,
+          "source": {
+            "kind": "data-model",
+            "dataModelId": "0afc947d-9f0e-4557-b7ea-a70607ca0248",
+            "elementId": "NixMfFN5--"
+          },
+          "columns": [
+            {
+              "id": "m-role-sp-3",
+              "name": "ROLE_SP_3",
+              "formula": "[presales_cw_level/ROLE_SP_3]"
+            },
+            {
+              "id": "m-week-of",
+              "name": "WEEK_OF",
+              "formula": "[presales_cw_level/WEEK_OF]"
+            },
+            {
+              "id": "m-cw-week",
+              "name": "CW_WEEK",
+              "formula": "[presales_cw_level/CW_WEEK]"
+            },
+            {
+              "id": "m-qtr",
+              "name": "QTR",
+              "formula": "[presales_cw_level/QTR]"
+            },
+            {
+              "id": "m-yr",
+              "name": "YR",
+              "formula": "[presales_cw_level/YR]"
+            },
+            {
+              "id": "m-qtr-yr",
+              "name": "QTR_YR",
+              "formula": "[presales_cw_level/QTR_YR]"
+            },
+            {
+              "id": "m-readiness-check-complete-date",
+              "name": "READINESS_CHECK_COMPLETE_DATE",
+              "formula": "[presales_cw_level/READINESS_CHECK_COMPLETE_DATE]"
+            },
+            {
+              "id": "m-merchant-activation-date",
+              "name": "MERCHANT_ACTIVATION_DATE",
+              "formula": "[presales_cw_level/MERCHANT_ACTIVATION_DATE]"
+            },
+            {
+              "id": "m-mx-onboarding-link-sent-date",
+              "name": "MX_ONBOARDING_LINK_SENT_DATE",
+              "formula": "[presales_cw_level/MX_ONBOARDING_LINK_SENT_DATE]"
+            },
+            {
+              "id": "m-opportunity-id",
+              "name": "OPPORTUNITY_ID",
+              "formula": "[presales_cw_level/OPPORTUNITY_ID]"
+            },
+            {
+              "id": "m-store-account-id",
+              "name": "STORE_ACCOUNT_ID",
+              "formula": "[presales_cw_level/STORE_ACCOUNT_ID]"
+            },
+            {
+              "id": "m-business-account-id",
+              "name": "BUSINESS_ACCOUNT_ID",
+              "formula": "[presales_cw_level/BUSINESS_ACCOUNT_ID]"
+            },
+            {
+              "id": "m-lead-id",
+              "name": "LEAD_ID",
+              "formula": "[presales_cw_level/LEAD_ID]"
+            },
+            {
+              "id": "m-work-order-id",
+              "name": "WORK_ORDER_ID",
+              "formula": "[presales_cw_level/WORK_ORDER_ID]"
+            },
+            {
+              "id": "m-work-order-number",
+              "name": "WORK_ORDER_NUMBER",
+              "formula": "[presales_cw_level/WORK_ORDER_NUMBER]"
+            },
+            {
+              "id": "m-store-id",
+              "name": "STORE_ID",
+              "formula": "[presales_cw_level/STORE_ID]"
+            },
+            {
+              "id": "m-business-id",
+              "name": "BUSINESS_ID",
+              "formula": "[presales_cw_level/BUSINESS_ID]"
+            },
+            {
+              "id": "m-provisioning-status",
+              "name": "PROVISIONING_STATUS",
+              "formula": "[presales_cw_level/PROVISIONING_STATUS]"
+            },
+            {
+              "id": "m-sales-owner-id",
+              "name": "SALES_OWNER_ID",
+              "formula": "[presales_cw_level/SALES_OWNER_ID]"
+            },
+            {
+              "id": "m-sales-owner",
+              "name": "SALES_OWNER",
+              "formula": "[presales_cw_level/SALES_OWNER]"
+            },
+            {
+              "id": "m-full-name",
+              "name": "FULL_NAME",
+              "formula": "[presales_cw_level/FULL_NAME]"
+            },
+            {
+              "id": "m-manager-name",
+              "name": "MANAGER_NAME",
+              "formula": "[presales_cw_level/MANAGER_NAME]"
+            },
+            {
+              "id": "m-rep-role",
+              "name": "REP_ROLE",
+              "formula": "[presales_cw_level/REP_ROLE]"
+            },
+            {
+              "id": "m-owner-team",
+              "name": "OWNER_TEAM",
+              "formula": "[presales_cw_level/OWNER_TEAM]"
+            },
+            {
+              "id": "m-owner-org-focus",
+              "name": "OWNER_ORG_FOCUS",
+              "formula": "[presales_cw_level/OWNER_ORG_FOCUS]"
+            },
+            {
+              "id": "m-rep-segment",
+              "name": "REP_SEGMENT",
+              "formula": "[presales_cw_level/REP_SEGMENT]"
+            },
+            {
+              "id": "m-sdr-owner",
+              "name": "SDR_OWNER",
+              "formula": "[presales_cw_level/SDR_OWNER]"
+            },
+            {
+              "id": "m-sdr-id",
+              "name": "SDR_ID",
+              "formula": "[presales_cw_level/SDR_ID]"
+            },
+            {
+              "id": "m-sdr-manager-id",
+              "name": "SDR_MANAGER_ID",
+              "formula": "[presales_cw_level/SDR_MANAGER_ID]"
+            },
+            {
+              "id": "m-sdr-manager-name",
+              "name": "SDR_MANAGER_NAME",
+              "formula": "[presales_cw_level/SDR_MANAGER_NAME]"
+            },
+            {
+              "id": "m-sdr-role",
+              "name": "SDR_ROLE",
+              "formula": "[presales_cw_level/SDR_ROLE]"
+            },
+            {
+              "id": "m-sdr-country",
+              "name": "SDR_COUNTRY",
+              "formula": "[presales_cw_level/SDR_COUNTRY]"
+            },
+            {
+              "id": "m-rep-country",
+              "name": "REP_COUNTRY",
+              "formula": "[presales_cw_level/REP_COUNTRY]"
+            },
+            {
+              "id": "m-cw-country",
+              "name": "CW_COUNTRY",
+              "formula": "[presales_cw_level/CW_COUNTRY]"
+            },
+            {
+              "id": "m-clean-country",
+              "name": "CLEAN_COUNTRY",
+              "formula": "[presales_cw_level/CLEAN_COUNTRY]"
+            },
+            {
+              "id": "m-owner-role-official-title",
+              "name": "OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[presales_cw_level/OWNER_ROLE_OFFICIAL_TITLE]"
+            },
+            {
+              "id": "m-cw-owner-role-official-title",
+              "name": "CW_OWNER_ROLE_OFFICIAL_TITLE",
+              "formula": "[presales_cw_level/CW_OWNER_ROLE_OFFICIAL_TITLE]"
+            },
+            {
+              "id": "m-sfdc-commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "[presales_cw_level/SFDC_COMMISSION]"
+            },
+            {
+              "id": "m-dashpass-commission",
+              "name": "DASHPASS_COMMISSION",
+              "formula": "[presales_cw_level/DASHPASS_COMMISSION]"
+            },
+            {
+              "id": "m-narr",
+              "name": "NARR",
+              "formula": "[presales_cw_level/NARR]"
+            },
+            {
+              "id": "m-opportunity-name",
+              "name": "OPPORTUNITY_NAME",
+              "formula": "[presales_cw_level/OPPORTUNITY_NAME]"
+            },
+            {
+              "id": "m-opp-type",
+              "name": "OPP_TYPE",
+              "formula": "[presales_cw_level/OPP_TYPE]"
+            },
+            {
+              "id": "m-account-name",
+              "name": "ACCOUNT_NAME",
+              "formula": "[presales_cw_level/ACCOUNT_NAME]"
+            },
+            {
+              "id": "m-store-name",
+              "name": "STORE_NAME",
+              "formula": "[presales_cw_level/STORE_NAME]"
+            },
+            {
+              "id": "m-business-name",
+              "name": "BUSINESS_NAME",
+              "formula": "[presales_cw_level/BUSINESS_NAME]"
+            },
+            {
+              "id": "m-deck-rank",
+              "name": "DECK_RANK",
+              "formula": "[presales_cw_level/DECK_RANK]"
+            },
+            {
+              "id": "m-primary-vertical",
+              "name": "PRIMARY_VERTICAL",
+              "formula": "[presales_cw_level/PRIMARY_VERTICAL]"
+            },
+            {
+              "id": "m-country",
+              "name": "COUNTRY",
+              "formula": "[presales_cw_level/COUNTRY]"
+            },
+            {
+              "id": "m-starting-point-id",
+              "name": "STARTING_POINT_ID",
+              "formula": "[presales_cw_level/STARTING_POINT_ID]"
+            },
+            {
+              "id": "m-starting-point",
+              "name": "STARTING_POINT",
+              "formula": "[presales_cw_level/STARTING_POINT]"
+            },
+            {
+              "id": "m-submarket",
+              "name": "SUBMARKET",
+              "formula": "[presales_cw_level/SUBMARKET]"
+            },
+            {
+              "id": "m-submarket-id",
+              "name": "SUBMARKET_ID",
+              "formula": "[presales_cw_level/SUBMARKET_ID]"
+            },
+            {
+              "id": "m-top-mx",
+              "name": "TOP_MX",
+              "formula": "[presales_cw_level/TOP_MX]"
+            },
+            {
+              "id": "m-market-maker",
+              "name": "MARKET_MAKER",
+              "formula": "[presales_cw_level/MARKET_MAKER]"
+            },
+            {
+              "id": "m-is-gnc",
+              "name": "IS_GNC",
+              "formula": "[presales_cw_level/IS_GNC]"
+            },
+            {
+              "id": "m-is-dashpass",
+              "name": "IS_DASHPASS",
+              "formula": "[presales_cw_level/IS_DASHPASS]"
+            },
+            {
+              "id": "m-is-pickup",
+              "name": "IS_PICKUP",
+              "formula": "[presales_cw_level/IS_PICKUP]"
+            },
+            {
+              "id": "m-is-storefront",
+              "name": "IS_STOREFRONT",
+              "formula": "[presales_cw_level/IS_STOREFRONT]"
+            },
+            {
+              "id": "m-is-alcohol",
+              "name": "IS_ALCOHOL",
+              "formula": "[presales_cw_level/IS_ALCOHOL]"
+            },
+            {
+              "id": "m-is-trial",
+              "name": "IS_TRIAL",
+              "formula": "[presales_cw_level/IS_TRIAL]"
+            },
+            {
+              "id": "m-is-promo",
+              "name": "IS_PROMO",
+              "formula": "[presales_cw_level/IS_PROMO]"
+            },
+            {
+              "id": "m-is-ads",
+              "name": "IS_ADS",
+              "formula": "[presales_cw_level/IS_ADS]"
+            },
+            {
+              "id": "m-is-ads-promos",
+              "name": "IS_ADS_PROMOS",
+              "formula": "[presales_cw_level/IS_ADS_PROMOS]"
+            },
+            {
+              "id": "m-package-sold",
+              "name": "PACKAGE_SOLD",
+              "formula": "[presales_cw_level/PACKAGE_SOLD]"
+            },
+            {
+              "id": "m-ntam",
+              "name": "NTAM",
+              "formula": "[presales_cw_level/NTAM]"
+            },
+            {
+              "id": "m-incremental-sign-tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "[presales_cw_level/INCREMENTAL_SIGN_TAM]"
+            },
+            {
+              "id": "m-historical-delay-reasons-customized",
+              "name": "HISTORICAL_DELAY_REASONS_CUSTOMIZED",
+              "formula": "[presales_cw_level/HISTORICAL_DELAY_REASONS_CUSTOMIZED]"
+            },
+            {
+              "id": "m-lead-list-customized",
+              "name": "LEAD_LIST_CUSTOMIZED",
+              "formula": "[presales_cw_level/LEAD_LIST_CUSTOMIZED]"
+            },
+            {
+              "id": "m-trial-period",
+              "name": "TRIAL_PERIOD",
+              "formula": "[presales_cw_level/TRIAL_PERIOD]"
+            },
+            {
+              "id": "m-top-mx-signing-bonus-approval-threshold",
+              "name": "TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD",
+              "formula": "[presales_cw_level/TOP_MX_SIGNING_BONUS_APPROVAL_THRESHOLD]"
+            },
+            {
+              "id": "m-activation-bonus-amount",
+              "name": "ACTIVATION_BONUS_AMOUNT",
+              "formula": "[presales_cw_level/ACTIVATION_BONUS_AMOUNT]"
+            },
+            {
+              "id": "m-product-list",
+              "name": "PRODUCT_LIST",
+              "formula": "[presales_cw_level/PRODUCT_LIST]"
+            },
+            {
+              "id": "m-region",
+              "name": "REGION",
+              "formula": "[presales_cw_level/REGION]"
+            },
+            {
+              "id": "m-tier",
+              "name": "TIER",
+              "formula": "[presales_cw_level/TIER]"
+            },
+            {
+              "id": "m-sfdc-source",
+              "name": "SFDC_SOURCE",
+              "formula": "[presales_cw_level/SFDC_SOURCE]"
+            },
+            {
+              "id": "m-last-etl-run",
+              "name": "LAST_ETL_RUN",
+              "formula": "[presales_cw_level/LAST_ETL_RUN]"
+            },
+            {
+              "id": "m-week-goal-activations",
+              "name": "WEEK_GOAL_ACTIVATIONS",
+              "formula": "[presales_cw_level/WEEK_GOAL_ACTIVATIONS]"
+            },
+            {
+              "id": "m-role-activations",
+              "name": "ROLE_ACTIVATIONS",
+              "formula": "[presales_cw_level/ROLE_ACTIVATIONS]"
+            },
+            {
+              "id": "m-activation-goal",
+              "name": "ACTIVATION_GOAL",
+              "formula": "[presales_cw_level/ACTIVATION_GOAL]"
+            },
+            {
+              "id": "m-quarter-year",
+              "name": "QUARTER_YEAR",
+              "formula": "[presales_cw_level/QUARTER_YEAR]"
+            },
+            {
+              "id": "m-country-2",
+              "name": "COUNTRY_2",
+              "formula": "[presales_cw_level/COUNTRY_2]"
+            },
+            {
+              "id": "m-country-3",
+              "name": "COUNTRY_3",
+              "formula": "[presales_cw_level/COUNTRY_3]"
+            },
+            {
+              "id": "m-days-off",
+              "name": "DAYS_OFF",
+              "formula": "[presales_cw_level/DAYS_OFF]"
+            },
+            {
+              "id": "m-hc",
+              "name": "HC",
+              "formula": "[presales_cw_level/HC]"
+            },
+            {
+              "id": "m-owner-role-official-title-2",
+              "name": "OWNER_ROLE_OFFICIAL_TITLE_2",
+              "formula": "[presales_cw_level/OWNER_ROLE_OFFICIAL_TITLE_2]"
+            },
+            {
+              "id": "m-qtr-2",
+              "name": "QTR_2",
+              "formula": "[presales_cw_level/QTR_2]"
+            },
+            {
+              "id": "m-qtr-yr-2",
+              "name": "QTR_YR_2",
+              "formula": "[presales_cw_level/QTR_YR_2]"
+            },
+            {
+              "id": "m-rep-rank",
+              "name": "REP_RANK",
+              "formula": "[presales_cw_level/REP_RANK]"
+            },
+            {
+              "id": "m-sales-manager",
+              "name": "SALES_MANAGER",
+              "formula": "[presales_cw_level/SALES_MANAGER]"
+            },
+            {
+              "id": "m-sales-owner-2",
+              "name": "SALES_OWNER_2",
+              "formula": "[presales_cw_level/SALES_OWNER_2]"
+            },
+            {
+              "id": "m-user-id",
+              "name": "USER_ID",
+              "formula": "[presales_cw_level/USER_ID]"
+            },
+            {
+              "id": "m-week-of-2",
+              "name": "WEEK_OF_2",
+              "formula": "[presales_cw_level/WEEK_OF_2]"
+            },
+            {
+              "id": "m-yr-2",
+              "name": "YR_2",
+              "formula": "[presales_cw_level/YR_2]"
+            },
+            {
+              "id": "m-based",
+              "name": "BASED",
+              "formula": "[presales_cw_level/BASED]"
+            },
+            {
+              "id": "m-org",
+              "name": "ORG",
+              "formula": "[presales_cw_level/ORG]"
+            },
+            {
+              "id": "m-product",
+              "name": "PRODUCT",
+              "formula": "[presales_cw_level/PRODUCT]"
+            },
+            {
+              "id": "m-product-goal",
+              "name": "PRODUCT_GOAL",
+              "formula": "[presales_cw_level/PRODUCT_GOAL]"
+            },
+            {
+              "id": "m-qtr-yr-pg",
+              "name": "QTR_YR_PG",
+              "formula": "[presales_cw_level/QTR_YR_PG]"
+            },
+            {
+              "id": "m-role",
+              "name": "ROLE",
+              "formula": "[presales_cw_level/ROLE]"
+            },
+            {
+              "id": "m-target",
+              "name": "TARGET",
+              "formula": "[presales_cw_level/TARGET]"
+            },
+            {
+              "id": "m-team",
+              "name": "TEAM",
+              "formula": "[presales_cw_level/TEAM]"
+            },
+            {
+              "id": "m-week-goal",
+              "name": "WEEK_GOAL",
+              "formula": "[presales_cw_level/WEEK_GOAL]"
+            },
+            {
+              "id": "m-week-goal-sp",
+              "name": "WEEK_GOAL_SP",
+              "formula": "[presales_cw_level/WEEK_GOAL_SP]"
+            },
+            {
+              "id": "m-initiative",
+              "name": "INITIATIVE",
+              "formula": "[presales_cw_level/INITIATIVE]"
+            },
+            {
+              "id": "m-initiative-goal",
+              "name": "INITIATIVE_GOAL",
+              "formula": "[presales_cw_level/INITIATIVE_GOAL]"
+            },
+            {
+              "id": "m-qtr-yr-sp",
+              "name": "QTR_YR_SP",
+              "formula": "[presales_cw_level/QTR_YR_SP]"
+            },
+            {
+              "id": "m-role-sp",
+              "name": "ROLE_SP",
+              "formula": "[presales_cw_level/ROLE_SP]"
+            },
+            {
+              "id": "m-qtr-3",
+              "name": "QTR_3",
+              "formula": "[presales_cw_level/QTR_3]"
+            },
+            {
+              "id": "m-yr-3",
+              "name": "YR_3",
+              "formula": "[presales_cw_level/YR_3]"
+            },
+            {
+              "id": "m-qtr-yr-3",
+              "name": "QTR_YR_3",
+              "formula": "[presales_cw_level/QTR_YR_3]"
+            },
+            {
+              "id": "m-country-4",
+              "name": "COUNTRY_4",
+              "formula": "[presales_cw_level/COUNTRY_4]"
+            },
+            {
+              "id": "m-role-2",
+              "name": "ROLE_2",
+              "formula": "[presales_cw_level/ROLE_2]"
+            },
+            {
+              "id": "m-closes",
+              "name": "CLOSES",
+              "formula": "[presales_cw_level/CLOSES]"
+            },
+            {
+              "id": "m-narr-2",
+              "name": "NARR_2",
+              "formula": "[presales_cw_level/NARR_2]"
+            },
+            {
+              "id": "m-cw-week-2",
+              "name": "CW_WEEK_2",
+              "formula": "[presales_cw_level/CW_WEEK_2]"
+            },
+            {
+              "id": "m-working-days",
+              "name": "WORKING_DAYS",
+              "formula": "[presales_cw_level/WORKING_DAYS]"
+            },
+            {
+              "id": "m-ahc-goal",
+              "name": "AHC_GOAL",
+              "formula": "[presales_cw_level/AHC_GOAL]"
+            },
+            {
+              "id": "m-close-phasing",
+              "name": "CLOSE_PHASING",
+              "formula": "[presales_cw_level/CLOSE_PHASING]"
+            },
+            {
+              "id": "m-week-of-3",
+              "name": "WEEK_OF_3",
+              "formula": "[presales_cw_level/WEEK_OF_3]"
+            },
+            {
+              "id": "m-week-goal-sp-2",
+              "name": "WEEK_GOAL_SP_2",
+              "formula": "[presales_cw_level/WEEK_GOAL_SP_2]"
+            },
+            {
+              "id": "m-initiative-2",
+              "name": "INITIATIVE_2",
+              "formula": "[presales_cw_level/INITIATIVE_2]"
+            },
+            {
+              "id": "m-initiative-goal-2",
+              "name": "INITIATIVE_GOAL_2",
+              "formula": "[presales_cw_level/INITIATIVE_GOAL_2]"
+            },
+            {
+              "id": "m-qtr-yr-sp-2",
+              "name": "QTR_YR_SP_2",
+              "formula": "[presales_cw_level/QTR_YR_SP_2]"
+            },
+            {
+              "id": "m-role-sp-2",
+              "name": "ROLE_SP_2",
+              "formula": "[presales_cw_level/ROLE_SP_2]"
+            },
+            {
+              "id": "m-week-goal-sp-3",
+              "name": "WEEK_GOAL_SP_3",
+              "formula": "[presales_cw_level/WEEK_GOAL_SP_3]"
+            },
+            {
+              "id": "m-initiative-3",
+              "name": "INITIATIVE_3",
+              "formula": "[presales_cw_level/INITIATIVE_3]"
+            },
+            {
+              "id": "m-initiative-goal-3",
+              "name": "INITIATIVE_GOAL_3",
+              "formula": "[presales_cw_level/INITIATIVE_GOAL_3]"
+            },
+            {
+              "id": "m-qtr-yr-sp-3",
+              "name": "QTR_YR_SP_3",
+              "formula": "[presales_cw_level/QTR_YR_SP_3]"
+            },
+            {
+              "id": "m-merchant-close-date",
+              "name": "MERCHANT_CLOSE_DATE",
+              "formula": "[presales_cw_level/MERCHANT_CLOSE_DATE]"
+            }
+          ],
+          "order": [
+            "m-role-sp-3",
+            "m-week-of",
+            "m-cw-week",
+            "m-qtr",
+            "m-yr",
+            "m-qtr-yr",
+            "m-readiness-check-complete-date",
+            "m-merchant-activation-date",
+            "m-mx-onboarding-link-sent-date",
+            "m-opportunity-id",
+            "m-store-account-id",
+            "m-business-account-id",
+            "m-lead-id",
+            "m-work-order-id",
+            "m-work-order-number",
+            "m-store-id",
+            "m-business-id",
+            "m-provisioning-status",
+            "m-sales-owner-id",
+            "m-sales-owner",
+            "m-full-name",
+            "m-manager-name",
+            "m-rep-role",
+            "m-owner-team",
+            "m-owner-org-focus",
+            "m-rep-segment",
+            "m-sdr-owner",
+            "m-sdr-id",
+            "m-sdr-manager-id",
+            "m-sdr-manager-name",
+            "m-sdr-role",
+            "m-sdr-country",
+            "m-rep-country",
+            "m-cw-country",
+            "m-clean-country",
+            "m-owner-role-official-title",
+            "m-cw-owner-role-official-title",
+            "m-sfdc-commission",
+            "m-dashpass-commission",
+            "m-narr",
+            "m-opportunity-name",
+            "m-opp-type",
+            "m-account-name",
+            "m-store-name",
+            "m-business-name",
+            "m-deck-rank",
+            "m-primary-vertical",
+            "m-country",
+            "m-starting-point-id",
+            "m-starting-point",
+            "m-submarket",
+            "m-submarket-id",
+            "m-top-mx",
+            "m-market-maker",
+            "m-is-gnc",
+            "m-is-dashpass",
+            "m-is-pickup",
+            "m-is-storefront",
+            "m-is-alcohol",
+            "m-is-trial",
+            "m-is-promo",
+            "m-is-ads",
+            "m-is-ads-promos",
+            "m-package-sold",
+            "m-ntam",
+            "m-incremental-sign-tam",
+            "m-historical-delay-reasons-customized",
+            "m-lead-list-customized",
+            "m-trial-period",
+            "m-top-mx-signing-bonus-approval-threshold",
+            "m-activation-bonus-amount",
+            "m-product-list",
+            "m-region",
+            "m-tier",
+            "m-sfdc-source",
+            "m-last-etl-run",
+            "m-week-goal-activations",
+            "m-role-activations",
+            "m-activation-goal",
+            "m-quarter-year",
+            "m-country-2",
+            "m-country-3",
+            "m-days-off",
+            "m-hc",
+            "m-owner-role-official-title-2",
+            "m-qtr-2",
+            "m-qtr-yr-2",
+            "m-rep-rank",
+            "m-sales-manager",
+            "m-sales-owner-2",
+            "m-user-id",
+            "m-week-of-2",
+            "m-yr-2",
+            "m-based",
+            "m-org",
+            "m-product",
+            "m-product-goal",
+            "m-qtr-yr-pg",
+            "m-role",
+            "m-target",
+            "m-team",
+            "m-week-goal",
+            "m-week-goal-sp",
+            "m-initiative",
+            "m-initiative-goal",
+            "m-qtr-yr-sp",
+            "m-role-sp",
+            "m-qtr-3",
+            "m-yr-3",
+            "m-qtr-yr-3",
+            "m-country-4",
+            "m-role-2",
+            "m-closes",
+            "m-narr-2",
+            "m-cw-week-2",
+            "m-working-days",
+            "m-ahc-goal",
+            "m-close-phasing",
+            "m-week-of-3",
+            "m-week-goal-sp-2",
+            "m-initiative-2",
+            "m-initiative-goal-2",
+            "m-qtr-yr-sp-2",
+            "m-role-sp-2",
+            "m-week-goal-sp-3",
+            "m-initiative-3",
+            "m-initiative-goal-3",
+            "m-qtr-yr-sp-3",
+            "m-merchant-close-date"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-activations",
+      "name": "Activations",
+      "elements": [
+        {
+          "id": "title-activations",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Activations</span>"
+        }
+      ]
+    },
+    {
+      "id": "page-activations-details",
+      "name": "Activations Details",
+      "elements": [
+        {
+          "id": "title-activations-details",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Activations Details</span>"
+        }
+      ]
+    },
+    {
+      "id": "page-active-hc-deep-dive",
+      "name": "Active HC Deep Dive",
+      "elements": [
+        {
+          "id": "title-active-hc-deep-dive",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Active HC Deep Dive</span>"
+        },
+        {
+          "id": "el-avg-days-off-by-team",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-avg-days-off-by-team-row-team",
+              "name": "TEAM",
+              "formula": "[Master/TEAM]"
+            },
+            {
+              "id": "p-el-avg-days-off-by-team-row-role",
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
+            },
+            {
+              "id": "p-el-avg-days-off-by-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-avg-days-off-by-team-value-calculation_6492009266119520260",
+              "name": "sum([Days Off])/sum([HC])",
+              "formula": "Sum([Master/DAYS_OFF])/Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-avg-days-off-by-team-value-calculation_6492009266120495110",
+              "name": "sum([Days Off])/sum([HC])",
+              "formula": "Sum([Master/DAYS_OFF])/Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-avg-days-off-by-team-value-calculation_6492009266119520260",
+            "p-el-avg-days-off-by-team-value-calculation_6492009266120495110"
+          ],
+          "rowsBy": [
+            {
+              "id": "p-el-avg-days-off-by-team-row-team"
+            },
+            {
+              "id": "p-el-avg-days-off-by-team-row-role"
+            }
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-avg-days-off-by-team-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-cw-deep-dive",
+      "name": "CW Deep Dive",
+      "elements": [
+        {
+          "id": "title-cw-deep-dive",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">CW Deep Dive</span>"
+        }
+      ]
+    },
+    {
+      "id": "page-canada-only-view",
+      "name": "Canada Only View",
+      "elements": [
+        {
+          "id": "title-canada-only-view",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Canada Only View</span>"
+        },
+        {
+          "id": "el-param-deck-rank-signs-vs-param-canada-only-view",
+          "kind": "control",
+          "controlId": "ctl-param-deck-rank-signs-vs-param-canada-only-view",
+          "name": "Deck Rank Signs vs % Param",
+          "includeNulls": "when-no-value-is-selected",
+          "controlType": "segmented",
+          "source": {
+            "kind": "manual",
+            "valueType": "text",
+            "values": [
+              "Total Signs",
+              "\\% of Signs"
+            ],
+            "labels": [
+
+            ]
+          },
+          "value": "\\% of Signs"
+        },
+        {
+          "id": "el-can-inbound-vendor",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-can-inbound-vendor-row-role",
+              "name": "ROLE",
+              "formula": "[Master/ROLE]"
+            },
+            {
+              "id": "p-el-can-inbound-vendor-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-can-inbound-vendor-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.1%"
+              }
+            },
+            {
+              "id": "p-el-can-inbound-vendor-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-inbound-vendor-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-can-inbound-vendor-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-inbound-vendor-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-can-inbound-vendor-value-sfdc_commission",
+            "p-el-can-inbound-vendor-value-closes",
+            "p-el-can-inbound-vendor-value-incremental_sign_tam",
+            "p-el-can-inbound-vendor-value-narr",
+            "p-el-can-inbound-vendor-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+            {
+              "id": "p-el-can-inbound-vendor-row-role"
+            }
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-can-inbound-vendor-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-can-ssmo",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-can-ssmo-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-can-ssmo-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.1%"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-ssmo-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-can-ssmo-value-sfdc_commission",
+            "p-el-can-ssmo-value-ahc_goal",
+            "p-el-can-ssmo-value-closes",
+            "p-el-can-ssmo-value-hc",
+            "p-el-can-ssmo-value-incremental_sign_tam",
+            "p-el-can-ssmo-value-narr",
+            "p-el-can-ssmo-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-can-ssmo-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-can-bde",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-can-bde-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-can-bde-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-can-bde-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-can-bde-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-can-bde-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-can-bde-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-can-bde-value-sfdc_commission",
+            "p-el-can-bde-value-hc",
+            "p-el-can-bde-value-incremental_sign_tam",
+            "p-el-can-bde-value-narr",
+            "p-el-can-bde-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-can-bde-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-regional",
+      "name": "Regional",
+      "elements": [
+        {
+          "id": "title-regional",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Regional</span>"
+        },
+        {
+          "id": "el-regional-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-regional-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-regional-overall-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-regional-overall-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-regional-overall-value-sfdc_commission",
+            "p-el-regional-overall-value-ahc_goal",
+            "p-el-regional-overall-value-closes",
+            "p-el-regional-overall-value-hc",
+            "p-el-regional-overall-value-incremental_sign_tam",
+            "p-el-regional-overall-value-narr",
+            "p-el-regional-overall-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-regional-overall-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outside-regional-ml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outside-regional-ml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outside-regional-ml-value-sfdc_commission",
+            "p-el-outside-regional-ml-value-ahc_goal",
+            "p-el-outside-regional-ml-value-closes",
+            "p-el-outside-regional-ml-value-hc",
+            "p-el-outside-regional-ml-value-incremental_sign_tam",
+            "p-el-outside-regional-ml-value-narr",
+            "p-el-outside-regional-ml-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outside-regional-ml-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-inside-regional-ae-blitz-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-inside-regional-ae-blitz-ae-value-sfdc_commission",
+            "p-el-inside-regional-ae-blitz-ae-value-ahc_goal",
+            "p-el-inside-regional-ae-blitz-ae-value-closes",
+            "p-el-inside-regional-ae-blitz-ae-value-hc",
+            "p-el-inside-regional-ae-blitz-ae-value-incremental_sign_tam",
+            "p-el-inside-regional-ae-blitz-ae-value-narr",
+            "p-el-inside-regional-ae-blitz-ae-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-inside-regional-ae-blitz-ae-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-ae-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-ae-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-ae-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-ae-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-ae-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-ae-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-ae-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-ae-value-sfdc_commission",
+            "p-el-ae-value-ahc_goal",
+            "p-el-ae-value-closes",
+            "p-el-ae-value-hc",
+            "p-el-ae-value-incremental_sign_tam",
+            "p-el-ae-value-narr",
+            "p-el-ae-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-ae-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outside-regional-gml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outside-regional-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-sdr_owner",
+              "name": "SDR_OWNER",
+              "formula": "CountDistinct([Master/SDR_OWNER])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-gml-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outside-regional-gml-value-sfdc_commission",
+            "p-el-outside-regional-gml-value-sdr_owner",
+            "p-el-outside-regional-gml-value-ahc_goal",
+            "p-el-outside-regional-gml-value-closes",
+            "p-el-outside-regional-gml-value-hc",
+            "p-el-outside-regional-gml-value-incremental_sign_tam",
+            "p-el-outside-regional-gml-value-narr",
+            "p-el-outside-regional-gml-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outside-regional-gml-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outside-regional-ml-agml-and-gml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outside-regional-ml-agml-and-gml-value-sfdc_commission",
+            "p-el-outside-regional-ml-agml-and-gml-value-ahc_goal",
+            "p-el-outside-regional-ml-agml-and-gml-value-closes",
+            "p-el-outside-regional-ml-agml-and-gml-value-hc",
+            "p-el-outside-regional-ml-agml-and-gml-value-incremental_sign_tam",
+            "p-el-outside-regional-ml-agml-and-gml-value-narr",
+            "p-el-outside-regional-ml-agml-and-gml-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outside-regional-ml-agml-and-gml-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-blitz-ae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-blitz-ae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-blitz-ae-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-blitz-ae-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-blitz-ae-value-sfdc_commission",
+            "p-el-blitz-ae-value-ahc_goal",
+            "p-el-blitz-ae-value-closes",
+            "p-el-blitz-ae-value-hc",
+            "p-el-blitz-ae-value-incremental_sign_tam",
+            "p-el-blitz-ae-value-narr",
+            "p-el-blitz-ae-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-blitz-ae-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outside-regional-agml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outside-regional-agml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-sdr_owner",
+              "name": "SDR_OWNER",
+              "formula": "CountDistinct([Master/SDR_OWNER])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-regional-agml-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outside-regional-agml-value-sfdc_commission",
+            "p-el-outside-regional-agml-value-sdr_owner",
+            "p-el-outside-regional-agml-value-ahc_goal",
+            "p-el-outside-regional-agml-value-closes",
+            "p-el-outside-regional-agml-value-hc",
+            "p-el-outside-regional-agml-value-incremental_sign_tam",
+            "p-el-outside-regional-agml-value-narr",
+            "p-el-outside-regional-agml-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outside-regional-agml-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-roster-cws",
+      "name": "Roster CWs",
+      "elements": [
+        {
+          "id": "title-roster-cws",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Roster CWs</span>"
+        }
+      ]
+    },
+    {
+      "id": "page-ssmo---inbound",
+      "name": "SSMO + Inbound",
+      "elements": [
+        {
+          "id": "title-ssmo-inbound",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">SSMO + Inbound</span>"
+        },
+        {
+          "id": "el-ssmo-anz",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-ssmo-anz-row-cw_country",
+              "name": "CW_COUNTRY",
+              "formula": "[Master/CW_COUNTRY]"
+            },
+            {
+              "id": "p-el-ssmo-anz-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-ssmo-anz-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-ssmo-anz-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.2f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-ssmo-anz-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-ssmo-anz-value-sfdc_commission",
+            "p-el-ssmo-anz-value-incremental_sign_tam",
+            "p-el-ssmo-anz-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+            {
+              "id": "p-el-ssmo-anz-row-cw_country"
+            }
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-ssmo-anz-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-selection-strategy",
+      "name": "Selection Strategy",
+      "elements": [
+        {
+          "id": "title-selection-strategy",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Selection Strategy</span>"
+        },
+        {
+          "id": "el-param-selection-param-selection-strategy",
+          "kind": "control",
+          "controlId": "ctl-param-selection-param-selection-strategy",
+          "name": "Selection Param",
+          "includeNulls": "when-no-value-is-selected",
+          "controlType": "segmented",
+          "source": {
+            "kind": "manual",
+            "valueType": "text",
+            "values": [
+              "Signs",
+              "TAM",
+              "TAM per Sign"
+            ],
+            "labels": [
+
+            ]
+          },
+          "value": "Signs"
+        }
+      ]
+    },
+    {
+      "id": "page-strategic",
+      "name": "Strategic",
+      "elements": [
+        {
+          "id": "title-strategic",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Strategic</span>"
+        },
+        {
+          "id": "el-strategic-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-strategic-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-strategic-overall-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-strategic-overall-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-strategic-overall-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-strategic-overall-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-strategic-overall-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-strategic-overall-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-strategic-overall-value-sfdc_commission",
+            "p-el-strategic-overall-value-ahc_goal",
+            "p-el-strategic-overall-value-closes",
+            "p-el-strategic-overall-value-hc",
+            "p-el-strategic-overall-value-incremental_sign_tam",
+            "p-el-strategic-overall-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-strategic-overall-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-inside-strategic-sae-sae-top-mx-sae-inbou",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-sfdc_commission",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-ahc_goal",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-closes",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-hc",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-incremental_sign_tam",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-narr",
+            "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-inside-strategic-sae-sae-top-mx-sae-inbou-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outside-strategic-sml-sgl",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outside-strategic-sml-sgl-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outside-strategic-sml-sgl-value-sfdc_commission",
+            "p-el-outside-strategic-sml-sgl-value-ahc_goal",
+            "p-el-outside-strategic-sml-sgl-value-closes",
+            "p-el-outside-strategic-sml-sgl-value-hc",
+            "p-el-outside-strategic-sml-sgl-value-incremental_sign_tam",
+            "p-el-outside-strategic-sml-sgl-value-narr",
+            "p-el-outside-strategic-sml-sgl-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outside-strategic-sml-sgl-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-sml",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-sml-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-sml-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-sml-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sml-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sml-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sml-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sml-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sml-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-sml-value-sfdc_commission",
+            "p-el-sml-value-ahc_goal",
+            "p-el-sml-value-closes",
+            "p-el-sml-value-hc",
+            "p-el-sml-value-incremental_sign_tam",
+            "p-el-sml-value-narr",
+            "p-el-sml-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-sml-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-sae",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-sae-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-sae-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-sae-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-sae-value-sfdc_commission",
+            "p-el-sae-value-ahc_goal",
+            "p-el-sae-value-closes",
+            "p-el-sae-value-hc",
+            "p-el-sae-value-incremental_sign_tam",
+            "p-el-sae-value-narr",
+            "p-el-sae-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-sae-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-sae-top-mx",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-sae-top-mx-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-sae-top-mx-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-top-mx-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-sae-top-mx-value-sfdc_commission",
+            "p-el-sae-top-mx-value-ahc_goal",
+            "p-el-sae-top-mx-value-closes",
+            "p-el-sae-top-mx-value-hc",
+            "p-el-sae-top-mx-value-incremental_sign_tam",
+            "p-el-sae-top-mx-value-narr",
+            "p-el-sae-top-mx-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-sae-top-mx-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-sgl",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-sgl-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-sgl-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sgl-value-calculation_7729232557248155653",
+              "name": "Biz Signs",
+              "formula": "CountDistinct([Master/BUSINESS_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-sgl-value-sfdc_commission",
+            "p-el-sgl-value-ahc_goal",
+            "p-el-sgl-value-closes",
+            "p-el-sgl-value-hc",
+            "p-el-sgl-value-incremental_sign_tam",
+            "p-el-sgl-value-narr",
+            "p-el-sgl-value-calculation_1656550670929633282",
+            "p-el-sgl-value-calculation_3783938539825639424",
+            "p-el-sgl-value-calculation_7729232557248155653"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-sgl-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-sae-inbound",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-sae-inbound-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-sae-inbound-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-sae-inbound-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-sae-inbound-value-sfdc_commission",
+            "p-el-sae-inbound-value-ahc_goal",
+            "p-el-sae-inbound-value-closes",
+            "p-el-sae-inbound-value-hc",
+            "p-el-sae-inbound-value-incremental_sign_tam",
+            "p-el-sae-inbound-value-narr",
+            "p-el-sae-inbound-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-sae-inbound-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-tam-by-role",
+      "name": "TAM by Role",
+      "elements": [
+        {
+          "id": "title-tam-by-role",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">TAM by Role</span>"
+        },
+        {
+          "id": "el-tam-rep-by-submarket",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-tam-rep-by-submarket-row-region",
+              "name": "REGION",
+              "formula": "[Master/REGION]"
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-row-submarket",
+              "name": "SUBMARKET",
+              "formula": "[Master/SUBMARKET]"
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-value-tam-hc-copy-_5843842750844387346",
+              "name": "TAM / HC (copy)_5843842750844387346",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])/CountDistinct([Master/SALES_OWNER])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-tam-rep-by-submarket-value-incremental_sign_tam",
+            "p-el-tam-rep-by-submarket-value-calculation_3783938539825639424",
+            "p-el-tam-rep-by-submarket-value-tam-hc-copy-_5843842750844387346"
+          ],
+          "rowsBy": [
+            {
+              "id": "p-el-tam-rep-by-submarket-row-region"
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-row-submarket"
+            }
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-tam-rep-by-submarket-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-tam-rep-by-submarket-qoq",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-row-region",
+              "name": "REGION",
+              "formula": "[Master/REGION]"
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "DateTrunc(\"quarter\", [Master/WEEK_OF])",
+              "format": {
+                "kind": "datetime",
+                "formatString": "%b %Y"
+              }
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-value-tam-hc-copy-_5843842750844387346",
+              "name": "TAM / HC (copy)_5843842750844387346",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])/CountDistinct([Master/SALES_OWNER])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-tam-rep-by-submarket-qoq-value-incremental_sign_tam",
+            "p-el-tam-rep-by-submarket-qoq-value-calculation_3783938539825639424",
+            "p-el-tam-rep-by-submarket-qoq-value-tam-hc-copy-_5843842750844387346"
+          ],
+          "rowsBy": [
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-row-region"
+            }
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-tam-rep-by-submarket-qoq-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-total-pre-sale-org",
+      "name": "Total Pre-Sale Org",
+      "elements": [
+        {
+          "id": "title-total-pre-sale-org",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Total Pre-Sale Org</span>"
+        },
+        {
+          "id": "el-param-deck-rank-signs-vs-param-total-pre-sale-org",
+          "kind": "control",
+          "controlId": "ctl-param-deck-rank-signs-vs-param-total-pre-sale-org",
+          "name": "Deck Rank Signs vs % Param",
+          "includeNulls": "when-no-value-is-selected",
+          "controlType": "segmented",
+          "source": {
+            "kind": "manual",
+            "valueType": "text",
+            "values": [
+              "Total Signs",
+              "\\% of Signs"
+            ],
+            "labels": [
+
+            ]
+          },
+          "value": "\\% of Signs"
+        },
+        {
+          "id": "el-kpi-smb-weekly-goals",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly Goals ",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "k-el-kpi-smb-weekly-goals",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "value": {
+            "columnId": "k-el-kpi-smb-weekly-goals"
+          }
+        },
+        {
+          "id": "el-kpi-smb-weekly-qtd-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly QTD Pacing",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "k-el-kpi-smb-weekly-qtd-pacing",
+              "name": "Calculation_2310065177622220813",
+              "formula": "Sum((0))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "value": {
+            "columnId": "k-el-kpi-smb-weekly-qtd-pacing"
+          }
+        },
+        {
+          "id": "el-kpi-smb-weekly-ww-qtd-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly WW QTD Pacing",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "k-el-kpi-smb-weekly-ww-qtd-pacing",
+              "name": "Calculation_3645452848288170032",
+              "formula": "Sum((0))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "value": {
+            "columnId": "k-el-kpi-smb-weekly-ww-qtd-pacing"
+          }
+        },
+        {
+          "id": "el-kpi-smb-weekly-updated-yoy-pacing",
+          "kind": "kpi-chart",
+          "name": "SMB Weekly UPDATED YoY Pacing",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "k-el-kpi-smb-weekly-updated-yoy-pacing",
+              "name": "Calculation_4863183911928840232",
+              "formula": "Sum((0))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "value": {
+            "columnId": "k-el-kpi-smb-weekly-updated-yoy-pacing"
+          }
+        },
+        {
+          "id": "el-smb-weekly",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-smb-weekly-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-smb-weekly-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-smb-weekly-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-smb-weekly-value-closes",
+            "p-el-smb-weekly-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-smb-weekly-col-week_of"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-vendor-outbound",
+      "name": "Vendor Outbound",
+      "elements": [
+        {
+          "id": "title-vendor-outbound",
+          "kind": "text",
+          "body": "# <span style=\"color: #FFFFFF\">Vendor Outbound</span>"
+        },
+        {
+          "id": "el-vendor-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-vendor-overall-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-vendor-overall-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-vendor-overall-value-sfdc_commission",
+            "p-el-vendor-overall-value-ahc_goal",
+            "p-el-vendor-overall-value-closes",
+            "p-el-vendor-overall-value-hc",
+            "p-el-vendor-overall-value-incremental_sign_tam",
+            "p-el-vendor-overall-value-narr",
+            "p-el-vendor-overall-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-vendor-overall-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-overall",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-overall-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-overall-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-overall-value-sfdc_commission",
+            "p-el-outbound-vendor-overall-value-ahc_goal",
+            "p-el-outbound-vendor-overall-value-closes",
+            "p-el-outbound-vendor-overall-value-hc",
+            "p-el-outbound-vendor-overall-value-incremental_sign_tam",
+            "p-el-outbound-vendor-overall-value-narr",
+            "p-el-outbound-vendor-overall-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-overall-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-overall-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-regalix",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-regalix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-regalix-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-regalix-value-sfdc_commission",
+            "p-el-outbound-vendor-regalix-value-ahc_goal",
+            "p-el-outbound-vendor-regalix-value-closes",
+            "p-el-outbound-vendor-regalix-value-hc",
+            "p-el-outbound-vendor-regalix-value-incremental_sign_tam",
+            "p-el-outbound-vendor-regalix-value-narr",
+            "p-el-outbound-vendor-regalix-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-regalix-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-regalix-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-wipro",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-wipro-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-wipro-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-wipro-value-sfdc_commission",
+            "p-el-outbound-vendor-wipro-value-ahc_goal",
+            "p-el-outbound-vendor-wipro-value-closes",
+            "p-el-outbound-vendor-wipro-value-hc",
+            "p-el-outbound-vendor-wipro-value-incremental_sign_tam",
+            "p-el-outbound-vendor-wipro-value-narr",
+            "p-el-outbound-vendor-wipro-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-wipro-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-wipro-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-taskus",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-taskus-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-taskus-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-taskus-value-sfdc_commission",
+            "p-el-outbound-vendor-taskus-value-ahc_goal",
+            "p-el-outbound-vendor-taskus-value-closes",
+            "p-el-outbound-vendor-taskus-value-hc",
+            "p-el-outbound-vendor-taskus-value-incremental_sign_tam",
+            "p-el-outbound-vendor-taskus-value-narr",
+            "p-el-outbound-vendor-taskus-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-taskus-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-taskus-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-concentrix",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-concentrix-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-concentrix-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-concentrix-value-sfdc_commission",
+            "p-el-outbound-vendor-concentrix-value-ahc_goal",
+            "p-el-outbound-vendor-concentrix-value-closes",
+            "p-el-outbound-vendor-concentrix-value-hc",
+            "p-el-outbound-vendor-concentrix-value-incremental_sign_tam",
+            "p-el-outbound-vendor-concentrix-value-narr",
+            "p-el-outbound-vendor-concentrix-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-concentrix-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-concentrix-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-outbound-vendor-movate",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-outbound-vendor-movate-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-calculation_1656550670929633282",
+              "name": "Signs with SDR",
+              "formula": "CountIf(IsNotNull([Master/SDR_OWNER]))",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-outbound-vendor-movate-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-outbound-vendor-movate-value-sfdc_commission",
+            "p-el-outbound-vendor-movate-value-ahc_goal",
+            "p-el-outbound-vendor-movate-value-closes",
+            "p-el-outbound-vendor-movate-value-hc",
+            "p-el-outbound-vendor-movate-value-incremental_sign_tam",
+            "p-el-outbound-vendor-movate-value-narr",
+            "p-el-outbound-vendor-movate-value-calculation_1656550670929633282",
+            "p-el-outbound-vendor-movate-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-outbound-vendor-movate-col-week_of"
+            }
+          ]
+        },
+        {
+          "id": "el-scale-team",
+          "kind": "pivot-table",
+          "name": "Product Color Param",
+          "source": {
+            "kind": "table",
+            "elementId": "master"
+          },
+          "columns": [
+            {
+              "id": "p-el-scale-team-col-week_of",
+              "name": "WEEK_OF",
+              "formula": "[Master/WEEK_OF]"
+            },
+            {
+              "id": "p-el-scale-team-value-sfdc_commission",
+              "name": "SFDC_COMMISSION",
+              "formula": "Avg([Master/SFDC_COMMISSION])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0%"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-ahc_goal",
+              "name": "AHC_GOAL",
+              "formula": "Sum([Master/AHC_GOAL])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-closes",
+              "name": "CLOSES",
+              "formula": "Sum([Master/CLOSES])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-hc",
+              "name": "HC",
+              "formula": "Sum([Master/HC])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-incremental_sign_tam",
+              "name": "INCREMENTAL_SIGN_TAM",
+              "formula": "Sum([Master/INCREMENTAL_SIGN_TAM])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.0f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-narr",
+              "name": "NARR",
+              "formula": "Sum([Master/NARR])",
+              "format": {
+                "kind": "number",
+                "formatString": "($,.1f",
+                "currencySymbol": "$"
+              }
+            },
+            {
+              "id": "p-el-scale-team-value-calculation_3783938539825639424",
+              "name": "Signs - Actuals",
+              "formula": "CountDistinct([Master/STORE_ACCOUNT_ID])",
+              "format": {
+                "kind": "number",
+                "formatString": ",.0f"
+              }
+            }
+          ],
+          "values": [
+            "p-el-scale-team-value-sfdc_commission",
+            "p-el-scale-team-value-ahc_goal",
+            "p-el-scale-team-value-closes",
+            "p-el-scale-team-value-hc",
+            "p-el-scale-team-value-incremental_sign_tam",
+            "p-el-scale-team-value-narr",
+            "p-el-scale-team-value-calculation_3783938539825639424"
+          ],
+          "rowsBy": [
+
+          ],
+          "columnsBy": [
+            {
+              "id": "p-el-scale-team-col-week_of"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
