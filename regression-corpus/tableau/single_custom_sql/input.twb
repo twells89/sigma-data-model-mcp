@@ -1,0 +1,141 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook>
+  <datasources>
+  <datasource caption='DDMX Parity Testbed (CSA.TJ)' inline='true' name='federated.ddmxtestbed01' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='CSA Snowflake' name='snowflake.csatj01'>
+            <connection authentication='Username Password' class='snowflake'
+                        dbname='TJ' schema='PUBLIC'
+                        server='sigmacomputing.snowflakecomputing.com'
+                        warehouse='SIGMA_WH' username='' workgroup-auth-mode='prompt'/>
+          </named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+          <relation connection='snowflake.csatj01' name='Actuals' type='text'>SELECT ORDER_ID, SEGMENT, SALES, PROFIT FROM TJ.PUBLIC.SUPERSTORE_ORDERS</relation>
+        </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+
+        <cols>
+          <map key='[ORDER_ID]'         value='[Actuals].[ORDER_ID]' />
+          <map key='[ORDER_LINE]'       value='[Actuals].[ORDER_LINE]' />
+          <map key='[ORDER_CHANNEL]'    value='[Actuals].[ORDER_CHANNEL]' />
+          <map key='[SHIP_METHOD]'      value='[Actuals].[SHIP_METHOD]' />
+          <map key='[ORDER_STATUS]'     value='[Actuals].[ORDER_STATUS]' />
+          <map key='[QUANTITY_ORDERED]' value='[Actuals].[QUANTITY_ORDERED]' />
+          <map key='[UNIT_PRICE]'       value='[Actuals].[UNIT_PRICE]' />
+          <map key='[UNIT_COST]'        value='[Actuals].[UNIT_COST]' />
+          <map key='[DISCOUNT_AMOUNT]'  value='[Actuals].[DISCOUNT_AMOUNT]' />
+          <map key='[SHIPPING_AMOUNT]'  value='[Actuals].[SHIPPING_AMOUNT]' />
+          <map key='[TAX_AMOUNT]'       value='[Actuals].[TAX_AMOUNT]' />
+          <map key='[GROSS_REVENUE]'    value='[Actuals].[GROSS_REVENUE]' />
+          <map key='[NET_REVENUE]'      value='[Actuals].[NET_REVENUE]' />
+          <map key='[GROSS_PROFIT]'     value='[Actuals].[GROSS_PROFIT]' />
+          <map key='[NET_PROFIT]'       value='[Actuals].[NET_PROFIT]' />
+          <map key='[IS_RETURNED]'      value='[Actuals].[IS_RETURNED]' />
+          <map key='[DAYS_TO_SHIP]'     value='[Actuals].[DAYS_TO_SHIP]' />
+          <map key='[REGION]'           value='[Actuals].[REGION]' />
+          <map key='[CUSTOMER_SEGMENT]' value='[Actuals].[CUSTOMER_SEGMENT]' />
+          <map key='[LOYALTY_TIER]'     value='[Actuals].[LOYALTY_TIER]' />
+          <map key='[CATEGORY]'         value='[Actuals].[CATEGORY]' />
+          <map key='[BRAND]'            value='[Actuals].[BRAND]' />
+          <map key='[YEAR]'             value='[Actuals].[YEAR]' />
+          <map key='[MONTH_NUMBER]'     value='[Actuals].[MONTH_NUMBER]' />
+          <map key='[MONTH_NAME]'       value='[Actuals].[MONTH_NAME]' />
+          <map key='[QUARTER]'          value='[Actuals].[QUARTER]' />
+          <map key='[GOAL_REGION]'      value='[Goals].[GOAL_REGION]' />
+          <map key='[GOAL_YEAR]'        value='[Goals].[GOAL_YEAR]' />
+          <map key='[GOAL_MONTH]'       value='[Goals].[GOAL_MONTH]' />
+          <map key='[GOAL_MONTH_NAME]'  value='[Goals].[GOAL_MONTH_NAME]' />
+          <map key='[REVENUE_GOAL]'          value='[Goals].[REVENUE_GOAL]' />
+          <map key='[ORDER_GOAL]'            value='[Goals].[ORDER_GOAL]' />
+          <map key='[GROSS_MARGIN_GOAL]'     value='[Goals].[GROSS_MARGIN_GOAL]' />
+          <map key='[RG_REGION]'  value='[RegionGoals].[RG_REGION]' />
+          <map key='[RG_YEAR]'    value='[RegionGoals].[RG_YEAR]' />
+          <map key='[REGION_REVENUE_GOAL]'   value='[RegionGoals].[REGION_REVENUE_GOAL]' />
+          <map key='[REGION_ORDER_GOAL]'     value='[RegionGoals].[REGION_ORDER_GOAL]' />
+          <map key='[REGION_MARGIN_GOAL]'    value='[RegionGoals].[REGION_MARGIN_GOAL]' />
+        </cols>
+
+        <metadata-records>
+          <metadata-record class='column'>
+            <remote-name>ORDER_ID</remote-name><local-name>[ORDER_ID]</local-name>
+            <parent-name>[Actuals]</parent-name><remote-alias>ORDER_ID</remote-alias>
+            <local-type>string</local-type><aggregation>Count</aggregation><caption>Order Id</caption>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[Actuals_FACT01]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>SEGMENT</remote-name><local-name>[SEGMENT]</local-name>
+            <parent-name>[Actuals]</parent-name><remote-alias>SEGMENT</remote-alias>
+            <local-type>string</local-type><aggregation>Count</aggregation><caption>Segment</caption>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[Actuals_FACT01]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>SALES</remote-name><local-name>[SALES]</local-name>
+            <parent-name>[Actuals]</parent-name><remote-alias>SALES</remote-alias>
+            <local-type>real</local-type><aggregation>Sum</aggregation><caption>Sales</caption>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[Actuals_FACT01]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>PROFIT</remote-name><local-name>[PROFIT]</local-name>
+            <parent-name>[Actuals]</parent-name><remote-alias>PROFIT</remote-alias>
+            <local-type>real</local-type><aggregation>Sum</aggregation><caption>Profit</caption>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[Actuals_FACT01]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+        </metadata-records>
+      </connection>
+
+      <!-- ── Object graph: objects + relationships (DDMX shape) — SIBLING of <connection>, child of <datasource> ── -->
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+          <objects>
+            <object caption='Actuals' id='Actuals_FACT01'>
+              <properties context=''>
+                <relation connection='snowflake.csatj01' name='Actuals' type='text'>SELECT ORDER_ID, SEGMENT, SALES, PROFIT FROM TJ.PUBLIC.SUPERSTORE_ORDERS</relation>
+              </properties>
+            </object>
+          </objects>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+
+      <!-- ─── Parameter: Metric Picker ─── -->
+
+      <!-- ─── Calculated fields (all 6 tiles) ─── -->
+
+      <!-- Tile 1: param measure-picker -->
+
+      <!-- Tile 2: Percent of total (table calc) -->
+
+      <!-- Tile 3: Attainment — references related Goals object (m:1 through the relationship, no secondary-datasource prefix) -->
+
+      <!-- Tile 4: LOD — region-fixed revenue KPI -->
+
+      <!-- Tile 5: Window/running sum (table calc) -->
+
+      <!-- Tile 6a: Margin Pct (calc on calc, step 1) -->
+
+      <!-- Tile 6b: High Margin Flag (calc on calc, step 2) -->
+
+      <layout dim-ordering='alphabetic' measure-ordering='alphabetic' show-structure='true'/>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sales by Segment'>
+      <table>
+        <view>
+          <datasources><datasource caption='DDMX Parity Testbed (CSA.TJ)' name='federated.ddmxtestbed01'/></datasources>
+          <datasource-dependencies datasource='federated.ddmxtestbed01'>
+            <column caption='Segment' datatype='string' name='[SEGMENT]' role='dimension' type='nominal' />
+            <column caption='Sales' datatype='real' name='[SALES]' role='measure' type='quantitative' />
+            <column-instance column='[SEGMENT]' derivation='None' name='[none:SEGMENT:nk]' pivot='key' type='nominal' />
+            <column-instance column='[SALES]' derivation='Sum' name='[sum:SALES:qk]' pivot='key' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <style/>
+        <panes><pane><view><breakdown value='auto'/></view><mark class='Bar'/><encodings/></pane></panes>
+        <rows>[federated.ddmxtestbed01].[sum:SALES:qk]</rows>
+        <cols>[federated.ddmxtestbed01].[none:SEGMENT:nk]</cols>
+      </table>
+    </worksheet>
+  </worksheets>
+  <dashboards>
+    <dashboard name='Dash'><zones><zone h='100000' id='1' name='Sales by Segment' w='100000' x='0' y='0'/></zones></dashboard>
+  </dashboards>
+</workbook>
