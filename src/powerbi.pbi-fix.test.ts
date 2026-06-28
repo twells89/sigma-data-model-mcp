@@ -19,8 +19,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { convertPowerBIToSigma } from './powerbi.js';
 
-const MODEL_CLEAN = '/tmp/pbix/model_clean.bim';
 const FIXTURE_DIR = '/Users/tjwells/sigma-skills-staging/powerbi-to-sigma/fixtures';
+const MODEL_CLEAN = `${FIXTURE_DIR}/model_clean.bim`;
 const FIXTURES = [
   'fixture_01_mechanical.bim',
   'fixture_02_time_intelligence.bim',
