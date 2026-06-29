@@ -340,3 +340,53 @@ test('f3: integration — metrics emit clean Sigma, no raw DAX tokens', () => {
       `raw DAX token leaked in "${name}": ${formula}`);
   }
 });
+
+// ════ Time-intelligence synthesis: multi-word column + inactive-rel fidelity ══
+// Regression for the emitTimeIntelElements value-column match: lastSeg() yields
+// the Sigma DISPLAY name ("Incident Id") while the DAX token is "INCIDENT_ID",
+// so a plain uppercase compare silently dropped every multi-word measure column
+// (single-word ones like HOURS coincidentally matched). Plus the inactive-date
+// fidelity warning surfaced by comparing live DAX vs the synthesized element.
+function tiModel(dateRelActive: boolean) {
+  return { model: {
+    tables: [
+      { name: 'INCIDENTS',
+        columns: [col('INCIDENT_ID'), col('DEPT_ID'), col('EVENT_DATE', 'dateTime')],
+        partitions: [{ source: { type: 'm', expression: M_NAV('INCIDENTS') } }],
+        measures: [{ name: 'PY Incident Count',
+          expression: 'CALCULATE(DISTINCTCOUNT(INCIDENTS[INCIDENT_ID]), SAMEPERIODLASTYEAR(CAL[Date]))' }] },
+      { name: 'DEPTS', columns: [col('DEPT_ID'), col('DEPT_NAME')],
+        partitions: [{ source: { type: 'm', expression: M_NAV('DEPTS') } }] },
+      { name: 'CAL', columns: [col('Date', 'dateTime')],
+        partitions: [{ source: { type: 'm', expression: M_NAV('CAL') } }] },
+    ],
+    relationships: [
+      { name: 'r_dept', fromTable: 'INCIDENTS', fromColumn: 'DEPT_ID', toTable: 'DEPTS', toColumn: 'DEPT_ID' },
+      { name: 'r_date', fromTable: 'INCIDENTS', fromColumn: 'EVENT_DATE', toTable: 'CAL', toColumn: 'Date', isActive: dateRelActive },
+    ],
+  } };
+}
+
+test('ti: SAMEPERIODLASTYEAR over a MULTI-WORD distinct-count column synthesizes (no silent drop)', () => {
+  const { model } = convertPowerBIToSigma(tiModel(true), { connectionId: 'c' });
+  const el = elByName(model, 'PY Incident Count');
+  assert.ok(el, 'expected a synthesized prior-year element (multi-word col must match)');
+  const formulas = el.columns.map((c: any) => c.formula);
+  assert.ok(formulas.some((f: string) => /^CountDistinct\(\[INCIDENTS View\/Incident Id\]\)$/.test(f)),
+    `expected CountDistinct of the multi-word value column, got: ${formulas.join(' | ')}`);
+  assert.ok(formulas.some((f: string) => /^DateLookback\(/.test(f)), 'expected a DateLookback prior-year column');
+});
+
+test('ti: inactive date relationship raises the fidelity-divergence warning', () => {
+  const { warnings } = convertPowerBIToSigma(tiModel(false), { connectionId: 'c' });
+  assert.ok(warnings.some(w => /PY Incident Count/.test(w) && /INACTIVE/.test(w)
+    && /unfiltered total/.test(w) && /own date/.test(w)),
+    'inactive date rel must warn that PBI returns an unfiltered total while the element uses the fact date');
+});
+
+test('ti: ACTIVE date relationship synthesizes WITHOUT the divergence warning', () => {
+  const { model, warnings } = convertPowerBIToSigma(tiModel(true), { connectionId: 'c' });
+  assert.ok(elByName(model, 'PY Incident Count'), 'element still synthesized on the active path');
+  assert.ok(!warnings.some(w => /PY Incident Count/.test(w) && /INACTIVE/.test(w)),
+    'no divergence warning when the date relationship is active');
+});
