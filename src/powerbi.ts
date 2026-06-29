@@ -1868,16 +1868,36 @@ function emitTimeIntelElements(model: any, elements: any[], warnings: string[]):
       const am = dax.match(/\b(SUM|AVERAGE|AVG|MIN|MAX|COUNT|DISTINCTCOUNT)\s*\(\s*'?[^'\[]*'?\[([^\]]+)\]/i);
       if (!am) continue;
       const agg = AGG[am[1].toUpperCase()]; const col = am[2];
-      // find a View carrying both the value column and a date column
+      // find a View carrying both the value column and a date column.
+      // Compare on a normalized key: lastSeg() yields the Sigma DISPLAY name
+      // ("Incident Id") while `col` is the raw DAX token ("INCIDENT_ID"), so a
+      // plain uppercase compare misses every multi-word column (single-word
+      // ones like HOURS coincidentally matched). Strip spaces/underscores.
+      const normCol = (s: string) => (s || '').toUpperCase().replace(/[\s_]/g, '');
       let parent: any = null, valDisp = '', dateDisp = '';
       for (const v of views) {
-        const vc = (v.columns || []).find((c: any) => lastSeg(c.formula).toUpperCase() === col.toUpperCase());
+        const vc = (v.columns || []).find((c: any) => normCol(lastSeg(c.formula)) === normCol(col));
         const dc = (v.columns || []).find((c: any) => /full date/i.test(viewColDisplay(c.formula)))
                 || (v.columns || []).find((c: any) => /date/i.test(lastSeg(c.formula)) && !/key/i.test(lastSeg(c.formula)));
         if (vc && dc) { parent = v; valDisp = viewColDisplay(vc.formula); dateDisp = viewColDisplay(dc.formula); break; }
       }
       if (!parent) continue;
       const pn = parent.name; const b = (m.name || 'TI').replace(/[^a-zA-Z0-9]/g, '').slice(0, 14);
+      // Fidelity check: the synthesized element groups by the fact's OWN date
+      // column. If the source measure's date dimension is reached only through
+      // an INACTIVE relationship (and no measure activates it via
+      // USERELATIONSHIP), the original DAX never filters by that dimension —
+      // it returns an unfiltered grand total per period. Our element is the
+      // "intended" per-period result, but that is a real divergence; flag it.
+      const refTables = [...dax.matchAll(/([A-Za-z_]\w*)\s*\[/g)].map(x => x[1]);
+      const dimTable = refTables.length ? refTables[refTables.length - 1] : null;
+      if (dimTable && dimTable !== t.name) {
+        const rel = (model.relationships || []).find(
+          (r: any) => r.fromTable === t.name && r.toTable === dimTable);
+        if (rel && rel.isActive === false) {
+          warnings.push(`⚠ "${m.name}": the ${t.name}→${dimTable} relationship is INACTIVE and no measure activates it (USERELATIONSHIP), so the original Power BI measure does not filter by ${dimTable} — it returns an unfiltered total per ${dimTable} period. The synthesized element groups by ${t.name}'s own date instead, yielding a true per-period prior-year. Confirm this matches intent (the source measure may be silently mis-modeled).`);
+        }
+      }
       if (shape === 'prior') {
         const prior = `${valDisp} (Prior Year)`;
         const cols = [
