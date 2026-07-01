@@ -76,6 +76,40 @@ function connRelations(conn: any): any[] {
   return asArray(conn[pick]);
 }
 
+/** Is this <relation> the synthetic placeholder Tableau inserts for a .hyper
+ *  extract or a published (sqlproxy) datasource? It carries no real schema —
+ *  `[Extract].[Extract]` / `[sqlproxy]`, or name Extract/sqlproxy with no
+ *  <columns> child. The meaningful relation (Custom SQL / base table / join)
+ *  lives elsewhere on the SAME connection. */
+function isExtractPlaceholderRel(rel: any): boolean {
+  if (!rel) return false;
+  const table = attr(rel, 'table');
+  const name = attr(rel, 'name');
+  if (table === '[Extract].[Extract]' || table === '[sqlproxy]') return true;
+  if ((name === 'Extract' || name === 'sqlproxy') && !rel.columns) return true;
+  return false;
+}
+
+/** Pick the ROOT relation to build elements from. When a datasource is backed
+ *  by a .hyper extract or a published (sqlproxy) connection, Tableau lists the
+ *  placeholder [Extract].[Extract] / [sqlproxy] relation FIRST, with the real
+ *  schema — a Custom SQL (type='text'), a join, or a base table with columns —
+ *  as a sibling relation on the same connection. connRelations(conn)[0] would
+ *  pick the placeholder and emit a 0-column element (the extract-over-Custom-SQL
+ *  bug). Prefer a meaningful sibling when one exists. When the placeholder is
+ *  the ONLY relation (the common extract case), keep it — its columns are
+ *  recovered from <metadata-records> downstream. */
+function pickRootRelation(conn: any): any {
+  const rels = connRelations(conn);
+  if (rels.length <= 1) return rels[0] || null;
+  const meaningful = rels.find((r) => {
+    const t = attr(r, 'type') || 'table';
+    if (t === 'text' || t === 'join' || t === 'collection') return true;
+    return !isExtractPlaceholderRel(r);
+  });
+  return meaningful || rels[0];
+}
+
 /** Resolve a possibly feature-flag-namespaced CHILD element. The encapsulated
  *  object model keys children too — e.g. the object graph is
  *  `_.fcp.ObjectModelEncapsulateLegacy.true...object-graph`, not `object-graph`,
@@ -1447,7 +1481,7 @@ export function convertTableauToSigma(
       });
 
   // ── Build elements from relation structure ──────────────────────────────
-  const rootRelation = ds.connection ? (connRelations(ds.connection)[0] || null) : null;
+  const rootRelation = ds.connection ? (pickRootRelation(ds.connection) || null) : null;
 
   if (rootRelation) {
     const relType = attr(rootRelation, 'type') || 'table';
