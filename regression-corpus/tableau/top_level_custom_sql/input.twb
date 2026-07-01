@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook>
+  <datasources>
+    <datasource name='federated.podview' caption='SUPERSTORE Custom SQL'>
+      <connection class='snowflake' dbname='TJ' schema='PUBLIC'>
+        <relation name='Custom SQL Query' type='text'>SELECT ORDER_ID, SEGMENT, SALES, PROFIT&#13;&#10;FROM TJ.PUBLIC.SUPERSTORE_ORDERS</relation>
+        <metadata-records>
+          <metadata-record class='column'><remote-name>ORDER_ID</remote-name><local-type>integer</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>SEGMENT</remote-name><local-type>string</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>SALES</remote-name><local-type>real</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>PROFIT</remote-name><local-type>real</local-type></metadata-record>
+        </metadata-records>
+      </connection>
+    </datasource>
+  </datasources>
+</workbook>
