@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8' ?>
 <workbook version='18.1'>
   <datasources>
-    <datasource caption='Funnel Creation - POD Targets' inline='true' name='federated.extractcsql01' version='18.1'>
+    <datasource caption='Extract Over Custom SQL' inline='true' name='federated.extractcsql01' version='18.1'>
       <!-- .hyper EXTRACT over a Custom SQL query. The extract is the PRIMARY
            <connection>; its relation is the [Extract].[Extract] placeholder
            (no columns child). The live connection + the Custom SQL that defines
@@ -11,7 +11,7 @@
            prefer the type='text' Custom SQL relation instead. Targets
            TJ.PUBLIC.SUPERSTORE_ORDERS for portability (same table as
            single_custom_sql). -->
-      <connection class='hyper' dbname='C:/Temp/funnel.hyper' schema='Extract' tablename='Extract'>
+      <connection class='hyper' dbname='C:/Temp/extract.hyper' schema='Extract' tablename='Extract'>
         <relation name='Extract' table='[Extract].[Extract]' type='table' />
         <named-connections>
           <named-connection caption='CSA Snowflake' name='snowflake.csatj01'>
@@ -29,8 +29,8 @@
     </datasource>
   </datasources>
   <worksheets>
-    <worksheet name='POD Targets Vs Actual'>
-      <table><view><datasources><datasource caption='Funnel Creation - POD Targets' name='federated.extractcsql01'/></datasources></view></table>
+    <worksheet name='Sheet 1'>
+      <table><view><datasources><datasource caption='Extract Over Custom SQL' name='federated.extractcsql01'/></datasources></view></table>
     </worksheet>
   </worksheets>
 </workbook>
