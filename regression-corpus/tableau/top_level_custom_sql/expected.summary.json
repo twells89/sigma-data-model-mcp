@@ -1,0 +1,5 @@
+{
+  "description": "Top-level Custom SQL datasource (<relation type='text'> directly under <connection>, NOT the object-model collection form). This is the classic/legacy Custom SQL shape (e.g. the EDNA PODVIEW workbook, 2026-07). Before the fix the MCP converter's relType chain (table/join/collection) had no 'text' branch, so the whole datasource fell through and produced ZERO elements. Fix emits a kind:'sql' element with the statement preserved verbatim and columns self-referencing via the [Custom SQL/<COL>] keyword. Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "TJ", "schema": "PUBLIC" },
+  "asserts": { "minElements": 1, "noErrorColumns": true }
+}

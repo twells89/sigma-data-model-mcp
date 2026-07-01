@@ -1889,6 +1889,82 @@ export function convertTableauToSigma(
           warnings.push('⚠ Virtual connection: pass database and schema parameters to set the full warehouse path.');
         }
       }
+
+    } else if (relType === 'text') {
+      // ── Tableau Custom SQL datasource ────────────────────────────────────
+      // A "Custom SQL Query" is a <relation type='text'> whose text content is a
+      // single SQL statement (no named warehouse table). Sigma models this as ONE
+      // element with source.kind === 'sql'. Per the spec-correctness rules
+      // (CLAUDE.md #3): OMIT the element-level name, and reference the SQL's output
+      // columns with bare [Display Name] formulas (Sigma fuzzy-matches case/
+      // underscore variants for self-references inside the same SQL element).
+      // fast-xml-parser decodes NAMED entities (&amp; &lt; …) but leaves numeric
+      // character references (&#13; &#10; &#9;) — Tableau encodes SQL line breaks
+      // that way, so decode them or they land literally in the statement and break
+      // the warehouse query.
+      const decodeNumericEntities = (s: string): string =>
+        s.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+         .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)));
+      const statement = decodeNumericEntities((rootRelation['#text'] || '').toString()).trim();
+      if (!statement) {
+        warnings.push('⚠ Custom SQL relation carried no SQL text — no element emitted.');
+      } else {
+        // Caption overrides from datasource-level <column caption='…' name='[remote]'> defs.
+        const capByName: Record<string, string> = {};
+        for (const col of asArray(ds.ds?.column || [])) {
+          const nm  = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
+          const cap = attr(col, 'caption');
+          if (nm && cap) capByName[nm.toUpperCase()] = cap;
+        }
+
+        // Column inventory: prefer the relation's inline <columns><column> projection,
+        // else the connection's <metadata-record class='column'> (remote-name = SQL
+        // output column). Either yields the columns the query actually emits.
+        const rawCols: { name: string }[] = [];
+        for (const col of asArray(rootRelation?.columns?.column || [])) {
+          const nm = attr(col, 'name');
+          if (nm) rawCols.push({ name: nm });
+        }
+        if (rawCols.length === 0) {
+          for (const mr of asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || [])) {
+            if (attr(mr, 'class') !== 'column') continue;
+            const remote = ((mr['remote-name'] as string) || '').trim();
+            if (remote) rawCols.push({ name: remote });
+          }
+        }
+
+        const columns: any[] = [], order: string[] = [];
+        const seen = new Set<string>();
+        for (const rc of rawCols) {
+          const clean = rc.name.replace(/^\[|\]$/g, '');
+          const upper = clean.toUpperCase();
+          if (!clean || seen.has(upper)) continue;
+          seen.add(upper);
+          // A SQL element self-references its own output columns via the fixed
+          // "Custom SQL" keyword + the SQL-emitted column identifier (uppercased
+          // to match Snowflake's folding of unquoted aliases). Verified against
+          // the live API: bare [Display], [COL], and [<elementName>/COL] all
+          // resolve to `error`; only [Custom SQL/<COL>] resolves. The element's
+          // `name` is the human label; the `[Custom SQL/…]` qualifier is a keyword,
+          // independent of the element name.
+          const colKey = clean.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+          const display = capByName[upper] || sigmaDisplayName(clean);
+          const id = sigmaInodeId(colKey);
+          columns.push({ id, formula: `[Custom SQL/${colKey}]`, name: display });
+          order.push(id);
+        }
+
+        // Custom SQL elements omit the element-level name (CLAUDE.md #3).
+        elements.push({ id: sigmaShortId(), kind: 'table',
+          source: { connectionId: connId, kind: 'sql', statement },
+          columns, order } as any);
+
+        if (columns.length === 0) {
+          warnings.push('⚠ Custom SQL element emitted with no columns (no <columns> projection or column metadata-records found) — add columns from the query output.');
+        } else {
+          warnings.push(`ℹ Custom SQL datasource → Sigma SQL element (source.kind:'sql', ${columns.length} column(s)). The SQL statement is preserved verbatim; verify column display names resolve against the query output.`);
+        }
+      }
     }
   }
 

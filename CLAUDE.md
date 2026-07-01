@@ -15,9 +15,9 @@ These are bug classes that have shipped to production and broken Sigma POSTs. Ev
 2. **dbt-style relationship `name`** = uppercase target warehouse-table name (e.g., `CUSTOMER_DIM`), NOT a sigmaDisplayName phrase like `"Order Fact to Customer Dim"`. The relationship name is also the middle segment of three-part cross-element formulas `[SRC_TABLE/REL_NAME/Col]` in derived elements built by `buildDerivedElements`.
 
 3. **Custom SQL elements** (`source.kind === 'sql'`):
-   - OMIT the element-level `name` field entirely (not `null`, not present).
-   - Column formulas use bare `[Display Name]` form for snake_case SQL columns (Sigma fuzzy-matches case/underscore variants for self-references inside the same SQL element).
-   - The qualified `[Custom SQL/Display Name]` form ONLY works when the SQL emits literally-matching double-quoted aliases (`AS "Display Name"`) — most converters don't, so default to bare.
+   - OMIT the element-level `name` field (server assigns "Custom SQL"); an explicit `name` is also fine and does not affect column resolution.
+   - Column formulas MUST use the SOURCE-qualified `[Custom SQL/<COL>]` form, where `<COL>` is the SQL-emitted output column identifier UPPERCASED (Snowflake folds unquoted aliases to upper). `Custom SQL` here is a FIXED keyword for a SQL element's own output columns — it is NOT the element name (verified live 2026-07: with the element named `PODVIEW`, `[Custom SQL/POD_ID]` resolved but `[PODVIEW/POD_ID]` → 400 dependency-not-found).
+   - Bare forms (`[Display Name]`, `[POD_ID]`, `[pod_id]`) all compile to column type `error` — they do NOT resolve, despite older guidance. Verified against the live `/v2/dataModels/spec` + `describe`/`query` path (matches the LookML converter's proven shape). An empty `columns: []` yields a zero-column, unqueryable element — always populate columns.
 
 4. **Cross-element column references** use the relationship-name form `[ELEMENT_NAME/REL_NAME/Field]`. The dash-link form `[ELEMENT_NAME/FK_COL - link/Field]` does NOT work via the API — POSTs are silently rejected or refs render broken.
 
