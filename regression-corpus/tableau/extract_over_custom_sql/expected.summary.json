@@ -1,0 +1,5 @@
+{
+  "description": "Extract-over-Custom-SQL: a .hyper extract whose PRIMARY <connection> lists the [Extract].[Extract] placeholder relation first, with the real Custom SQL (type='text') as a sibling relation on the same connection. Before pickRootRelation the converter picked connRelations(conn)[0] = the placeholder and emitted a 0-column [Extract].[Extract] warehouse-table element (reported by a customer: .hyper extract over Custom SQL from EDNA.CONS_BI_DATA_MART.EDNA_SALES_FUNNEL_CURR_AUTHORIZED_USERS -> 0 elements/columns). Fix prefers the type='text' relation -> a kind:sql element with the query's columns. Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "TJ", "schema": "PUBLIC" },
+  "asserts": { "minElements": 1, "minHelperElements": 1, "noErrorColumns": true }
+}
