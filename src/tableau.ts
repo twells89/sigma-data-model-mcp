@@ -110,6 +110,46 @@ function pickRootRelation(conn: any): any {
   return meaningful || rels[0];
 }
 
+/** Flatten a datasource's connection value (object OR array) plus every nested
+ *  <connection> child and <named-connection><connection> into a flat list, in
+ *  document order (outermost first). */
+function allConnections(connVal: any): any[] {
+  const out: any[] = [];
+  const visit = (c: any): void => {
+    if (!c) return;
+    if (Array.isArray(c)) { c.forEach(visit); return; }
+    if (typeof c !== 'object') return;
+    out.push(c);
+    if (c.connection) visit(c.connection);                       // nested <connection>
+    const ncs = c['named-connections'];
+    if (ncs) for (const nc of asArray(ncs['named-connection'] || [])) visit(nc?.connection);
+  };
+  visit(connVal);
+  return out;
+}
+
+/** Resolve the connection to build elements from. A .hyper extract (or published
+ *  sqlproxy) datasource often makes the extract the OUTER/first <connection> —
+ *  either wrapping the live warehouse <connection> (nested) or as a sibling in a
+ *  <connection> array — so the real schema (a Custom SQL type='text', a join, or
+ *  a base table) lives on a DIFFERENT connection than the one picked first.
+ *  connRelations(outer)[0] then resolves to the [Extract].[Extract] placeholder
+ *  and emits a 0-column element. Prefer the connection that actually bears a
+ *  meaningful (non-placeholder) relation; drill through nested/sibling/named
+ *  connections to find it. Falls back to the first connection (unchanged
+ *  behaviour) when none is more meaningful — so the common single-connection and
+ *  metadata-records-recovery paths are untouched. */
+function effectiveConnection(connVal: any): any {
+  const conns = allConnections(connVal);
+  if (conns.length === 0) return Array.isArray(connVal) ? connVal[0] : connVal;
+  const meaningful = conns.find((c) => connRelations(c).some((r) => {
+    const t = attr(r, 'type') || 'table';
+    if (t === 'text' || t === 'join' || t === 'collection') return true;
+    return !isExtractPlaceholderRel(r);
+  }));
+  return meaningful || conns[0];
+}
+
 /** Resolve a possibly feature-flag-namespaced CHILD element. The encapsulated
  *  object model keys children too — e.g. the object graph is
  *  `_.fcp.ObjectModelEncapsulateLegacy.true...object-graph`, not `object-graph`,
@@ -1328,6 +1368,10 @@ export function convertTableauToSigma(
 
   const dsIdx = Math.min(datasourceIndex, datasources.length - 1);
   const ds = datasources[dsIdx];
+  // The connection that actually bears the schema — drills past a .hyper/sqlproxy
+  // extract wrapper (nested or sibling) to the live warehouse connection. Used for
+  // both root-relation selection and <metadata-records> column recovery below.
+  const rootConn = effectiveConnection(ds.connection);
   const warnings: string[] = [];
   const security: SecurityRule[] = [];   // detected RLS — reported, not injected (architecture B)
   // Window/table calcs whose faithful Sigma equivalent only works in CHART /
@@ -1399,7 +1443,7 @@ export function convertTableauToSigma(
       if (guid && ownerRel) guidOwnerRel[guid.toLowerCase()] = ownerRel;
     }
     // (2) metadata-records — GUID → caption (most authoritative; carries <caption>).
-    for (const mr of asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || [])) {
+    for (const mr of asArray((rootConn as any)?.['metadata-records']?.['metadata-record'] || [])) {
       if (attr(mr, 'class') !== 'column') continue;
       const guid = ((mr['remote-name'] as string) || '').trim();
       const cap  = ((mr['caption'] as string) || '').trim();
@@ -1450,7 +1494,7 @@ export function convertTableauToSigma(
   // a <relation>. These have no physical counterpart in the warehouse table (the parse
   // is a Tableau transform), so emitting them as base columns invents phantoms.
   const derivedRelColGuids = new Set<string>();
-  for (const rel of connRelations(ds.connection)) {
+  for (const rel of connRelations(rootConn)) {
     const scanRel = (r: any) => {
       for (const col of asArray(r?.columns?.column || [])) {
         const nm = (attr(col, 'name') || '').replace(/^\[|\]$/g, '');
@@ -1481,7 +1525,7 @@ export function convertTableauToSigma(
       });
 
   // ── Build elements from relation structure ──────────────────────────────
-  const rootRelation = ds.connection ? (pickRootRelation(ds.connection) || null) : null;
+  const rootRelation = rootConn ? (pickRootRelation(rootConn) || null) : null;
 
   if (rootRelation) {
     const relType = attr(rootRelation, 'type') || 'table';
@@ -1615,7 +1659,7 @@ export function convertTableauToSigma(
         // formula uses the STRIPPED clean name; the blend-collapse must read each
         // island's column by its exact output name and re-alias it to the clean name.
         const colSqlNameById: Record<string, string> = {};
-        const metaRecords = asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || []);
+        const metaRecords = asArray((rootConn as any)?.['metadata-records']?.['metadata-record'] || []);
         const stripBrackets = (s: string) => s.replace(/^\[|\]$/g, '');
         for (const mr of metaRecords) {
           if (attr(mr, 'class') !== 'column') continue;
@@ -1960,7 +2004,7 @@ export function convertTableauToSigma(
           if (nm) rawCols.push({ name: nm });
         }
         if (rawCols.length === 0) {
-          for (const mr of asArray((ds.connection as any)?.['metadata-records']?.['metadata-record'] || [])) {
+          for (const mr of asArray((rootConn as any)?.['metadata-records']?.['metadata-record'] || [])) {
             if (attr(mr, 'class') !== 'column') continue;
             const remote = ((mr['remote-name'] as string) || '').trim();
             if (remote) rawCols.push({ name: remote });
