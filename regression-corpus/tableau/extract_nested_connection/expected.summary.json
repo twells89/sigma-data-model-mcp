@@ -1,0 +1,5 @@
+{
+  "description": "Extract-over-Custom-SQL, NESTED-connection variant: a .hyper extract is the OUTER <connection> (relation = [Extract].[Extract] placeholder) and the live warehouse connection carrying the real Custom SQL (type='text') is a NESTED <connection> underneath. effectiveConnection() must drill through the outer extract to the nested connection's meaningful relation and source columns from its <metadata-records>, instead of emitting a 0-column [Extract].[Extract] element. Companion to extract_over_custom_sql (sibling-relation variant). Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "TJ", "schema": "PUBLIC" },
+  "asserts": { "minElements": 1, "minHelperElements": 1, "noErrorColumns": true }
+}

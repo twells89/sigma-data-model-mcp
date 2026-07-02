@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook version='18.1'>
+  <datasources>
+    <datasource caption='Nested Extract DS' inline='true' name='federated.nested01' version='18.1'>
+      <!-- .hyper extract as the OUTER connection (its relation is the
+           [Extract].[Extract] placeholder); the live warehouse connection with
+           the real Custom SQL is a NESTED <connection> underneath. The converter
+           must drill through the outer extract to the nested connection's
+           type='text' relation instead of emitting a 0-column [Extract].[Extract]
+           element. Targets TJ.PUBLIC.SUPERSTORE_ORDERS for portability. -->
+      <connection class='hyper' dbname='C:/Temp/extract.hyper' schema='Extract' tablename='Extract'>
+        <relation name='Extract' table='[Extract].[Extract]' type='table' />
+        <connection class='snowflake' dbname='TJ' schema='PUBLIC' server='csa.snowflakecomputing.com' warehouse='WH'>
+          <relation name='Custom SQL Query' type='text'>WITH cte AS (SELECT ORDER_ID, SEGMENT, SALES, PROFIT FROM TJ.PUBLIC.SUPERSTORE_ORDERS) SELECT * FROM cte</relation>
+          <metadata-records>
+            <metadata-record class='column'><remote-name>ORDER_ID</remote-name><local-type>string</local-type></metadata-record>
+            <metadata-record class='column'><remote-name>SEGMENT</remote-name><local-type>string</local-type></metadata-record>
+            <metadata-record class='column'><remote-name>SALES</remote-name><local-type>real</local-type></metadata-record>
+            <metadata-record class='column'><remote-name>PROFIT</remote-name><local-type>real</local-type></metadata-record>
+          </metadata-records>
+        </connection>
+      </connection>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sheet 1'>
+      <table><view><datasources><datasource caption='Nested Extract DS' name='federated.nested01'/></datasources></view></table>
+    </worksheet>
+  </worksheets>
+</workbook>
