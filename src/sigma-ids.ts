@@ -84,12 +84,19 @@ export function sigmaDisplayName(s: string): string {
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')  // HTMLParser → HTML_Parser
     .replace(/([A-Za-z])([0-9])/g, '$1_$2')     // Q1 → Q_1, FY2024 → FY_2024
     .replace(/([0-9])([A-Za-z])/g, '$1_$2');    // 2024FY → 2024_FY
-  // Split on underscores AND whitespace so the function is IDEMPOTENT:
+  // Split on underscores, whitespace AND slashes so the function is IDEMPOTENT:
   // sigmaDisplayName("Cyq Rev") === "Cyq Rev". Formulas pass through the expression
   // translator more than once, and same-element sibling refs are resolved
   // case-SENSITIVELY by Sigma — a non-idempotent derivation ("Cyq Rev" → "Cyq rev")
   // breaks the ref and the column compiles to type "error".
-  const words = normalized.toLowerCase().split(/[_\s]+/).filter(Boolean);
+  // `/` is Sigma's ref-path separator ([Element/Column]) — a field literally named
+  // "Country/Region" emits [ORDERS/Country/region], which Sigma parses as a nested
+  // path and cannot resolve (type "error"). Fold the slash to a word boundary so it
+  // normalizes to the physical column ("Country Region" → COUNTRY_REGION).
+  // `-` is likewise not a warehouse identifier char: Sigma does NOT fold "Sub-Category"
+  // to SUB_CATEGORY, so a Tableau caption like "Sub-Category" fails to resolve against
+  // the underscore-named warehouse column. Fold it to a space so it does.
+  const words = normalized.toLowerCase().split(/[_\s/-]+/).filter(Boolean);
   return words.map((w, i) =>
     (i === 0 || !SIGMA_LOWERCASE_WORDS.has(w))
       ? w.charAt(0).toUpperCase() + w.slice(1)
