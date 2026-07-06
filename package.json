@@ -12,7 +12,7 @@
     "start:local": "node build/index.js",
     "dev": "tsx src/server.ts",
     "dev:local": "tsx src/index.ts",
-    "test": "node --import tsx/esm --test src/lookml.test.ts src/cognos.test.ts src/cube.test.ts src/quicksight.formula.test.ts src/thoughtspot.test.ts src/powerbi.pbi-fix.test.ts src/powerbi.fix-3.test.ts src/powerbi.fix-4.test.ts src/powerbi.hard-dax.test.ts src/qlik.test.ts src/tableau.window.test.ts src/tableau.objectmodel.test.ts",
+    "test": "node --import tsx/esm --test src/lookml.test.ts src/cognos.test.ts src/cube.test.ts src/quicksight.formula.test.ts src/thoughtspot.test.ts src/powerbi.pbi-fix.test.ts src/powerbi.fix-3.test.ts src/powerbi.fix-4.test.ts src/powerbi.hard-dax.test.ts src/qlik.test.ts src/tableau.window.test.ts src/tableau.objectmodel.test.ts src/tableau.identifier-quoting.test.ts",
     "test:integration": "node --import tsx/esm --test src/lookml.integration.test.ts",
     "regression": "node scripts/regression.mjs",
     "regression:browser": "node scripts/regression-browser.mjs",

@@ -1,0 +1,14 @@
+{
+  "description": "LOD over a plain physical table whose warehouse columns are mixed-case / spaced quoted identifiers ('SFDC Oppty ID', 'Sales Region', 'Amount USD'). INCLUDE + 2 FIXED LODs → 2 helper elements. Regression for the bug where helper SQL emitted bare UPPER_SNAKE identifiers (SFDC_OPPTY_ID) that Snowflake fails to match against the real quoted mixed-case column. The fix recovers remote-name from metadata-records and quotes it; already-uppercase cols (STAGE_NAME, PROFIT) stay bare. Points at CSA.TJ.LOD_QUOTED_TEST (created from SUPERSTORE_ORDERS with aliased mixed-case columns).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 2,
+    "minHelperElements": 2,
+    "noErrorColumns": true
+  }
+}
