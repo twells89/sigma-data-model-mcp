@@ -869,6 +869,29 @@ export function collapseCustomSqlBlend(
 
 // ── Path Extraction ──────────────────────────────────────────────────────────
 
+// Per-conversion Tableau→warehouse table remap (set from options.tableMapping at
+// the top of convertTableauToSigma). Packaged-extract (.twbx) workbooks name their
+// logical table after the extract sheet — "Orders$" — which almost never matches
+// the physical warehouse table ("ORDERS"). We (a) strip the trailing "$" extract
+// suffix by default, and (b) honor an explicit override so a mismatched name
+// ("Orders" → "SALES_ORDERS") can be redirected. Applied to the table segment so
+// every dependent — source.path, base column formulas [TABLE/Col], relationship
+// names, cross-element refs — stays consistent (a path-only rewrite fails: Sigma
+// then can't resolve the [OLDNAME/Col] formula prefixes).
+let _tableMapping: Record<string, string> = {};
+
+function resolveTableName(tbl: string): string {
+  if (!tbl) return tbl;
+  const stripped = tbl.replace(/\$+$/, ''); // "ORDERS$" → "ORDERS"
+  const up = tbl.toUpperCase();
+  const strippedUp = stripped.toUpperCase();
+  for (const [k, v] of Object.entries(_tableMapping)) {
+    const ku = k.toUpperCase();
+    if (k === tbl || k === stripped || ku === up || ku === strippedUp) return v;
+  }
+  return stripped;
+}
+
 function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
   const rawTable = attr(rel, 'table') || attr(rel, 'name') || '';
   // Strip brackets, disambiguation suffixes (e.g. "(CSA.TABLE)"), then filter UUID path segments
@@ -882,11 +905,11 @@ function extractPath(rel: any, dbOverride: string, schOverride: string): string[
 
   let path: string[];
   if (parts.length >= 2) {
-    path = [...parts.slice(0, -1), stripHash(parts[parts.length - 1])];
+    path = [...parts.slice(0, -1), resolveTableName(stripHash(parts[parts.length - 1]))];
   } else if (parts.length === 1) {
-    path = [schOverride || 'SCHEMA', stripHash(parts[0])];
+    path = [schOverride || 'SCHEMA', resolveTableName(stripHash(parts[0]))];
   } else {
-    path = [attr(rel, 'name').toUpperCase() || 'UNKNOWN'];
+    path = [resolveTableName(attr(rel, 'name').toUpperCase()) || 'UNKNOWN'];
   }
 
   if (dbOverride) {
@@ -1264,9 +1287,14 @@ export function convertTableauToSigma(
 ): ConversionResult {
   resetIds();
 
-  const { connectionId = '', database = '', schema = '', datasourceIndex = 0 } = options;
-  const dbOverride = (database || '').toUpperCase();
-  const schOverride = (schema || '').toUpperCase();
+  const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;
+  _tableMapping = tableMapping || {};
+  // Preserve the caller's exact db/schema case — warehouse identifiers are quoted
+  // per-segment in Sigma's path-array lookup, so a mixed-case or spaced schema
+  // ("Tableau Test") must NOT be folded to "TABLEAU TEST" (that path won't resolve).
+  // Callers that want the historical Snowflake upper-fold pass upper already (CSA/TJ).
+  const dbOverride = database || '';
+  const schOverride = schema || '';
 
   // Parse XML
   let parsed: any;

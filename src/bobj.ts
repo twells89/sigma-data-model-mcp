@@ -62,6 +62,10 @@ export interface BobjConvertOptions {
   tableMap?: Record<string, BobjTableRemap>;
   /** Column remap keyed "OLD_TABLE.OLD_COL" (or "*.OLD_COL" for any table) → new column name. */
   columnMap?: Record<string, string>;
+  /** Detected input format ('sdk-xml' | 'json-with-joins' | 'json-outline'); set by
+   *  convertBobjToSigma so the conversion can tell the user whether the provided file
+   *  can carry a join graph. */
+  inputKind?: 'sdk-xml' | 'json-with-joins' | 'json-outline';
 }
 
 // ── Public entry point: RWS JSON *or* SL-SDK XML → Sigma ─────────────────────
@@ -79,7 +83,23 @@ export function convertBobjToSigma(
   options: BobjConvertOptions = {},
 ): ConversionResult {
   const uni = parseBobjInput(input);
-  return convertBobjIR(uni, options);
+  return convertBobjIR(uni, { ...options, inputKind: detectBobjInputKind(input) });
+}
+
+/** Classify the raw input so the conversion can tell the user, up front, whether the
+ *  file they provided carries a join graph:
+ *   - 'sdk-xml'         SL-SDK / IDT XML export → data foundation + joins expected
+ *   - 'json-with-joins' full IR / extractor --json → joins present
+ *   - 'json-outline'    RWS REST outline JSON → NO joins/columns by SAP design */
+export function detectBobjInputKind(input: any): 'sdk-xml' | 'json-with-joins' | 'json-outline' {
+  if (typeof input === 'string' && input.trim().startsWith('<')) return 'sdk-xml';
+  let obj: any = input;
+  if (typeof input === 'string') {
+    try { obj = JSON.parse(input); } catch { obj = {}; }
+  }
+  const root = obj?.universe ?? obj ?? {};
+  const rawJoins = root.joins || root.dataFoundation?.joins || obj?.joins;
+  return Array.isArray(rawJoins) && rawJoins.length ? 'json-with-joins' : 'json-outline';
 }
 
 /** Route any accepted input shape to the `BobjUniverse` IR. */
@@ -312,8 +332,16 @@ interface ElemCtx {
 export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {}): ConversionResult {
   resetIds();
   const { connectionId = '<CONNECTION_ID>', database: dbOverride = '', schema: schOverride = '',
-          modelName, tableMap, columnMap } = options;
+          modelName, tableMap, columnMap, inputKind } = options;
   const warnings: string[] = [];
+
+  // Tell the user, up front, whether the file they provided can carry joins — the #1
+  // cause of a low-column workbook is an outline-only input silently producing a
+  // joinless model.
+  if (inputKind === 'json-outline')
+    warnings.push(`Input format: RWS outline JSON — carries object names/types/folders ONLY, not the data foundation (physical tables, joins) or object SELECTs. Expect 0 relationships and outline-only columns. For a full model (joins + all columns) provide an SL-SDK / IDT XML export instead (scripts/extract-universe-sdk.groovy).`);
+  else if (inputKind === 'sdk-xml')
+    warnings.push(`Input format: SL-SDK / IDT XML export — carries the data foundation, so joins and physical columns are expected. If relationships still come out 0, check the per-join warnings below.`);
 
   // Target-layer remap (restructured / platinum layer): rewrite the universe's old
   // physical table/column names to the new warehouse names BEFORE conversion, so the
@@ -465,6 +493,18 @@ export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {
     metrics: elements.reduce((n, e) => n + ((e as any).metrics?.length || 0), 0),
     relationships: elements.reduce((n, e) => n + (e.relationships?.length || 0), 0),
   };
+
+  // Guard: a multi-table universe that produced NO relationships yields a low-fidelity
+  // model — the denormalized View can only traverse to dimension columns via a
+  // relationship, so a workbook bound to it sees just the one fact table's columns.
+  // This used to happen silently; surface it loudly.
+  const physicalCount = elements.filter(e => e.source?.kind === 'warehouse-table').length;
+  if (physicalCount > 1 && stats.relationships === 0) {
+    if (!uni.joins.length)
+      warnings.push(`No joins in the universe input: ${physicalCount} tables produced 0 relationships, so a workbook can only reach ONE table's columns. If this came from the RWS outline (GET /sl/v1/universes/{id}), that REST path carries no join graph by design — re-extract with the SL-SDK / IDT XML path (scripts/extract-universe-sdk.groovy) so joins and the full column set come through.`);
+    else
+      warnings.push(`${uni.joins.length} join(s) present but 0 produced a relationship — a workbook can only reach ONE table's columns. See the per-join warnings above: joins whose expression isn't a simple equi-join, or whose tables/aliases aren't in the exported data foundation, are dropped. Verify each join expression and that every joined table is exported.`);
+  }
 
   return {
     model: { name: modelName || uni.name, schemaVersion: 1, pages: [{ id: sigmaShortId(), name: 'Page 1', elements }] },
@@ -810,10 +850,27 @@ function aggFormula(agg: string, inner: string): string {
 /** Parse equi-join keys from a join's expression (or its left/right hints). */
 function parseJoinKeys(join: BobjJoin): { leftTable: string; leftCol: string; rightTable: string; rightCol: string } | null {
   const expr = join.expression || '';
-  // First equality of two Table.Col tokens.
-  const m = expr.match(/"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?\s*=\s*"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?/);
-  if (m) return { leftTable: m[1].trim(), leftCol: m[2].trim(), rightTable: m[3].trim(), rightCol: m[4].trim() };
-  return null;
+  // First equality of two qualified column refs, each 2-or-more dotted, optionally
+  // quoted segments — so schema/catalog-qualified 3-part names
+  // ("DWH"."CUSTOMER"."ID" = "DWH"."SALES"."CUST_ID") resolve, not just bare
+  // Table.Col. The last two segments of each ref are taken as table.col.
+  // One identifier segment: a quoted/bracketed token (spaces allowed inside) OR a bare
+  // unquoted identifier (no spaces — so it can't swallow " AND "/operators in a
+  // multi-condition join).
+  const seg = '(?:["\'`\\[][^"\'`\\]]+["\'`\\]]|[A-Za-z_]\\w*)';
+  const ref = '((?:' + seg + '\\s*\\.\\s*)+' + seg + ')'; // 2+ dot-separated segments
+  const m = expr.match(new RegExp(ref + '\\s*=\\s*' + ref));
+  if (!m) return null;
+  const l = splitDottedRef(m[1]), r = splitDottedRef(m[2]);
+  if (!l || !r) return null;
+  return { leftTable: l.table, leftCol: l.col, rightTable: r.table, rightCol: r.col };
+}
+
+/** Split a dotted, optionally-quoted ref into { table, col } via its last two segments. */
+function splitDottedRef(ref: string): { table: string; col: string } | null {
+  const parts = String(ref).split('.').map(p => p.replace(/["'`\[\]]/g, '').trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  return { table: parts[parts.length - 2], col: parts[parts.length - 1] };
 }
 
 /**

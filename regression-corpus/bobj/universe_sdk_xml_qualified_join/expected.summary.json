@@ -1,0 +1,9 @@
+{
+  "description": "Same eFashion SL-SDK/IDT XML model as universe_sdk_xml, but the data-foundation join is written with fully schema/catalog-qualified identifiers (\"CSA\".\"TJ\".\"ORDER_FACT\".\"CUSTOMER_KEY\" = ...). Guards the parseJoinKeys N-part fix: before it, a qualified join failed the bare Table.Col regex and was silently dropped, yielding 0 relationships and a workbook that could only reach one table's columns. The relationship (and the cross-element joined columns) must still resolve.",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 1,
+    "noErrorColumns": true
+  }
+}
