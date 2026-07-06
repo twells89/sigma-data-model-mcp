@@ -2183,6 +2183,52 @@ export function convertTableauToSigma(
     const rewriteBaseExpr = (expr: string): string =>
       expr.replace(/\b([A-Z][A-Z0-9_]*)\b/g, (_m: string, tok: string) => resolveBaseToken(tok));
 
+    // ── Plain-table path: recover the REAL warehouse column name so raw LOD /
+    // Top-N / window helper SQL can quote mixed-case / spaced identifiers.
+    //
+    // The fact element here is a physical `kind:'table'` (not a collapsed-blend
+    // kind:'sql'), so `physToQuotedAlias` above is empty. Every capture point
+    // (`normalizeColumnName`, `_tableauInnerToSql`, `_resolveDimDisplayName`)
+    // upper-cases and underscores identifiers, so a warehouse column like
+    // `"SFDC Oppty ID"` is emitted BARE as `SFDC_OPPTY_ID` — which Snowflake
+    // folds to upper and fails to match the actual quoted mixed-case column.
+    //
+    // metadata-records carry the true `remote-name`; we key it by its
+    // upper-snake form (matching the tokens the emitters produce) → the quoted
+    // real name. We only add entries that ACTUALLY need quoting (name differs
+    // from its upper-snake form), so an already-uppercase column like
+    // `CUSTOMER_NAME` is never rewritten and existing specs are byte-identical.
+    const physToRealQuoted: Record<string, string> = {};
+    if ((factEl as any)?.source?.kind !== 'sql') {
+      const _addReal = (remote: string) => {
+        const r = (remote || '').trim();
+        if (!r) return;
+        const snakeUpper = r.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();          // matches _tableauInnerToSql
+        const normUpper = r.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase(); // matches normalizeColumnName
+        const spaceUpper = r.replace(/\s+/g, '_').toUpperCase();                     // matches _resolveDimDisplayName
+        // Only quote when the real name is NOT already a safe bare identifier.
+        if (r === snakeUpper && !/^[0-9]/.test(r)) return;
+        const quoted = `"${r}"`;
+        for (const k of [snakeUpper, normUpper, spaceUpper]) {
+          if (k && !(k in physToRealQuoted)) physToRealQuoted[k] = quoted;
+        }
+      };
+      for (const mr of asArray((rootConn as any)?.['metadata-records']?.['metadata-record'] || [])) {
+        _addReal((mr['remote-name'] as string) || '');
+      }
+    }
+    const hasRealNames = Object.keys(physToRealQuoted).length > 0;
+    // Quote a single dim token to its real warehouse name (else leave bare).
+    const quotePhysToken = (tok: string): string =>
+      physToRealQuoted[tok] || physToRealQuoted[tok.toUpperCase()] || tok;
+    // Rewrite bare uppercase tokens in an agg/order expression to quoted real
+    // names — only tokens present in the map are touched, so SQL keywords
+    // (SUM, COUNT, DISTINCT, …) and already-safe identifiers pass through.
+    const rewritePhysExpr = (expr: string): string =>
+      !hasRealNames ? expr
+        : expr.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g,
+            (m: string, tok: string) => physToRealQuoted[tok.toUpperCase()] || m);
+
     const lodChildElements: any[] = [];
 
     // ── LOD: build worksheet view-dim index and helper-element registry ───
@@ -2252,7 +2298,12 @@ export function convertTableauToSigma(
       // Internal: defer SQL emission until we know all aggregates
       lodHelpers[signatureKey] = {
         element: helperEl,
-        groupDimNames: effectiveDims.slice(),
+        // Use the RESOLVED physical-upper names (aligned 1:1 with effectiveDims),
+        // not the raw effective names. INCLUDE/EXCLUDE worksheet dims arrive as
+        // display strings (e.g. "SALES REGION" with a space); the resolved
+        // dimUpper ("SALES_REGION") is what quotePhysToken maps to the real
+        // quoted warehouse column and what keeps GROUP BY / SELECT consistent.
+        groupDimNames: dimResolved.map(d => d.dimUpper),
         groupDimDisplayNames: dimResolved.map(d => d.displayName),
         groupDimColIds,
         aggsByExpr: {},
@@ -2313,11 +2364,18 @@ export function convertTableauToSigma(
         const dimList = useBase
           ? rec.groupDimDisplayNames.map(dn =>
               physToQuotedAlias[dn.replace(/\s+/g, '_').toUpperCase()] || `"${dn}"`).join(', ')
-          : rec.groupDimNames.join(', ');
+          // When we quote a mixed-case column, its SQL output name becomes the
+          // quoted (mixed-case) string. The helper's dim COLUMN formula is
+          // `[Custom SQL/<UPPER>]` (spec rule 3), so alias the quoted source back
+          // to the upper-snake name to keep the output identifier resolvable.
+          : rec.groupDimNames.map(dn => {
+              const q = quotePhysToken(dn);
+              return q === dn ? dn : `${q} AS ${dn}`;
+            }).join(', ');
         const aggParts: string[] = [];
         for (const k of Object.keys(rec.aggsByExpr)) {
           const a = rec.aggsByExpr[k];
-          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : a.aggExpr;
+          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : rewritePhysExpr(a.aggExpr);
           let sqlAggFunc = a.aggFunc;
           if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + safeExpr + ')';
           else sqlAggFunc = `${sqlAggFunc}(${safeExpr})`;
@@ -2459,25 +2517,36 @@ export function convertTableauToSigma(
       const fe = factEl as any;
       const { fromClause: topNFrom, ctePrefix: topNCtePrefix } = _baseFromExpr();
       const topNUseBase = topNFrom === '__lod_base';
-      // Resolve column references to quoted display aliases when selecting from __lod_base.
-      const groupCols = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)]
-        .map(c => topNUseBase ? (physToQuotedAlias[c] || c) : c);
-      const groupByIdx = groupCols.map((_g, i) => i + 1).join(', ');
+      // The agg CTE reads from the fact table, so it QUOTES mixed-case columns
+      // and aliases them to their bare upper-snake name. Every downstream CTE
+      // (ranked, outer) and the OVER's PARTITION BY then reference that bare
+      // alias — which is also what the helper's `[Custom SQL/<UPPER>]` column
+      // formula expects. (__lod_base path keeps its quoted-display behavior.)
+      const groupDims = [keyResolved.dimUpper, ...partResolved.map(p => p.dimUpper)];
+      const _tnSource = (c: string) => {
+        if (topNUseBase) return physToQuotedAlias[c] || c;
+        const q = quotePhysToken(c);
+        return q === c ? c : `${q} AS ${c}`;
+      };
+      const _tnOut = (c: string) => topNUseBase ? (physToQuotedAlias[c] || c) : c;
+      const groupColsSource = groupDims.map(_tnSource);
+      const groupColsOut = groupDims.map(_tnOut);
+      const groupByIdx = groupDims.map((_g, i) => i + 1).join(', ');
       let aggSql = top.byAggFunc;
-      const safeByField = topNUseBase ? rewriteBaseExpr(top.byField) : top.byField;
+      const safeByField = topNUseBase ? rewriteBaseExpr(top.byField) : rewritePhysExpr(top.byField);
       if (aggSql === 'COUNTD') aggSql = `COUNT(DISTINCT ${safeByField})`;
       else aggSql = `${aggSql}(${safeByField})`;
       const partBy = top.partitionBy.length > 0
-        ? `PARTITION BY ${top.partitionBy.join(', ')} `
+        ? `PARTITION BY ${top.partitionBy.map(_tnOut).join(', ')} `
         : '';
       const overClause = `RANK() OVER (${partBy}ORDER BY s ${dirSql})`;
       const innerSelect =
-        `SELECT ${groupCols.join(', ')}, ${aggSql} AS s FROM ${topNFrom} GROUP BY ${groupByIdx}`;
+        `SELECT ${groupColsSource.join(', ')}, ${aggSql} AS s FROM ${topNFrom} GROUP BY ${groupByIdx}`;
       const rankedSelect =
-        `SELECT ${groupCols.join(', ')}, s, ${overClause} AS RNK FROM agg`;
+        `SELECT ${groupColsOut.join(', ')}, s, ${overClause} AS RNK FROM agg`;
       const outerCols = emitIsTopNInSql
-        ? `${groupCols.join(', ')}, s AS TOTAL, RNK, (RNK <= ${nLiteral}) AS IS_TOP_N`
-        : `${groupCols.join(', ')}, s AS TOTAL, RNK`;
+        ? `${groupColsOut.join(', ')}, s AS TOTAL, RNK, (RNK <= ${nLiteral}) AS IS_TOP_N`
+        : `${groupColsOut.join(', ')}, s AS TOTAL, RNK`;
       const outerSelect = `SELECT ${outerCols} FROM ranked`;
       // If ctePrefix is non-empty, start a WITH chain with the promoted CTEs and
       // append agg/ranked. Otherwise use a standalone WITH.
@@ -2665,8 +2734,14 @@ export function convertTableauToSigma(
       windowAlias: string,
       innerAlias: string,
     ): { ok: boolean; reason?: string } {
+      // OVER's PARTITION BY references the inner base-CTE OUTPUT columns. On the
+      // plain-table path the base SELECT quotes+aliases mixed-case columns to
+      // their bare upper-snake alias, so downstream we reference the bare alias
+      // (NOT the re-quoted source name).
+      const _winUseBase = _baseFromExpr().fromClause === '__lod_base';
+      const _emitPartDim = (d: string) => _winUseBase ? (physToQuotedAlias[d] || d) : d;
       const partBy = rec.partitionDimNames.length > 0
-        ? `PARTITION BY ${rec.partitionDimNames.join(', ')}`
+        ? `PARTITION BY ${rec.partitionDimNames.map(_emitPartDim).join(', ')}`
         : '';
       const orderBy = rec.orderDimAlias ? `ORDER BY ${rec.orderDimAlias}` : '';
       const windowSpec = (parts: string[]) => parts.filter(Boolean).join(' ');
@@ -2755,13 +2830,21 @@ export function convertTableauToSigma(
       for (const key of Object.keys(windowHelpers)) {
         const rec = windowHelpers[key];
         const selectParts: string[] = [];
-        // Partition dims (bare physical names, or quoted display aliases when from __lod_base)
+        // Partition dims in the base SELECT read from the fact table: on the
+        // plain-table path, quote mixed-case columns and alias them to the bare
+        // upper-snake name so downstream CTE refs (partBy, innerProj) and the
+        // helper's `[Custom SQL/<UPPER>]` column formula all resolve.
+        const emitPartSource = (d: string) => {
+          if (winUseBase) return physToQuotedAlias[d] || d;
+          const q = quotePhysToken(d);
+          return q === d ? d : `${q} AS ${d}`;
+        };
         for (const d of rec.partitionDimNames) {
-          selectParts.push(winUseBase ? (physToQuotedAlias[d] || d) : d);
+          selectParts.push(emitPartSource(d));
         }
         // Order dim (with optional DATE_TRUNC)
         if (rec.orderDimRaw && rec.orderDimAlias) {
-          const rawRef = winUseBase ? rewriteBaseExpr(rec.orderDimRaw) : rec.orderDimRaw;
+          const rawRef = winUseBase ? rewriteBaseExpr(rec.orderDimRaw) : rewritePhysExpr(rec.orderDimRaw);
           if (rec.orderDimDateTrunc) {
             selectParts.push(`DATE_TRUNC('${rec.orderDimDateTrunc}', ${rawRef}) AS ${rec.orderDimAlias}`);
           } else {
@@ -2771,7 +2854,7 @@ export function convertTableauToSigma(
         // Inner aggregates (e.g. SUM(SALES) AS SALES)
         for (const k of Object.keys(rec.innerAggs)) {
           const [aggFunc, exprSql] = k.split('::');
-          const safeExpr = winUseBase ? rewriteBaseExpr(exprSql) : exprSql;
+          const safeExpr = winUseBase ? rewriteBaseExpr(exprSql) : rewritePhysExpr(exprSql);
           const a = rec.innerAggs[k];
           let sqlFn = aggFunc;
           if (sqlFn === 'COUNTD') sqlFn = `COUNT(DISTINCT ${safeExpr})`;

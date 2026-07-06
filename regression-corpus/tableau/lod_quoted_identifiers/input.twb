@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1'>
+  <datasources>
+    <datasource caption='Quoted Cols' inline='true' name='federated.quoted' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='Snowflake' name='snowflake.0'>
+            <connection class='snowflake' dbname='CSA' schema='TJ' server='x.snowflakecomputing.com' warehouse='SIGMA_WH'/>
+          </named-connection>
+        </named-connections>
+        <relation connection='snowflake.0' name='LOD_QUOTED_TEST' table='[CSA].[TJ].[LOD_QUOTED_TEST]' type='table'>
+          <columns>
+            <column datatype='string' name='SFDC Oppty ID' ordinal='1' />
+            <column datatype='string' name='Sales Region' ordinal='2' />
+            <column datatype='string' name='STAGE_NAME' ordinal='3' />
+            <column datatype='real'   name='Amount USD' ordinal='4' />
+            <column datatype='real'   name='PROFIT' ordinal='5' />
+          </columns>
+        </relation>
+        <metadata-records>
+          <metadata-record class='column'><remote-name>SFDC Oppty ID</remote-name><local-name>[SFDC Oppty ID]</local-name><parent-name>[LOD_QUOTED_TEST]</parent-name><local-type>string</local-type><aggregation>Count</aggregation><caption>SFDC Oppty ID</caption></metadata-record>
+          <metadata-record class='column'><remote-name>Sales Region</remote-name><local-name>[Sales Region]</local-name><parent-name>[LOD_QUOTED_TEST]</parent-name><local-type>string</local-type><aggregation>Count</aggregation><caption>Sales Region</caption></metadata-record>
+          <metadata-record class='column'><remote-name>STAGE_NAME</remote-name><local-name>[STAGE_NAME]</local-name><parent-name>[LOD_QUOTED_TEST]</parent-name><local-type>string</local-type><aggregation>Count</aggregation><caption>Stage Name</caption></metadata-record>
+          <metadata-record class='measure'><remote-name>Amount USD</remote-name><local-name>[Amount USD]</local-name><parent-name>[LOD_QUOTED_TEST]</parent-name><local-type>real</local-type><aggregation>Sum</aggregation><caption>Amount USD</caption></metadata-record>
+          <metadata-record class='measure'><remote-name>PROFIT</remote-name><local-name>[PROFIT]</local-name><parent-name>[LOD_QUOTED_TEST]</parent-name><local-type>real</local-type><aggregation>Sum</aggregation><caption>Profit</caption></metadata-record>
+        </metadata-records>
+      </connection>
+      <column caption='Amount per Oppty' datatype='real' name='[Calculation_AmtPerOppty]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{INCLUDE [SFDC Oppty ID] : SUM([Amount USD])}' />
+      </column>
+      <column caption='Region Total' datatype='real' name='[Calculation_RegionTotal]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [Sales Region] : SUM([Amount USD])}' />
+      </column>
+      <column caption='Region Profit Ratio' datatype='real' name='[Calculation_RegionProfitRatio]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [Sales Region] : AVG([PROFIT]/[Amount USD])}' />
+      </column>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sheet 1'><table><view><datasources><datasource caption='Quoted Cols' name='federated.quoted' /></datasources>
+      <datasource-dependencies datasource='federated.quoted'>
+        <column datatype='string' name='[Sales Region]' role='dimension' type='nominal' />
+        <column caption='Amount per Oppty' datatype='real' name='[Calculation_AmtPerOppty]' role='measure' type='quantitative' />
+      </datasource-dependencies></view>
+      <rows>[federated.quoted].[Sales Region]</rows>
+      <cols>[federated.quoted].[avg:Calculation_AmtPerOppty:qk]</cols>
+    </table></worksheet>
+    <worksheet name='Sheet 2'><table><view><datasources><datasource caption='Quoted Cols' name='federated.quoted' /></datasources>
+      <datasource-dependencies datasource='federated.quoted'>
+        <column datatype='string' name='[STAGE_NAME]' role='dimension' type='nominal' />
+        <column caption='Region Total' datatype='real' name='[Calculation_RegionTotal]' role='measure' type='quantitative' />
+      </datasource-dependencies></view>
+      <rows>[federated.quoted].[STAGE_NAME]</rows>
+      <cols>[federated.quoted].[avg:Calculation_RegionTotal:qk]</cols>
+    </table></worksheet>
+  </worksheets>
+</workbook>
