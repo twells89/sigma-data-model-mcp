@@ -2360,7 +2360,7 @@ export function convertTableauToSigma(
     }> = {};
     const usedAliases = new Set<string>();
 
-    function _resolveDimDisplayName(dimNameRaw: string): { dimUpper: string; displayName: string; baseColId?: string; onFact: boolean } | null {
+    function _resolveDimDisplayName(dimNameRaw: string): { dimUpper: string; displayName: string; baseColId?: string; onFact: boolean; el?: any } | null {
       const found = displayNameMap[dimNameRaw.toUpperCase()]
         || displayNameMap[sigmaDisplayName(dimNameRaw).toUpperCase()];
       if (!found) return null;
@@ -2376,7 +2376,7 @@ export function convertTableauToSigma(
       // onFact: the resolved column physically lives on the fact element. SQL helpers
       // (LOD / window / Top-N) query the fact table directly, so a dim that resolves
       // to a *related* dimension element cannot be expressed as a single-table helper.
-      return { dimUpper: physicalUpper, displayName: dispName, baseColId: found.colId, onFact: found.el === factEl };
+      return { dimUpper: physicalUpper, displayName: dispName, baseColId: found.colId, onFact: found.el === factEl, el: found.el };
     }
 
     function _ensureHelper(
@@ -2469,6 +2469,59 @@ export function convertTableauToSigma(
       rec.element.columns.push({ id: calcId, formula: `[Custom SQL/${alias}]`, name: caption });
       rec.element.order.push(calcId);
       return { alias, caption };
+    }
+
+    // Cross-table LOD (grouping dim lives on a JOINED dimension element): a
+    // single-table fact helper can't project the dim, so we don't auto-wire it
+    // (correctly relating the helper back to fact rows needs a denormalized dim
+    // key on the base — tracked as beads-sigma-hnx0). Instead, hand the user a
+    // paste-ready Custom SQL that computes the LOD via the real fact→dim join,
+    // so the cross-table case is self-service instead of a dead-end. Returns null
+    // (→ generic skip warning) when the join can't be resolved mechanically
+    // (non-physical fact/dim, missing relationship, or unresolved key columns).
+    function _suggestCrossTableLodSql(lod: any, dimsResolved: any[], caption: string): string | null {
+      const fe = factEl as any;
+      if (fe?.source?.kind !== 'warehouse-table' || !(fe.source.path?.length >= 1)) return null;
+      const physNameOf = (el: any, colId: string): string | null => {
+        const c = (el?.columns || []).find((x: any) => x.id === colId);
+        if (!c) return null;
+        const nm = c.name || (typeof c.formula === 'string' && (c.formula.match(/\/([^\]]+)\]$/) || [])[1]);
+        return nm ? String(nm).replace(/\s+/g, '_').toUpperCase() : null;
+      };
+      const qFact = (u: string): string => physToRealQuoted[u] || u;
+      const factPath = fe.source.path.join('.');
+      const factPhys = new Set<string>(((fe.columns || []).map((c: any) => physNameOf(fe, c.id)).filter(Boolean)) as string[]);
+      const joins: { alias: string; path: string; on: string[] }[] = [];
+      const joinByEl = new Map<string, string>();
+      const dimSel: string[] = [];
+      for (const d of dimsResolved) {
+        if (!d.el || d.el === fe) { dimSel.push(`__f.${qFact(d.dimUpper)} AS ${d.dimUpper}`); continue; }
+        const dimEl = d.el;
+        if (dimEl.source?.kind !== 'warehouse-table' || !(dimEl.source.path?.length >= 1)) return null;
+        const rel = (fe.relationships || []).find((r: any) => r.targetElementId === dimEl.id);
+        if (!rel || !rel.keys?.length) return null;
+        let alias = joinByEl.get(dimEl.id);
+        if (!alias) {
+          alias = `__d${joins.length}`;
+          const on: string[] = [];
+          for (const k of rel.keys) {
+            const fp = physNameOf(fe, k.sourceColumnId), dp = physNameOf(dimEl, k.targetColumnId);
+            if (!fp || !dp) return null;
+            on.push(`__f.${qFact(fp)} = ${alias}.${dp}`);
+          }
+          joins.push({ alias, path: dimEl.source.path.join('.'), on });
+          joinByEl.set(dimEl.id, alias);
+        }
+        dimSel.push(`${alias}.${d.dimUpper} AS ${d.dimUpper}`);
+      }
+      if (joins.length === 0) return null;   // no off-fact dim → normal path handles it
+      const aggExpr = String(lod.aggExpr || '').replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g,
+        (m: string, tok: string) => factPhys.has(tok.toUpperCase()) ? `__f.${qFact(tok.toUpperCase())}` : m);
+      const aggAlias = (caption || 'LOD_VALUE').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase() || 'LOD_VALUE';
+      const aggFn = lod.aggFunc === 'COUNTD' ? `COUNT(DISTINCT ${aggExpr})` : `${lod.aggFunc}(${aggExpr})`;
+      const gb = dimSel.map((_s, i) => i + 1).join(', ');
+      const joinSql = joins.map(j => `    LEFT JOIN ${j.path} ${j.alias} ON ${j.on.join(' AND ')}`).join('\n');
+      return `    SELECT ${dimSel.join(', ')}, ${aggFn} AS ${aggAlias}\n    FROM ${factPath} __f\n${joinSql}\n    GROUP BY ${gb}`;
     }
 
     function _finalizeHelpers(): void {
@@ -3167,7 +3220,7 @@ export function convertTableauToSigma(
         const lod = tableauParseLOD(formula);
         if (lod) {
           // Resolve LOD dim names → display + warehouse identifiers
-          const lodDimsResolved: { dimUpper: string; displayName: string; baseColId?: string }[] = [];
+          const lodDimsResolved: { dimUpper: string; displayName: string; baseColId?: string; onFact?: boolean; el?: any }[] = [];
           let allFound = true;
           let dimOffFact = false;
           for (const dimName of lod.dims) {
@@ -3184,7 +3237,12 @@ export function convertTableauToSigma(
             else { allFound = false; warnings.push(`⚠ LOD "${caption}" dim [${dimName}] not found`); }
           }
           if (dimOffFact) {
-            warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) groups by a dimension-table column (cross-table grain); not mechanizable as a single-table helper — needs manual Sigma authoring. Skipped.`);
+            const suggestion = _suggestCrossTableLodSql(lod, lodDimsResolved, caption);
+            if (suggestion) {
+              warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) groups by a dimension-table column (cross-table grain) — not auto-wired yet. Create a Custom SQL element in Sigma with:\n${suggestion}\n  then relate it back to the base on the grouping column(s). (Auto-wiring tracked: beads-sigma-hnx0.)`);
+            } else {
+              warnings.push(`⚠ LOD "${caption}" (${lod.lodType}) groups by a dimension-table column (cross-table grain); not mechanizable as a single-table helper — needs manual Sigma authoring. Skipped.`);
+            }
             continue;
           }
 

@@ -594,3 +594,56 @@ describe('param measure-picker → Switch (n4pi.8)', () => {
     assert.match(sw.formula, /^Switch\(\[ctl-parameter-1\], "Signs", /);
   });
 });
+
+// ── Cross-table LOD → paste-ready Custom SQL suggestion ─────────────────────
+// A FIXED LOD that groups by a column on a JOINED dimension table can't be a
+// single-table fact helper. Rather than a dead-end skip, the converter emits a
+// paste-ready Custom SQL (fact→dim JOIN + GROUP BY) so the case is self-service.
+const crossTableLodTds = `<?xml version='1.0' encoding='utf-8'?>
+<datasource caption='X' name='federated.x' version='18.1'>
+  <connection class='snowflake' dbname='CSA' schema='TJ' server='s' username='u'>
+    <relation join='left' type='join'>
+      <clause type='join'>
+        <expression op='='>
+          <expression op='[Order Fact].[CUSTOMER_KEY]' />
+          <expression op='[Customer Dim].[CUSTOMER_KEY]' />
+        </expression>
+      </clause>
+      <relation name='Order Fact' table='[TJ].[ORDER_FACT]' type='table'>
+        <columns>
+          <column datatype='integer' name='CUSTOMER_KEY' ordinal='0' />
+          <column datatype='real' name='NET_REVENUE' ordinal='1' />
+        </columns>
+      </relation>
+      <relation name='Customer Dim' table='[TJ].[CUSTOMER_DIM]' type='table'>
+        <columns>
+          <column datatype='integer' name='CUSTOMER_KEY' ordinal='0' />
+          <column datatype='string' name='REGION' ordinal='1' />
+        </columns>
+      </relation>
+    </relation>
+  </connection>
+  <column caption='Region Net Rev' datatype='real' name='[Calculation_x]' role='measure' type='quantitative'>
+    <calculation class='tableau' formula='{ FIXED [REGION] : SUM([NET_REVENUE]) }' />
+  </column>
+</datasource>`;
+
+describe('cross-table LOD suggestion', () => {
+  const out: any = convertTableauToSigma(crossTableLodTds, { connectionId: 'c1', database: 'CSA', schema: 'TJ', datasourceIndex: 0 });
+  const warn = (out.warnings || []).find((w: string) => /Region Net Rev/.test(w) && /cross-table/i.test(w)) || '';
+
+  test('emits a paste-ready fact→dim JOIN SELECT (not a dead-end skip)', () => {
+    assert.ok(warn, 'cross-table LOD warning present');
+    assert.match(warn, /Create a Custom SQL element/i, 'points user to Custom SQL, not just "skipped"');
+    assert.match(warn, /LEFT JOIN CSA\.TJ\.CUSTOMER_DIM/i, 'joins the dim table by its real path');
+    assert.match(warn, /__f\.CUSTOMER_KEY = __d0\.CUSTOMER_KEY/, 'ON clause uses the resolved join keys');
+    assert.match(warn, /SUM\(__f\.NET_REVENUE\)/, 'aggregate qualified to the fact');
+    assert.match(warn, /GROUP BY 1/, 'grouped by the dim');
+  });
+
+  test('does NOT wire a broken relationship for the cross-table LOD', () => {
+    const els = (out.model?.pages?.[0]?.elements || []);
+    const helperWithSpaces = els.find((e: any) => /FIXED REGION/.test(e.name || ''));
+    assert.equal(helperWithSpaces, undefined, 'no half-wired REGION helper element emitted');
+  });
+});
