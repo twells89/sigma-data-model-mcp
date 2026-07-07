@@ -1933,7 +1933,16 @@ export function convertTableauToSigma(
           };
           const eqExprs: any[] = [];
           for (const oe of asArray(rel.expression || [])) collectEqs(oe, eqExprs);
-          if (eqExprs.length === 0) continue;
+          if (eqExprs.length === 0) {
+            // A relationship with no serialized equality is the pure noun-model
+            // case: Tableau auto-matches the tables at query time (often on
+            // identically-named fields) and stores no explicit key. Sigma needs
+            // an explicit key, so we can't wire it — but never do so SILENTLY
+            // (that yields a disconnected DM with no signal why). See the
+            // aggregate zero-join guard below and memory "bobj-join-fidelity".
+            warnings.push(`⚠ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} carries no serialized join key — Tableau auto-matches these at query time; Sigma needs an explicit key. NOT wired: pick a join key and wire manually (LEFT from fact→dim), and verify the dimension is unique on the key to avoid measure fan-out.`);
+            continue;
+          }
 
           // A side is a plain physical column iff its op is a bare bracketed ref
           // `[COL]`. Anything else — an IF/DATETRUNC formula (stored under the
@@ -1974,6 +1983,22 @@ export function convertTableauToSigma(
             name: secondEntry.cleanName,
           });
           warnings.push(`ℹ Relationship ${firstEntry.cleanName} → ${secondEntry.cleanName} wired on ${keys.length} physical key(s).`);
+        }
+
+        // Zero-join guard for the noun/collection model. A derived/denormalized
+        // Sigma view can only reach a table's columns THROUGH a relationship, so
+        // a multi-table DM with zero wired relationships is effectively unusable
+        // downstream — yet every per-relationship skip above is easy to miss.
+        // Emit ONE loud, cause-specific warning (mirrors the BOBJ zero-join
+        // guard) so this never reaches a user as a silent joinless DM.
+        const joinableEls = elements.filter(
+          (e: any) => e.source?.kind === 'warehouse-table' || e.source?.kind === 'sql');
+        const wiredRelCount = elements.reduce(
+          (n, e: any) => n + ((e as any).relationships?.length || 0), 0);
+        if (joinableEls.length > 1 && wiredRelCount === 0) {
+          warnings.push(relsList.length === 0
+            ? `⚠ Tableau logical (relationship / noun) datasource: ${joinableEls.length} tables but NO relationships were serialized in <object-graph> — nothing to derive a join key from (Tableau matches these at query time). The DM is a set of disconnected tables. Pick an explicit join key for each table pair and wire relationships manually (LEFT from fact→dim), and verify each dimension is unique on the key to avoid measure fan-out.`
+            : `⚠ Tableau logical (relationship / noun) datasource: ${joinableEls.length} tables and ${relsList.length} relationship(s), but 0 could be wired — all lacked a physical equality key (auto-matched or computed-only; see per-relationship warnings above). The DM is a set of disconnected tables. Pick an explicit join key per pair and wire manually (LEFT from fact→dim); verify dimension uniqueness on the key.`);
         }
 
         // Sort: dims first, fact last
