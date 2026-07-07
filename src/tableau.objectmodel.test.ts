@@ -188,6 +188,85 @@ describe('encapsulated-legacy object model (DDMX-class)', () => {
   });
 });
 
+// ── Zero-join guard for the noun/collection model ───────────────────────────
+// The pure Tableau relationship (noun) model can leave NO serialized join key:
+// Tableau matches the tables at query time. Two shapes reach us — (a) an
+// object-graph relationship with an empty <expression>, (b) no <relationships>
+// block at all. Both used to drop SILENTLY, yielding a disconnected DM with no
+// signal why (the hackathon "tables but no joins" symptom). Guard: never emit a
+// multi-table, zero-relationship DM without a loud, cause-specific warning.
+const nounHead = `<?xml version='1.0' encoding='utf-8'?>
+<workbook>
+  <datasources>
+    <datasource caption='DS' name='federated.x'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection name='snow'><connection class='snowflake' dbname='DB' schema='SC'/></named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation type='collection'>
+          <relation connection='snow' name='Custom SQL Query1' type='text'>select A from FACT_TBL</relation>
+          <relation connection='snow' name='Custom SQL Query2' type='text'>select B from DIM_TBL</relation>
+        </_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+        <metadata-records>
+          ${MR('A', 'Custom SQL Query1', FACT_OBJ)}
+          ${MR('B', 'Custom SQL Query2', DIM_OBJ)}
+        </metadata-records>
+      </connection>`;
+
+// (a) relationship present but with an empty <expression> — auto-matched noun case
+const nounEmptyExprTwb = `${nounHead}
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+        <objects>
+          <object caption='FACT' id='${FACT_OBJ}'><properties/></object>
+          <object caption='DIM' id='${DIM_OBJ}'><properties/></object>
+        </objects>
+        <relationships>
+          <relationship>
+            <first-end-point object-id='${FACT_OBJ}'/>
+            <second-end-point object-id='${DIM_OBJ}'/>
+          </relationship>
+        </relationships>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+    </datasource>
+  </datasources>
+</workbook>`;
+
+// (b) no <relationships> block at all
+const nounNoRelsTwb = `${nounHead}
+    </datasource>
+  </datasources>
+</workbook>`;
+
+describe('noun/collection model zero-join guard', () => {
+  test('relationship with empty <expression> → NOT wired, loud per-relationship + aggregate warnings', () => {
+    const out: any = convertTableauToSigma(nounEmptyExprTwb, { connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0 });
+    const els = (out.model?.pages?.[0]?.elements || []).filter(
+      (e: any) => e.source?.kind === 'sql' || e.source?.kind === 'warehouse-table');
+    const wired = els.reduce((n: number, e: any) => n + ((e.relationships || []).length), 0);
+    assert.equal(wired, 0, 'no relationship wired (no serialized key)');
+    const warns = (out.warnings || []).join('\n');
+    assert.match(warns, /carries no serialized join key/i, 'per-relationship warning fired (was silent)');
+    assert.match(warns, /0 could be wired|disconnected tables/i, 'aggregate zero-join guard fired');
+  });
+
+  test('no <relationships> block → aggregate zero-join guard names the cause', () => {
+    const out: any = convertTableauToSigma(nounNoRelsTwb, { connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0 });
+    const els = (out.model?.pages?.[0]?.elements || []).filter(
+      (e: any) => e.source?.kind === 'sql' || e.source?.kind === 'warehouse-table');
+    assert.ok(els.length > 1, 'multiple tables built');
+    const wired = els.reduce((n: number, e: any) => n + ((e.relationships || []).length), 0);
+    assert.equal(wired, 0, 'no relationships wired');
+    assert.match((out.warnings || []).join('\n'), /NO relationships were serialized/i,
+      'aggregate guard distinguishes the "nothing serialized" cause');
+  });
+
+  test('control: a wired physical key does NOT trip the guard (no false positive)', () => {
+    const out: any = convertTableauToSigma(encapsulatedTwb, { connectionId: 'c1', database: 'DB', schema: 'SC', datasourceIndex: 0 });
+    const warns = (out.warnings || []).join('\n');
+    assert.doesNotMatch(warns, /disconnected tables/i, 'guard silent when a relationship wired');
+  });
+});
+
 // ── Multi-source blend collapse (epic n4pi.2, fork b) ──────────────────────────
 // A fact joined to ≥2 custom-SQL goal islands of MIXED grain. A Sigma master can
 // source only one element, so cross-island chart refs ("master/goal") fail and
