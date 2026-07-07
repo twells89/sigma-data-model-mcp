@@ -32,6 +32,12 @@ WHERE ORDER_DATE_KEY &gt;= 20240101
       <column caption='LOD Platform One Clicks' datatype='real' name='[Calculation_LodPlatformOneClicks]' role='measure' type='quantitative'>
         <calculation class='tableau' formula='{FIXED [SFDC Oppty ID] : SUM(IF [App Name]=&quot;EP1&quot; THEN [Clicks] END)}' />
       </column>
+      <column caption='Wired Wireless Label' datatype='string' name='[Calculation_WiredWireless]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='[Product Wired/Wireless]' />
+      </column>
+      <column caption='EP1 Clicks Row' datatype='real' name='[Calculation_Ep1ClicksRow]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='IF [App Name]=&quot;EP1&quot; THEN [Clicks] ELSE 0 END' />
+      </column>
     </datasource>
   </datasources>
   <worksheets>

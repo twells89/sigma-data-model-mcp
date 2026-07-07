@@ -3545,6 +3545,51 @@ export function convertTableauToSigma(
         warnings.push(`ℹ Reconciled ${rewrites} calc-formula field reference(s) to their SQL-alias column names (caption↔alias) on "${factEl.name}".`);
       }
 
+      // ── Custom SQL fact: qualify sibling calc/metric refs with "Custom SQL/" ──
+      // A kind:'sql' element resolves references to its OWN output columns only via
+      // the qualified `[Custom SQL/<outputId>]` form (spec rule 3): a bare
+      // `[Display]` sibling ref in a calc/metric type-errors, and a ref whose name
+      // contains '/' (a Sigma path separator) fails to resolve at all. The base
+      // passthrough columns already carry `[Custom SQL/<outputId>]`; here we map
+      // each output column (by display name / normalized / outputId) to that form
+      // and rewrite the derived calc + metric formulas so their sibling refs
+      // resolve. Cross-element refs never match a sibling key, so they pass through.
+      if ((factEl as any)?.source?.kind === 'sql') {
+        const nkey = (s: string): string => s.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+        const refToOutId: Record<string, string> = {};
+        for (const c of (factEl.columns || [])) {
+          const fm = typeof c.formula === 'string' && c.formula.match(/^\[Custom SQL\/([^\]]+)\]$/);
+          if (!fm) continue;                       // only passthrough output columns
+          const outId = fm[1];
+          for (const k of [c.name, outId]) {
+            const nk = k && nkey(k);
+            if (nk && !(nk in refToOutId)) refToOutId[nk] = outId;
+          }
+        }
+        let qcount = 0;
+        const qualify = (formula: any, ownName?: string): any => {
+          if (typeof formula !== 'string') return formula;
+          return formula.replace(/\[([^\]]+)\]/g, (m: string, ref: string) => {
+            if (/^Custom SQL\//.test(ref)) return m;                 // already qualified
+            if (ownName && ref.toLowerCase() === ownName.toLowerCase()) return m; // self-loop
+            const outId = refToOutId[nkey(ref)];
+            if (!outId) return m;                                    // not a sibling output col
+            qcount++;
+            return `[Custom SQL/${outId}]`;
+          });
+        };
+        const isAlias = (f: any): boolean =>
+          typeof f === 'string' && /^\[Custom SQL\/[^\]]+\]$/.test(f);
+        for (const c of (factEl.columns || [])) {
+          if (isAlias(c.formula)) continue;        // passthrough alias — leave
+          c.formula = qualify(c.formula, c.name);
+        }
+        for (const mtr of ((factEl as any).metrics || [])) mtr.formula = qualify(mtr.formula, mtr.name);
+        if (qcount > 0) {
+          warnings.push(`ℹ Qualified ${qcount} sibling reference(s) to [Custom SQL/…] form on "${(factEl as any).name || 'Custom SQL'}" (kind:'sql' columns resolve only via the Custom SQL/ prefix).`);
+        }
+      }
+
       // ── Type-aware text concat: [textCol] + [textCol] → & ─────────────────
       // The translator already converted literal/text-function `+` chains; here we
       // resolve ref-only chains (e.g. [CW_COUNTRY] + [ROLE]) using the captured
