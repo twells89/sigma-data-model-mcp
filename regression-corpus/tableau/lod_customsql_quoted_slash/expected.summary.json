@@ -1,0 +1,12 @@
+{
+  "description": "Custom SQL (kind:'sql') fact whose output columns are QUOTED — spaced/mixed-case ('SFDC Oppty ID', 'Units New Service SKU') and slash ('Product Wired/Wireless'). Exercises: (Bug 2 sql-path) base column self-refs + LOD helper must reference the EXACT quoted output name, not upper-snake; (Bug 3) a FIXED LOD with an inner Tableau conditional SUM(IF [App Name]=\"EP1\" THEN [Clicks] END) must lower to SUM(CASE WHEN \"App Name\"='EP1' THEN \"Clicks\" END); (Bug 4) a '/'-in-name column must be sanitized to '-' in the [Custom SQL/...] ref and the statement wrapped to re-alias the real output. Live-verified: full DM POSTs 200 and the LOD helper queries real rows.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 2,
+    "noErrorColumns": true
+  }
+}

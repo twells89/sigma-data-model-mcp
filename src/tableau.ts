@@ -188,6 +188,27 @@ interface LODResult {
   sigmaAgg: string;         // Sigma-formula form of the aggregate (legacy compatibility)
 }
 
+// Lower a Tableau inner expression to Snowflake SQL: conditionals and string
+// literals. Tableau `IF cond THEN a ELSEIF b THEN c ELSE d END` → SQL
+// `CASE WHEN cond THEN a WHEN b THEN c ELSE d END`, and Tableau double-quoted
+// string literals (`"EP1"`) → SQL single-quoted (`'EP1'`) — in Snowflake a
+// double-quoted token is an identifier, so an untranslated `="EP1"` throws
+// `unexpected 'EP1'`. Called AFTER bracket refs are lowered to bare
+// identifiers, so any remaining `"..."` is a string literal, not a column.
+function _tableauExprToSql(s: string): string {
+  // Double-quoted string literals → single-quoted (escape embedded single quotes).
+  s = s.replace(/"([^"]*)"/g, (_m, inner) => `'${inner.replace(/'/g, "''")}'`);
+  // Conditional keyword form (only when a full IF…END is present, so we never
+  // touch an expression that merely contains the substring "if").
+  if (/\bIF\b/i.test(s) && /\bEND\b/i.test(s)) {
+    s = s
+      .replace(/\bELSE\s+IF\b/gi, 'WHEN')   // "ELSE IF" spelling
+      .replace(/\bELSEIF\b/gi, 'WHEN')       // "ELSEIF" spelling
+      .replace(/\bIF\b/gi, 'CASE WHEN');     // leading IF (ELSEIF already consumed)
+  }
+  return s;
+}
+
 function _tableauInnerToSql(expr: string): string {
   // Convert Tableau bracket refs to bare warehouse identifiers.
   // [PROFIT]/[SALES] → PROFIT/SALES; ZN([Sales]) → SALES (we ignore safe-null wrappers in the helper SQL).
@@ -197,6 +218,8 @@ function _tableauInnerToSql(expr: string): string {
   // Tableau IFNULL(x, 0) — keep as Snowflake-compatible IFNULL
   // Bracket refs → bare uppercase identifiers
   s = s.replace(/\[([^\]]+)\]/g, (_m, name) => name.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase());
+  // Tableau conditionals / string literals → SQL (CASE WHEN…, single-quoted strings)
+  s = _tableauExprToSql(s);
   // Division by potentially zero column → wrap denominator with NULLIF (best-effort heuristic for AVG ratios)
   s = s.replace(/\/\s*([A-Z][A-Z0-9_]*)\b/g, '/NULLIF($1,0)');
   return s;
@@ -264,6 +287,7 @@ function _windowInnerToSql(expr: string): string {
   let s = expr;
   s = s.replace(/\bZN\s*\(([^()]+)\)/gi, '$1');
   s = s.replace(/\[([^\]]+)\]/g, (_m, name) => name.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase());
+  s = _tableauExprToSql(s);
   return s;
 }
 
@@ -2041,28 +2065,65 @@ export function convertTableauToSigma(
 
         const columns: any[] = [], order: string[] = [];
         const seen = new Set<string>();
+        // Re-alias projection parts: when an output column name contains '/'
+        // (a Sigma formula path separator), we cannot reference it as
+        // [Custom SQL/A/B] — Sigma splits on every '/' and the column resolves
+        // as a bogus 3-segment path. We sanitize '/'→'-' in the referenced
+        // identifier AND wrap the verbatim statement to re-alias the real
+        // (slashed) output column to the sanitized name, so the two match.
+        const projParts: string[] = [];
+        let needsRealias = false;
         for (const rc of rawCols) {
           const clean = rc.name.replace(/^\[|\]$/g, '');
           const upper = clean.toUpperCase();
           if (!clean || seen.has(upper)) continue;
           seen.add(upper);
           // A SQL element self-references its own output columns via the fixed
-          // "Custom SQL" keyword + the SQL-emitted column identifier (uppercased
-          // to match Snowflake's folding of unquoted aliases). Verified against
-          // the live API: bare [Display], [COL], and [<elementName>/COL] all
-          // resolve to `error`; only [Custom SQL/<COL>] resolves. The element's
-          // `name` is the human label; the `[Custom SQL/…]` qualifier is a keyword,
-          // independent of the element name.
+          // "Custom SQL" keyword + the SQL-emitted column identifier. Verified
+          // against the live API: bare [Display], [COL], and [<elementName>/COL]
+          // all resolve to `error`; only [Custom SQL/<COL>] resolves. The
+          // element's `name` is the human label; the `[Custom SQL/…]` qualifier
+          // is a keyword, independent of the element name.
+          //
+          // Snowflake folds UNQUOTED aliases to upper-case bare identifiers, but
+          // preserves the EXACT spelling of QUOTED aliases (spaces, mixed case,
+          // punctuation). So the resolvable identifier is:
+          //   - the upper-snake form when the metadata name is already a folded
+          //     bare identifier (unquoted alias) — keeps existing specs identical;
+          //   - the EXACT metadata name otherwise (it required quoting, so the
+          //     output column carries that verbatim name).
+          // Live-verified: for a `… AS "SFDC Oppty ID"` output, [Custom SQL/
+          // SFDC_OPPTY_ID] 400s "dependency not found" while [Custom SQL/SFDC
+          // Oppty ID] resolves to a concrete type and returns rows.
           const colKey = clean.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+          const colRefRaw = clean === colKey ? colKey : clean;
+          // Sanitize the Sigma path separator out of the referenced identifier.
+          const colRef = colRefRaw.replace(/\//g, '-');
           const display = capByName[upper] || sigmaDisplayName(clean);
-          const id = sigmaInodeId(colKey);
-          columns.push({ id, formula: `[Custom SQL/${colKey}]`, name: display });
+          const id = sigmaInodeId(colRef);
+          columns.push({ id, formula: `[Custom SQL/${colRef}]`, name: display });
           order.push(id);
+          // Build the re-alias projection element for this column. The FROM of the
+          // wrapper is the verbatim statement, whose real output column is `clean`.
+          if (colRef !== colRefRaw) {
+            projParts.push(`"${clean}" AS "${colRef}"`);   // slash column → sanitized alias
+            needsRealias = true;
+          } else if (colRefRaw === colKey) {
+            projParts.push(colRefRaw);                       // bare folded identifier
+          } else {
+            projParts.push(`"${clean}"`);                    // quoted exact — preserved
+          }
         }
+
+        // If any column needed slash-sanitizing, wrap the verbatim statement so
+        // the actual output column name matches the sanitized formula reference.
+        const finalStatement = needsRealias
+          ? `SELECT ${projParts.join(', ')} FROM (\n${statement}\n) __cs`
+          : statement;
 
         // Custom SQL elements omit the element-level name (CLAUDE.md #3).
         elements.push({ id: sigmaShortId(), kind: 'table',
-          source: { connectionId: connId, kind: 'sql', statement },
+          source: { connectionId: connId, kind: 'sql', statement: finalStatement },
           columns, order } as any);
 
         if (columns.length === 0) {
@@ -2229,6 +2290,36 @@ export function convertTableauToSigma(
         : expr.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g,
             (m: string, tok: string) => physToRealQuoted[tok.toUpperCase()] || m);
 
+    // For a Custom SQL fact whose output columns are QUOTED/spaced/mixed-case
+    // (e.g. `… AS "SFDC Oppty ID"`), a LOD / Top-N / window helper that wraps the
+    // verbatim statement as `(stmt) __base` must reference those columns by their
+    // EXACT quoted name — a bare upper-snake token (SFDC_OPPTY_ID) is an
+    // unresolvable identifier in Snowflake. The base element's own column formula
+    // tail already carries the exact output name (`[Custom SQL/SFDC Oppty ID]`,
+    // set above). Map UPPER_SNAKE → '"exact name"', but ONLY for columns that
+    // actually need quoting (exact ≠ its folded form) so specs with plain
+    // uppercase columns stay byte-identical. (useBase/__lod_base blend path keeps
+    // its own physToQuotedAlias behavior — untouched here.)
+    const sqlExactByUpper: Record<string, string> = {};
+    if ((factEl as any)?.source?.kind === 'sql') {
+      for (const col of ((factEl as any)?.columns || [])) {
+        const fm = typeof col.formula === 'string' && col.formula.match(/\/([^\]]+)\]$/);
+        const exact = fm ? fm[1] : (col.name || '');
+        if (!exact) continue;
+        const upper = exact.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase();
+        if (exact === upper) continue;   // safe bare identifier — leave unquoted
+        sqlExactByUpper[upper] = `"${exact}"`;
+      }
+    }
+    const hasSqlExact = Object.keys(sqlExactByUpper).length > 0;
+    // Rewrite bare UPPER_SNAKE tokens in an agg/order expression to the exact
+    // quoted base-output name (only mapped tokens are touched → SQL keywords and
+    // safe identifiers pass through).
+    const rewriteSqlExactExpr = (expr: string): string =>
+      !hasSqlExact ? expr
+        : expr.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g,
+            (m: string, tok: string) => sqlExactByUpper[tok.toUpperCase()] || m);
+
     const lodChildElements: any[] = [];
 
     // ── LOD: build worksheet view-dim index and helper-element registry ───
@@ -2360,7 +2451,11 @@ export function convertTableauToSigma(
       const useBase = fromClause === '__lod_base';
       for (const sigKey of Object.keys(lodHelpers)) {
         const rec = lodHelpers[sigKey];
-        // Use quoted display aliases when selecting from __lod_base; bare physical names otherwise.
+        // Use quoted display aliases when selecting from __lod_base; for the
+        // plain `(stmt) __base` wrap, quote mixed-case Custom SQL output columns
+        // to their exact name and alias back to the bare upper-snake identifier
+        // (so the helper's own `[Custom SQL/<UPPER>]` dim column still resolves);
+        // otherwise bare physical names.
         const dimList = useBase
           ? rec.groupDimDisplayNames.map(dn =>
               physToQuotedAlias[dn.replace(/\s+/g, '_').toUpperCase()] || `"${dn}"`).join(', ')
@@ -2368,14 +2463,16 @@ export function convertTableauToSigma(
           // quoted (mixed-case) string. The helper's dim COLUMN formula is
           // `[Custom SQL/<UPPER>]` (spec rule 3), so alias the quoted source back
           // to the upper-snake name to keep the output identifier resolvable.
+          // Try the sql-path exact-name map first (Custom SQL fact), then the
+          // plain-table real-name map — the other is empty for a given fact kind.
           : rec.groupDimNames.map(dn => {
-              const q = quotePhysToken(dn);
+              const q = sqlExactByUpper[dn.toUpperCase()] || quotePhysToken(dn);
               return q === dn ? dn : `${q} AS ${dn}`;
             }).join(', ');
         const aggParts: string[] = [];
         for (const k of Object.keys(rec.aggsByExpr)) {
           const a = rec.aggsByExpr[k];
-          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : rewritePhysExpr(a.aggExpr);
+          const safeExpr = useBase ? rewriteBaseExpr(a.aggExpr) : rewriteSqlExactExpr(rewritePhysExpr(a.aggExpr));
           let sqlAggFunc = a.aggFunc;
           if (sqlAggFunc === 'COUNTD') sqlAggFunc = 'COUNT(DISTINCT ' + safeExpr + ')';
           else sqlAggFunc = `${sqlAggFunc}(${safeExpr})`;

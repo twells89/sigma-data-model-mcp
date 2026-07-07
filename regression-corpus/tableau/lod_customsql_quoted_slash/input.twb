@@ -1,0 +1,69 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook source-build='2024.1' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Converter Bug Repro' inline='true' name='federated.bugrepro' version='18.1'>
+      <connection class='snowflake' dbname='CSA' schema='TJ'>
+        <relation name='Custom SQL Query' type='text'>SELECT
+  ORDER_ID AS &quot;SFDC Oppty ID&quot;,
+  CUSTOMER_KEY AS &quot;Close Date Key&quot;,
+  CASE WHEN IS_RETURNED = 1 THEN 'Wired' ELSE 'Wireless' END AS &quot;Product Wired/Wireless&quot;,
+  CASE WHEN DAYS_TO_SHIP &lt;= 3 THEN 'EP1' ELSE 'EXTREMECLOUD_IQ' END AS &quot;App Name&quot;,
+  NET_REVENUE AS &quot;Clicks&quot;,
+  GROSS_REVENUE AS &quot;Units New Service SKU&quot;,
+  NET_PROFIT AS &quot;Activated Units&quot;,
+  CASE WHEN GROSS_PROFIT &gt;= 0 THEN 'Extreme Platform ONE' ELSE 'Other' END AS &quot;Sub Lic Type (Group)&quot;
+FROM CSA.TJ.ORDER_FACT
+WHERE ORDER_DATE_KEY &gt;= 20240101
+  AND CUSTOMER_KEY &lt;&gt; 0</relation>
+        <metadata-records>
+          <metadata-record class='column'><remote-name>SFDC Oppty ID</remote-name><local-type>integer</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Close Date Key</remote-name><local-type>integer</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Product Wired/Wireless</remote-name><local-type>string</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>App Name</remote-name><local-type>string</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Clicks</remote-name><local-type>integer</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Units New Service SKU</remote-name><local-type>real</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Activated Units</remote-name><local-type>real</local-type></metadata-record>
+          <metadata-record class='column'><remote-name>Sub Lic Type (Group)</remote-name><local-type>string</local-type></metadata-record>
+        </metadata-records>
+      </connection>
+      <column caption='LOD Service SKU at Opp' datatype='real' name='[Calculation_LodServiceSku]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [SFDC Oppty ID] : SUM([Units New Service SKU])}' />
+      </column>
+      <column caption='LOD Platform One Clicks' datatype='real' name='[Calculation_LodPlatformOneClicks]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='{FIXED [SFDC Oppty ID] : SUM(IF [App Name]=&quot;EP1&quot; THEN [Clicks] END)}' />
+      </column>
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Sheet 1 - SKU by Opp'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Converter Bug Repro' name='federated.bugrepro' />
+          </datasources>
+          <datasource-dependencies datasource='federated.bugrepro'>
+            <column datatype='string' name='[Product Wired/Wireless]' role='dimension' type='nominal' />
+            <column caption='LOD Service SKU at Opp' datatype='real' name='[Calculation_LodServiceSku]' role='measure' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <rows>[federated.bugrepro].[Product Wired/Wireless]</rows>
+        <cols>[federated.bugrepro].[sum:Calculation_LodServiceSku:qk]</cols>
+      </table>
+    </worksheet>
+    <worksheet name='Sheet 2 - Clicks by App'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Converter Bug Repro' name='federated.bugrepro' />
+          </datasources>
+          <datasource-dependencies datasource='federated.bugrepro'>
+            <column datatype='string' name='[App Name]' role='dimension' type='nominal' />
+            <column caption='LOD Platform One Clicks' datatype='real' name='[Calculation_LodPlatformOneClicks]' role='measure' type='quantitative' />
+          </datasource-dependencies>
+        </view>
+        <rows>[federated.bugrepro].[App Name]</rows>
+        <cols>[federated.bugrepro].[sum:Calculation_LodPlatformOneClicks:qk]</cols>
+      </table>
+    </worksheet>
+  </worksheets>
+</workbook>
