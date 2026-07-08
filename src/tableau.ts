@@ -282,6 +282,25 @@ function _stripOuterAggAroundLod(formula: string): { aggFunc: string; inner: str
   return { aggFunc: m[1].toUpperCase(), inner };
 }
 
+// Repoint a Custom SQL statement's fully-qualified table refs when the caller
+// passes --db/--schema overrides (field report #7). The override rewrites
+// warehouse-table element *paths* via extractPath, but a Custom SQL element
+// carries a raw SELECT whose `FROM <db>.<schema>.<table>` was left untouched,
+// so a repointed model still queried the Tableau-side db/schema. Replace the
+// SOURCE connection's declared `<olddb>.<oldschema>.` prefix (quoted or bare,
+// case-insensitive) with the override — targeted, so refs to a different
+// db/schema are left alone, and unqualified table names are never touched.
+function _repointCustomSqlSchema(sql: string, oldDb: string, oldSchema: string,
+                                 newDb: string, newSchema: string): string {
+  if (!sql || !newDb || !newSchema || !oldDb || !oldSchema) return sql;
+  if (oldDb.toUpperCase() === newDb.toUpperCase() &&
+      oldSchema.toUpperCase() === newSchema.toUpperCase()) return sql;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const seg = (s: string) => `(?:"${esc(s)}"|${esc(s)})`;
+  const re = new RegExp(`${seg(oldDb)}\\s*\\.\\s*${seg(oldSchema)}\\s*\\.`, 'gi');
+  return sql.replace(re, `${newDb}.${newSchema}.`);
+}
+
 // Tableau INTERNAL/virtual fields that are not real warehouse columns and must
 // never be emitted as DM columns — [:Measure Names], [:Measure Values] (both
 // `:`-prefixed pivot pseudo-fields). Emitting one produces an unresolvable
@@ -2205,7 +2224,9 @@ export function convertTableauToSigma(
       const decodeNumericEntities = (s: string): string =>
         s.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
          .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)));
-      const statement = decodeNumericEntities((rootRelation['#text'] || '').toString()).trim();
+      const statement = _repointCustomSqlSchema(
+        decodeNumericEntities((rootRelation['#text'] || '').toString()).trim(),
+        attr(rootConn, 'dbname'), attr(rootConn, 'schema'), dbOverride, schOverride);
       if (!statement) {
         warnings.push('⚠ Custom SQL relation carried no SQL text — no element emitted.');
       } else {
