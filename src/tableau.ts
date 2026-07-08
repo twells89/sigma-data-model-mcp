@@ -264,6 +264,24 @@ function tableauParseLOD(formula: string): LODResult | null {
   return { _isLOD: true, lodType, dims, rawAgg, aggFunc, aggExpr, sigmaAgg };
 }
 
+// Recognize an LOD NESTED inside a single outer aggregate — e.g. `MAX({ FIXED
+// ... })`, `SUM({ INCLUDE ... })`, `ATTR({ FIXED ... })`. Tableau lets an LOD be
+// wrapped by a viz-level aggregate; tableauParseLOD only matches a STANDALONE
+// LOD, so without this the whole calc fell to the untranslatable path — dropped
+// (single-table) or, on the cross-table Custom SQL path, the raw `{ FIXED }`
+// leaked into the emitted SQL and Sigma rejected the spec (field report
+// 2026-07-08). Returns the outer aggregate + the inner LOD string, or null.
+function _stripOuterAggAroundLod(formula: string): { aggFunc: string; inner: string } | null {
+  const m = formula.trim().match(
+    /^(SUM|MAX|MIN|AVG|COUNT|COUNTD|ATTR)\s*\(\s*(\{\s*(?:FIXED|INCLUDE|EXCLUDE)[\s\S]*\})\s*\)$/i);
+  if (!m) return null;
+  const inner = m[2].trim();
+  // Guard: the captured inner must be a single balanced {…} (no trailing junk
+  // before the outer close-paren the regex already anchored on).
+  if (!/^\{[\s\S]*\}$/.test(inner)) return null;
+  return { aggFunc: m[1].toUpperCase(), inner };
+}
+
 // ── Window/Table-calc parser ────────────────────────────────────────────────
 // Parses Tableau table calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK*, INDEX, FIRST,
 // LAST) into a structured form so the converter can lower them to a kind:'sql'
@@ -3336,7 +3354,15 @@ export function convertTableauToSigma(
       // Calculated field
       {
         // Check for LOD expression
-        const lod = tableauParseLOD(formula);
+        let lod = tableauParseLOD(formula);
+        // Nested LOD inside a single outer aggregate (MAX({FIXED…}) etc.): strip
+        // the wrapper and translate the inner LOD via the same helper path. The
+        // outer aggregate is the viz-level aggregation of the row-level LOD value.
+        let lodOuterAgg: string | null = null;
+        if (!lod) {
+          const wrapped = _stripOuterAggAroundLod(formula);
+          if (wrapped) { lod = tableauParseLOD(wrapped.inner); lodOuterAgg = wrapped.aggFunc; }
+        }
         if (lod) {
           // Resolve LOD dim names → display + warehouse identifiers
           const lodDimsResolved: { dimUpper: string; displayName: string; baseColId?: string; onFact?: boolean; el?: any }[] = [];
@@ -3433,6 +3459,7 @@ export function convertTableauToSigma(
             // emit a calc column on the base because cross-element formulas referencing a
             // related element's column don't validate at the data-model level.
             warnings.push(`✅ LOD "${caption}" (${lod.lodType}) → helper "${helperRes.helper.name}" alias ${alias}`);
+            if (lodOuterAgg) warnings.push(`ℹ LOD "${caption}" was wrapped by ${lodOuterAgg}({…}); emitted the row-level LOD value — apply ${lodOuterAgg} as the measure's aggregation in the workbook (verify the number vs source).`);
           }
           continue;
         }
