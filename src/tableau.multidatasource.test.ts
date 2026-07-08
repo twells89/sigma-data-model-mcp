@@ -4,7 +4,7 @@
  * A workbook whose worksheets draw on several INDEPENDENT datasources (NOT a
  * Tableau blend) used to collapse onto datasources[0] — the other sources'
  * columns were dropped, so the workbook spec referenced columns the DM never
- * had and the POST failed "Dependency not found" (MSP-Dashboard 2026-07-08).
+ * had and the POST failed "Dependency not found" (a real multi-datasource workbook).
  * The converter now builds one element per datasource. These guard that.
  */
 import { describe, test } from 'node:test';

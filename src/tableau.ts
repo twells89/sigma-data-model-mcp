@@ -1316,7 +1316,7 @@ export interface TableauConvertOptions {
  * tryBuildBlendModel) previously collapsed onto `datasources[0]` alone: every
  * other datasource's columns were silently dropped, so the workbook spec then
  * referenced columns the DM never contained and the POST failed one opaque
- * "Dependency not found" at a time (MSP-Dashboard, 2026-07-08).
+ * "Dependency not found" at a time (a real multi-datasource workbook).
  *
  * Instead, convert EACH datasource on its own (reusing the full single-DS path)
  * and merge the results into one model: every datasource becomes its own
@@ -1530,8 +1530,8 @@ export function convertTableauToSigma(
   }
 
   // Multi-datasource (non-blend) workbook → build one element set PER datasource
-  // instead of collapsing onto datasources[0] and dropping the rest (MSP-Dashboard
-  // 2026-07-08). Recursion-guarded: the per-datasource sub-conversions set
+  // instead of collapsing onto datasources[0] and dropping the rest (a real multi-datasource workbook
+  //). Recursion-guarded: the per-datasource sub-conversions set
   // __multiDsChild so they take the single-DS path below.
   if (!options.__multiDsChild && datasources.length > 1) {
     return buildMultiDatasourceModel(xmlContent, options, datasources);
