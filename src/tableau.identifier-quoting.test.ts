@@ -23,10 +23,10 @@ const mixedCaseTwb = `<?xml version='1.0' encoding='utf-8' ?>
       <connection class='federated'>
         <named-connections>
           <named-connection caption='Snowflake' name='snowflake.0'>
-            <connection class='snowflake' dbname='EDNA' schema='CONS_DATA_MART' server='x.snowflakecomputing.com' warehouse='WH'/>
+            <connection class='snowflake' dbname='enterprise' schema='CONS_DATA_MART' server='x.snowflakecomputing.com' warehouse='WH'/>
           </named-connection>
         </named-connections>
-        <relation connection='snowflake.0' name='SALES_FUNNEL_CURR' table='[EDNA].[CONS_DATA_MART].[SALES_FUNNEL_CURR]' type='table'>
+        <relation connection='snowflake.0' name='SALES_FUNNEL_CURR' table='[enterprise].[CONS_DATA_MART].[SALES_FUNNEL_CURR]' type='table'>
           <columns>
             <column datatype='string' name='SFDC Oppty ID' ordinal='1' />
             <column datatype='string' name='Sales Region' ordinal='2' />
@@ -76,7 +76,7 @@ const mixedCaseTwb = `<?xml version='1.0' encoding='utf-8' ?>
 
 function lodSqlStatements(twb: string): string[] {
   const out: any = convertTableauToSigma(twb, {
-    connectionId: 'c1', database: 'EDNA', schema: 'CONS_DATA_MART', datasourceIndex: 0,
+    connectionId: 'c1', database: 'enterprise', schema: 'CONS_DATA_MART', datasourceIndex: 0,
   });
   const els = (out.model?.pages || []).flatMap((p: any) => p.elements || []);
   return els.filter((e: any) => e.source?.kind === 'sql').map((e: any) => e.source.statement as string);
