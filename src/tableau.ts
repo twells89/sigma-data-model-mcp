@@ -1303,6 +1303,116 @@ export interface TableauConvertOptions {
   datasourceIndex?: number;
   /** Map Tableau table names to warehouse names: { "Orders": "ORDERS", "People": "PEOPLE" } */
   tableMapping?: Record<string, string>;
+  /** INTERNAL: set on the per-datasource sub-conversions the multi-datasource
+   *  path spawns, to prevent infinite recursion back into that path. */
+  __multiDsChild?: boolean;
+}
+
+/**
+ * Multi-datasource workbook → MULTI-ELEMENT data model.
+ *
+ * A workbook whose worksheets draw on several INDEPENDENT datasources (not a
+ * Tableau blend — that has a <datasource-relationships> block and is handled by
+ * tryBuildBlendModel) previously collapsed onto `datasources[0]` alone: every
+ * other datasource's columns were silently dropped, so the workbook spec then
+ * referenced columns the DM never contained and the POST failed one opaque
+ * "Dependency not found" at a time (MSP-Dashboard, 2026-07-08).
+ *
+ * Instead, convert EACH datasource on its own (reusing the full single-DS path)
+ * and merge the results into one model: every datasource becomes its own
+ * element(s), so no columns are dropped and each chart resolves against its
+ * datasource's element. Data elements are kept from every sub-model; the
+ * workbook-global controls/parameters (identical across sub-models) are deduped;
+ * relationships across datasources are NOT inferred (each element stands alone —
+ * add joins manually if the sources share keys).
+ */
+function buildMultiDatasourceModel(
+  xmlContent: string,
+  options: TableauConvertOptions,
+  datasources: Array<{ name: string; caption?: string }>,
+): ConversionResult {
+  const dataElements: any[] = [];
+  const controls: any[] = [];
+  const controlNames = new Set<string>();
+  const workbookPatterns: any[] = [];
+  const patternKeys = new Set<string>();
+  const security: any[] = [];
+  const parameters: any[] = [];
+  const paramNames = new Set<string>();
+  const warnings: string[] = [];
+  const usedElementNames = new Set<string>();
+  const perDs: string[] = [];
+
+  datasources.forEach((dsMeta, i) => {
+    const sub = convertTableauToSigma(xmlContent, { ...options, datasourceIndex: i, __multiDsChild: true });
+    const els = (sub.model?.pages?.[0]?.elements || []) as any[];
+    let kept = 0;
+    for (const el of els) {
+      // Controls are workbook-global (repeated identically in every sub-model) —
+      // keep one copy, keyed by name.
+      if (el.kind === 'control') {
+        const key = String(el.name ?? el.id);
+        if (!controlNames.has(key)) { controlNames.add(key); controls.push(el); }
+        continue;
+      }
+      // Data element: disambiguate a colliding explicit element name so
+      // [Name/Col] refs stay unique across datasources, rewriting this
+      // sub-model's own formula refs to match. (warehouse-table elements
+      // usually have NO explicit name — Sigma derives it from the path tail —
+      // so collisions are rare and handled only when a real name repeats.)
+      if (el.name && usedElementNames.has(el.name)) {
+        const suffix = (dsMeta.caption || dsMeta.name || `DS${i + 1}`)
+          .replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `DS${i + 1}`;
+        const newName = `${el.name}_${suffix}`;
+        const oldRef = `[${el.name}/`, newRef = `[${newName}/`;
+        const rw = (s: string) => (typeof s === 'string' ? s.split(oldRef).join(newRef) : s);
+        for (const c of (el.columns || [])) if (c.formula) c.formula = rw(c.formula);
+        for (const m of (el.metrics || [])) if (m.formula) m.formula = rw(m.formula);
+        el.name = newName;
+      }
+      if (el.name) usedElementNames.add(el.name);
+      dataElements.push(el);
+      kept++;
+    }
+    for (const p of (sub.workbookPatterns || []) as any[]) {
+      const k = `${p.kind}::${p.name}`;
+      if (!patternKeys.has(k)) { patternKeys.add(k); workbookPatterns.push(p); }
+    }
+    for (const s of (sub.security || []) as any[]) security.push(s);
+    for (const p of ((sub as any).parameters || []) as any[]) {
+      const k = String(p.name ?? p.id);
+      if (!paramNames.has(k)) { paramNames.add(k); parameters.push(p); }
+    }
+    perDs.push(`${dsMeta.caption || dsMeta.name} (${kept} element${kept === 1 ? '' : 's'})`);
+  });
+
+  warnings.unshift(
+    `ℹ Multi-datasource workbook: built a MULTI-ELEMENT data model — one element set per independent ` +
+    `datasource, so no source's columns are dropped. Datasources: ${perDs.join('; ')}. ` +
+    `No cross-datasource relationships were inferred; add joins in Sigma if the sources share keys. ` +
+    `Charts resolve against their own datasource's element.`,
+  );
+
+  const sigmaModel: any = {
+    name: (datasources[0] as any)?.name || 'Workbook',
+    schemaVersion: 1,
+    pages: [{ id: sigmaShortId(), name: 'Page 1', elements: [...controls, ...dataElements] }],
+  };
+  const totalCols = dataElements.reduce((s, e) => s + (e.columns?.length || 0), 0);
+  return {
+    model: sigmaModel,
+    warnings,
+    ...(security.length ? { security } : {}),
+    ...(workbookPatterns.length ? { workbookPatterns } : {}),
+    ...(parameters.length ? { parameters } : {}),
+    stats: {
+      datasources: datasources.length,
+      elements: dataElements.length,
+      columns: totalCols,
+      metrics: 0,
+      relationships: 0,
+    },
+  } as any;
 }
 
 export function convertTableauToSigma(
@@ -1312,6 +1422,7 @@ export function convertTableauToSigma(
   resetIds();
 
   const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;
+  void options.__multiDsChild; // (destructured usage is via options.__multiDsChild at the multi-DS guard)
   _tableMapping = tableMapping || {};
   // Preserve the caller's exact db/schema case — warehouse identifiers are quoted
   // per-segment in Sigma's path-array lookup, so a mixed-case or spaced schema
@@ -1416,6 +1527,14 @@ export function convertTableauToSigma(
       }
     } catch { /* harvesting is best-effort — never block the blend conversion */ }
     return blendResult;
+  }
+
+  // Multi-datasource (non-blend) workbook → build one element set PER datasource
+  // instead of collapsing onto datasources[0] and dropping the rest (MSP-Dashboard
+  // 2026-07-08). Recursion-guarded: the per-datasource sub-conversions set
+  // __multiDsChild so they take the single-DS path below.
+  if (!options.__multiDsChild && datasources.length > 1) {
+    return buildMultiDatasourceModel(xmlContent, options, datasources);
   }
 
   const dsIdx = Math.min(datasourceIndex, datasources.length - 1);
