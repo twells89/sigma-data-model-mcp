@@ -282,6 +282,14 @@ function _stripOuterAggAroundLod(formula: string): { aggFunc: string; inner: str
   return { aggFunc: m[1].toUpperCase(), inner };
 }
 
+// Tableau INTERNAL/virtual fields that are not real warehouse columns and must
+// never be emitted as DM columns — [:Measure Names], [:Measure Values] (both
+// `:`-prefixed pivot pseudo-fields). Emitting one produces an unresolvable
+// [TABLE/:Measure Names] ref (field report #8).
+function _isTableauVirtualField(name: string): boolean {
+  return (name || '').replace(/^\[|\]$/g, '').trim().startsWith(':');
+}
+
 // ── Window/Table-calc parser ────────────────────────────────────────────────
 // Parses Tableau table calcs (RUNNING_*, WINDOW_*, LOOKUP, RANK*, INDEX, FIRST,
 // LAST) into a structured form so the converter can lower them to a kind:'sql'
@@ -1724,8 +1732,8 @@ export function convertTableauToSigma(
       const tableName = path[path.length - 1] || '';
       const columns: any[] = [], order: string[] = [];
       for (const col of asArray(rootRelation?.columns?.column || [])) {
-        const key = attr(col, 'name').toUpperCase();
-        if (!key) continue;
+        const key = attr(col, "name").toUpperCase();
+        if (!key || _isTableauVirtualField(attr(col, "name"))) continue;
         const id = sigmaInodeId(key);
         columns.push({ id, formula: `[${tableName}/${sigmaDisplayName(key)}]` });
         order.push(id);
@@ -1750,8 +1758,8 @@ export function convertTableauToSigma(
 
           const columns: any[] = [], order: string[] = [];
           for (const col of asArray(t.rel?.columns?.column || [])) {
-            const key = attr(col, 'name').toUpperCase();
-            if (!key) continue;
+            const key = attr(col, "name").toUpperCase();
+        if (!key || _isTableauVirtualField(attr(col, "name"))) continue;
             const id = sigmaInodeId(key);
             columns.push({ id, formula: `[${tableName}/${sigmaDisplayName(key)}]` });
             order.push(id);
