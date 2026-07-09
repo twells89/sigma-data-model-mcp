@@ -452,8 +452,29 @@ export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {
     const parsed = parseJoinKeys(join);
     if (!parsed) { warnings.push(`Join "${join.expression || `${join.left}~${join.right}`}" not a simple equi-join — add manually in Sigma.`); continue; }
     let { leftTable, leftCol, rightTable, rightCol } = parsed;
-    // Source = "many" side. If cardinality unknown, keep left as source.
-    if (join.cardinality && /one-to-many|1-n|onetomany/i.test(join.cardinality)) {
+    // Direction matters: in Sigma a relationship is a many→one LOOKUP. The source
+    // element (which owns the relationship and becomes the denormalized View base)
+    // MUST be the "many" side — otherwise every column looked up across the join
+    // fans out to "multiple values" in a workbook. So the source must be the many
+    // side, the target the one side.
+    const dir = joinDirection(join.cardinality); // 'left-many' | 'right-many' | null
+    let leftIsSource: boolean;
+    if (dir === 'left-many') leftIsSource = true;
+    else if (dir === 'right-many') leftIsSource = false;
+    else {
+      // No usable cardinality in the input — infer from the star-schema shape:
+      // the fact (measure-bearing) table is the many side. If exactly one side
+      // carries measures, make that the source; otherwise keep left but warn,
+      // because a wrong guess here is exactly what yields "multiple values".
+      const lHasM = !!ctxByKey.get(tableKeyOf(leftTable))?.metrics.length;
+      const rHasM = !!ctxByKey.get(tableKeyOf(rightTable))?.metrics.length;
+      if (lHasM !== rHasM) leftIsSource = lHasM; // the measure-bearing (fact) side is the many side
+      else {
+        leftIsSource = true;
+        warnings.push(`Join ${tableKeyOf(leftTable)}↔${tableKeyOf(rightTable)}: no usable join cardinality in the input and can't tell the fact from the dimension by measures — assumed "${tableKeyOf(leftTable)}" is the many side. If workbook columns come back as "multiple values", flip this relationship so its source is the many/fact table.`);
+      }
+    }
+    if (!leftIsSource) {
       [leftTable, leftCol, rightTable, rightCol] = [rightTable, rightCol, leftTable, leftCol];
     }
     const srcKey = tableKeyOf(leftTable), tgtKey = tableKeyOf(rightTable);
@@ -562,11 +583,19 @@ export function ingestBobjSdkXml(xml: string): BobjUniverse {
     const expression =
       textOf(findFirst(j, ['expression', 'statement', 'sql', 'definition'])) ||
       j.attrs.expression || j.attrs.statement || textOf(j) || undefined;
+    // Cardinality: a single string when present, else compose one from per-side
+    // multiplicity (attrs or child tags) so joinDirection() can read direction.
+    const lc = j.attrs.leftcardinality || j.attrs.leftmultiplicity ||
+      textOf(findFirst(j, ['leftcardinality', 'leftmultiplicity']));
+    const rc = j.attrs.rightcardinality || j.attrs.rightmultiplicity ||
+      textOf(findFirst(j, ['rightcardinality', 'rightmultiplicity']));
+    const cardinality = j.attrs.cardinality || textOf(findFirst(j, ['cardinality'])) ||
+      (lc && rc ? `${lc}-to-${rc}` : undefined);
     joins.push({
       left: j.attrs.left || j.attrs.lefttable || j.attrs.table1 || undefined,
       right: j.attrs.right || j.attrs.righttable || j.attrs.table2 || undefined,
       expression,
-      cardinality: j.attrs.cardinality || textOf(findFirst(j, ['cardinality'])) || undefined,
+      cardinality,
     });
   }
 
@@ -864,6 +893,26 @@ function parseJoinKeys(join: BobjJoin): { leftTable: string; leftCol: string; ri
   const l = splitDottedRef(m[1]), r = splitDottedRef(m[2]);
   if (!l || !r) return null;
   return { leftTable: l.table, leftCol: l.col, rightTable: r.table, rightCol: r.col };
+}
+
+/**
+ * Read a SAP join cardinality string and say which side is the "many" side, so the
+ * Sigma relationship (a many→one lookup) is built with the many side as source.
+ * Tolerant of the many encodings BO/IDT emit: `one-to-many`, `many-to-one`,
+ * `OneToMany`, `1-n`/`n-1`, `1:N`/`N:1`, `1..N`/`N..1`, `1..*`/`*..1`. Returns
+ * 'left-many' | 'right-many', or null when absent or symmetric (1-1 / N-N).
+ */
+function joinDirection(card: string | undefined): 'left-many' | 'right-many' | null {
+  if (!card) return null;
+  // Normalize words/symbols to the two multiplicity tokens 1 (one) and N (many).
+  const norm = String(card).toLowerCase()
+    .replace(/many/g, 'N').replace(/one/g, '1').replace(/[*]/g, 'N');
+  const toks = norm.toUpperCase().match(/[1N]/g);
+  if (!toks || toks.length < 2) return null;
+  const left = toks[0], right = toks[toks.length - 1];
+  if (left === 'N' && right === '1') return 'left-many';
+  if (left === '1' && right === 'N') return 'right-many';
+  return null; // 1-1 or N-N — no directional signal
 }
 
 /** Split a dotted, optionally-quoted ref into { table, col } via its last two segments. */
