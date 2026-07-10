@@ -1,0 +1,323 @@
+<?xml version='1.0' encoding='utf-8'?>
+<datasource caption="Retail Analytics (Sets Test)" inline="true" name="federated.retail_analytics_sets" version="18.1">
+  <connection class="snowflake" dbname="CSA" schema="TJ" server="xy12345.snowflakecomputing.com" username="svc_tableau">
+    <relation join="left" type="join">
+      <clause type="join">
+        <expression op="=">
+          <expression op="[Order Fact].[PROMO_KEY]" />
+          <expression op="[Promo Dim].[PROMO_KEY]" />
+        </expression>
+      </clause>
+      <relation join="left" type="join">
+        <clause type="join">
+          <expression op="=">
+            <expression op="[Order Fact].[ORDER_STORE_KEY]" />
+            <expression op="[Store Dim].[STORE_KEY]" />
+          </expression>
+        </clause>
+        <relation join="left" type="join">
+          <clause type="join">
+            <expression op="=">
+              <expression op="[Order Fact].[PRODUCT_KEY]" />
+              <expression op="[Product Dim].[PRODUCT_KEY]" />
+            </expression>
+          </clause>
+          <relation join="left" type="join">
+            <clause type="join">
+              <expression op="=">
+                <expression op="[Order Fact].[CUSTOMER_KEY]" />
+                <expression op="[Customer Dim].[CUSTOMER_KEY]" />
+              </expression>
+            </clause>
+            <relation name="Order Fact" table="[TJ].[ORDER_FACT]" type="table">
+              <columns header="yes" outcome="20">
+                <column datatype="string" name="ORDER_ID" ordinal="0" />
+                <column datatype="integer" name="ORDER_LINE" ordinal="1" />
+                <column datatype="integer" name="CUSTOMER_KEY" ordinal="2" />
+                <column datatype="integer" name="PRODUCT_KEY" ordinal="3" />
+                <column datatype="integer" name="ORDER_STORE_KEY" ordinal="4" />
+                <column datatype="integer" name="PROMO_KEY" ordinal="5" />
+                <column datatype="string" name="ORDER_CHANNEL" ordinal="6" />
+                <column datatype="string" name="ORDER_STATUS" ordinal="7" />
+                <column datatype="integer" name="QUANTITY_ORDERED" ordinal="8" />
+                <column datatype="real" name="UNIT_PRICE" ordinal="9" />
+                <column datatype="real" name="DISCOUNT_AMOUNT" ordinal="10" />
+                <column datatype="real" name="GROSS_REVENUE" ordinal="11" />
+                <column datatype="real" name="NET_REVENUE" ordinal="12" />
+                <column datatype="real" name="GROSS_PROFIT" ordinal="13" />
+                <column datatype="integer" name="IS_FIRST_ORDER" ordinal="14" />
+                <column datatype="integer" name="IS_RETURNED" ordinal="15" />
+                <column datatype="integer" name="IS_CANCELLED" ordinal="16" />
+                <column datatype="integer" name="DAYS_TO_SHIP" ordinal="17" />
+              </columns>
+            </relation>
+            <relation name="Customer Dim" table="[TJ].[CUSTOMER_DIM]" type="table">
+              <columns header="yes" outcome="8">
+                <column datatype="integer" name="CUSTOMER_KEY" ordinal="0" />
+                <column datatype="string" name="CUSTOMER_SEGMENT" ordinal="1" />
+                <column datatype="string" name="LOYALTY_TIER" ordinal="2" />
+                <column datatype="string" name="REGION" ordinal="3" />
+                <column datatype="string" name="ACQUISITION_CHANNEL" ordinal="4" />
+                <column datatype="real" name="LIFETIME_REVENUE" ordinal="5" />
+                <column datatype="integer" name="LIFETIME_ORDER_COUNT" ordinal="6" />
+                <column datatype="integer" name="IS_ACTIVE" ordinal="7" />
+              </columns>
+            </relation>
+          </relation>
+          <relation name="Product Dim" table="[TJ].[PRODUCT_DIM]" type="table">
+            <columns header="yes" outcome="6">
+              <column datatype="integer" name="PRODUCT_KEY" ordinal="0" />
+              <column datatype="string" name="PRODUCT_NAME" ordinal="1" />
+              <column datatype="string" name="CATEGORY" ordinal="2" />
+              <column datatype="string" name="BRAND" ordinal="3" />
+              <column datatype="real" name="UNIT_PRICE" ordinal="4" />
+              <column datatype="real" name="UNIT_COST" ordinal="5" />
+            </columns>
+          </relation>
+        </relation>
+        <relation name="Store Dim" table="[TJ].[STORE_DIM]" type="table">
+          <columns header="yes" outcome="5">
+            <column datatype="integer" name="STORE_KEY" ordinal="0" />
+            <column datatype="string" name="STORE_TYPE" ordinal="1" />
+            <column datatype="string" name="REGION" ordinal="2" />
+            <column datatype="integer" name="IS_ACTIVE" ordinal="3" />
+            <column datatype="real" name="ANNUAL_LEASE_COST" ordinal="4" />
+          </columns>
+        </relation>
+      </relation>
+      <relation name="Promo Dim" table="[TJ].[PROMO_DIM]" type="table">
+        <columns header="yes" outcome="5">
+          <column datatype="integer" name="PROMO_KEY" ordinal="0" />
+          <column datatype="string" name="PROMO_TYPE" ordinal="1" />
+          <column datatype="string" name="CHANNEL" ordinal="2" />
+          <column datatype="real" name="DISCOUNT_PCT" ordinal="3" />
+          <column datatype="integer" name="IS_STACKABLE" ordinal="4" />
+        </columns>
+      </relation>
+    </relation>
+  </connection>
+
+  <!-- ── Phase A coverage probes (generated) ── -->
+  <column caption="cov_ABS" datatype="real" name="[cov_ABS]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ABS([GROSS_PROFIT])" />
+  </column>
+  <column caption="cov_CEILING" datatype="real" name="[cov_CEILING]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="CEILING([UNIT_PRICE])" />
+  </column>
+  <column caption="cov_FLOOR" datatype="real" name="[cov_FLOOR]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="FLOOR([UNIT_PRICE])" />
+  </column>
+  <column caption="cov_ROUND" datatype="real" name="[cov_ROUND]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ROUND([NET_REVENUE], 2)" />
+  </column>
+  <column caption="cov_SQRT" datatype="real" name="[cov_SQRT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="SQRT([GROSS_REVENUE])" />
+  </column>
+  <column caption="cov_POWER" datatype="real" name="[cov_POWER]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="POWER([QUANTITY_ORDERED], 2)" />
+  </column>
+  <column caption="cov_LN" datatype="real" name="[cov_LN]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LN([GROSS_REVENUE] + 1)" />
+  </column>
+  <column caption="cov_LOG" datatype="real" name="[cov_LOG]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LOG([GROSS_REVENUE] + 1)" />
+  </column>
+  <column caption="cov_EXP" datatype="real" name="[cov_EXP]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="EXP([IS_FIRST_ORDER])" />
+  </column>
+  <column caption="cov_SIGN" datatype="real" name="[cov_SIGN]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="SIGN([GROSS_PROFIT])" />
+  </column>
+  <column caption="cov_PI" datatype="real" name="[cov_PI]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="PI()" />
+  </column>
+  <column caption="cov_LEN" datatype="real" name="[cov_LEN]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LEN([ORDER_ID])" />
+  </column>
+  <column caption="cov_UPPER" datatype="real" name="[cov_UPPER]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="UPPER([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_LOWER" datatype="real" name="[cov_LOWER]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LOWER([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_TRIM" datatype="real" name="[cov_TRIM]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="TRIM([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_LTRIM" datatype="real" name="[cov_LTRIM]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LTRIM([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_RTRIM" datatype="real" name="[cov_RTRIM]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="RTRIM([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_LEFT" datatype="real" name="[cov_LEFT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="LEFT([ORDER_ID], 3)" />
+  </column>
+  <column caption="cov_RIGHT" datatype="real" name="[cov_RIGHT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="RIGHT([ORDER_ID], 3)" />
+  </column>
+  <column caption="cov_MID" datatype="real" name="[cov_MID]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="MID([ORDER_ID], 2, 3)" />
+  </column>
+  <column caption="cov_REPLACE" datatype="real" name="[cov_REPLACE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="REPLACE([ORDER_STATUS], &quot;e&quot;, &quot;E&quot;)" />
+  </column>
+  <column caption="cov_CONTAINS" datatype="real" name="[cov_CONTAINS]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="CONTAINS([ORDER_STATUS], &quot;omp&quot;)" />
+  </column>
+  <column caption="cov_STARTSWITH" datatype="real" name="[cov_STARTSWITH]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="STARTSWITH([ORDER_STATUS], &quot;C&quot;)" />
+  </column>
+  <column caption="cov_ENDSWITH" datatype="real" name="[cov_ENDSWITH]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ENDSWITH([ORDER_STATUS], &quot;e&quot;)" />
+  </column>
+  <column caption="cov_FIND" datatype="real" name="[cov_FIND]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="FIND([ORDER_ID], &quot;-&quot;)" />
+  </column>
+  <column caption="cov_SPLIT" datatype="real" name="[cov_SPLIT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="SPLIT([ORDER_ID], &quot;-&quot;, 1)" />
+  </column>
+  <column caption="cov_REGEXP_EXTRACT" datatype="real" name="[cov_REGEXP_EXTRACT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="REGEXP_EXTRACT([ORDER_ID], &quot;([0-9]+)&quot;)" />
+  </column>
+  <column caption="cov_REGEXP_MATCH" datatype="real" name="[cov_REGEXP_MATCH]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="REGEXP_MATCH([ORDER_ID], &quot;[0-9]+&quot;)" />
+  </column>
+  <column caption="cov_REGEXP_REPLACE" datatype="real" name="[cov_REGEXP_REPLACE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="REGEXP_REPLACE([ORDER_ID], &quot;[0-9]&quot;, &quot;#&quot;)" />
+  </column>
+  <column caption="cov_DATE" datatype="real" name="[cov_DATE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATE(&quot;2024-01-15&quot;)" />
+  </column>
+  <column caption="cov_DATETIME" datatype="real" name="[cov_DATETIME]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATETIME(&quot;2024-01-15 10:30:00&quot;)" />
+  </column>
+  <column caption="cov_MAKEDATE" datatype="real" name="[cov_MAKEDATE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="MAKEDATE(2024, 1, 15)" />
+  </column>
+  <column caption="cov_STR" datatype="real" name="[cov_STR]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="STR([QUANTITY_ORDERED])" />
+  </column>
+  <column caption="cov_INT" datatype="real" name="[cov_INT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="INT([UNIT_PRICE])" />
+  </column>
+  <column caption="cov_FLOAT" datatype="real" name="[cov_FLOAT]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="FLOAT([QUANTITY_ORDERED])" />
+  </column>
+  <column caption="cov_YEAR" datatype="real" name="[cov_YEAR]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="YEAR(MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_MONTH" datatype="real" name="[cov_MONTH]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="MONTH(MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_DAY" datatype="real" name="[cov_DAY]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DAY(MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_WEEK" datatype="real" name="[cov_WEEK]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="WEEK(MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_QUARTER" datatype="real" name="[cov_QUARTER]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="QUARTER(MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_HOUR" datatype="real" name="[cov_HOUR]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="HOUR(DATETIME(&quot;2024-01-15 10:30:00&quot;))" />
+  </column>
+  <column caption="cov_MINUTE" datatype="real" name="[cov_MINUTE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="MINUTE(DATETIME(&quot;2024-01-15 10:30:00&quot;))" />
+  </column>
+  <column caption="cov_SECOND" datatype="real" name="[cov_SECOND]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="SECOND(DATETIME(&quot;2024-01-15 10:30:00&quot;))" />
+  </column>
+  <column caption="cov_TODAY" datatype="real" name="[cov_TODAY]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="TODAY()" />
+  </column>
+  <column caption="cov_NOW" datatype="real" name="[cov_NOW]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="NOW()" />
+  </column>
+  <column caption="cov_DATEPART" datatype="real" name="[cov_DATEPART]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATEPART(&#x27;year&#x27;, MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_DATETRUNC" datatype="real" name="[cov_DATETRUNC]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATETRUNC(&#x27;month&#x27;, MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_DATEADD" datatype="real" name="[cov_DATEADD]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATEADD(&#x27;day&#x27;, 5, MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_DATEDIFF" datatype="real" name="[cov_DATEDIFF]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATEDIFF(&#x27;day&#x27;, MAKEDATE(2024, 1, 1), MAKEDATE(2024, 1, 15))" />
+  </column>
+  <column caption="cov_DATEPARSE" datatype="real" name="[cov_DATEPARSE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="DATEPARSE(&quot;yyyy-MM-dd&quot;, &quot;2024-01-15&quot;)" />
+  </column>
+  <column caption="cov_IF" datatype="real" name="[cov_IF]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IF [GROSS_PROFIT] &gt; 0 THEN &quot;P&quot; ELSE &quot;L&quot; END" />
+  </column>
+  <column caption="cov_IIF" datatype="real" name="[cov_IIF]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IIF([GROSS_PROFIT] &gt; 0, &quot;P&quot;, &quot;L&quot;)" />
+  </column>
+  <column caption="cov_CASE" datatype="real" name="[cov_CASE]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="CASE [ORDER_STATUS] WHEN &quot;Complete&quot; THEN 1 ELSE 0 END" />
+  </column>
+  <column caption="cov_ISNULL" datatype="real" name="[cov_ISNULL]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ISNULL([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_IFNULL" datatype="real" name="[cov_IFNULL]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IFNULL([ORDER_STATUS], &quot;n/a&quot;)" />
+  </column>
+  <column caption="cov_IFERROR" datatype="real" name="[cov_IFERROR]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IFERROR([ORDER_STATUS], &quot;n/a&quot;)" />
+  </column>
+  <column caption="cov_ZN" datatype="real" name="[cov_ZN]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ZN([DISCOUNT_AMOUNT])" />
+  </column>
+  <column caption="cov_IN" datatype="real" name="[cov_IN]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="IF [ORDER_STATUS] IN (&quot;Complete&quot;, &quot;Shipped&quot;) THEN 1 ELSE 0 END" />
+  </column>
+  <column caption="cov_SUM" datatype="real" name="[cov_SUM]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="SUM([NET_REVENUE])" />
+  </column>
+  <column caption="cov_AVG" datatype="real" name="[cov_AVG]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="AVG([NET_REVENUE])" />
+  </column>
+  <column caption="cov_MIN" datatype="real" name="[cov_MIN]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="MIN([NET_REVENUE])" />
+  </column>
+  <column caption="cov_MAX" datatype="real" name="[cov_MAX]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="MAX([NET_REVENUE])" />
+  </column>
+  <column caption="cov_MEDIAN" datatype="real" name="[cov_MEDIAN]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="MEDIAN([NET_REVENUE])" />
+  </column>
+  <column caption="cov_COUNT" datatype="real" name="[cov_COUNT]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="COUNT([ORDER_ID])" />
+  </column>
+  <column caption="cov_COUNTD" datatype="real" name="[cov_COUNTD]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="COUNTD([ORDER_ID])" />
+  </column>
+  <column caption="cov_STDEV" datatype="real" name="[cov_STDEV]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="STDEV([NET_REVENUE])" />
+  </column>
+  <column caption="cov_STDEVP" datatype="real" name="[cov_STDEVP]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="STDEVP([NET_REVENUE])" />
+  </column>
+  <column caption="cov_VAR" datatype="real" name="[cov_VAR]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="VAR([NET_REVENUE])" />
+  </column>
+  <column caption="cov_VARP" datatype="real" name="[cov_VARP]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="VARP([NET_REVENUE])" />
+  </column>
+  <column caption="cov_PERCENTILE" datatype="real" name="[cov_PERCENTILE]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="PERCENTILE([NET_REVENUE], 0.5)" />
+  </column>
+  <column caption="cov_CORR" datatype="real" name="[cov_CORR]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="CORR([NET_REVENUE], [GROSS_PROFIT])" />
+  </column>
+  <column caption="cov_ATTR" datatype="real" name="[cov_ATTR]" role="measure" type="quantitative">
+    <calculation class="tableau" formula="ATTR([ORDER_STATUS])" />
+  </column>
+  <column caption="cov_USERNAME" datatype="real" name="[cov_USERNAME]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="USERNAME()" />
+  </column>
+  <column caption="cov_ISMEMBEROF" datatype="real" name="[cov_ISMEMBEROF]" role="dimension" type="nominal">
+    <calculation class="tableau" formula="ISMEMBEROF(&quot;Administrators&quot;)" />
+  </column>
+</datasource>

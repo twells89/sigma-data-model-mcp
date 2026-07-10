@@ -469,7 +469,9 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'TODAY': 'Today', 'NOW': 'Now',
   'YEAR': 'Year', 'MONTH': 'Month', 'DAY': 'Day',
   'HOUR': 'Hour', 'MINUTE': 'Minute', 'SECOND': 'Second',
-  'WEEK': 'Week', 'QUARTER': 'Quarter',
+  // NOTE: no 'WEEK' entry — Sigma has no Week() function; WEEK(date) is rewritten
+  // to DatePart("week", date) below (verified via docs + live query 2026-07-10).
+  'QUARTER': 'Quarter',
   'DATE': 'Date', 'DATETIME': 'Datetime', 'MAKEDATE': 'MakeDate',
   // regex (same arg order as Tableau)
   'REGEXP_EXTRACT': 'RegexpExtract', 'REGEXP_REPLACE': 'RegexpReplace', 'REGEXP_MATCH': 'RegexpMatch',
@@ -788,9 +790,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
   // DATEPART('year', [Date]) → Year([Date])
   f = f.replace(/\bDATEPART\s*\(\s*'(\w+)'\s*,\s*([^)]+)\)/gi, (m, part, dateArg) => {
+    // 'week' has no dedicated Sigma fn — use DatePart("week", …) (see WEEK above).
+    if (part.toLowerCase() === 'week') return 'DatePart("week", ' + dateArg.trim() + ')';
     const partMap: Record<string, string> = {
       year: 'Year', month: 'Month', day: 'Day', hour: 'Hour', minute: 'Minute',
-      second: 'Second', week: 'Week', quarter: 'Quarter', dayofweek: 'DayOfWeek', weekday: 'DayOfWeek'
+      second: 'Second', quarter: 'Quarter', dayofweek: 'DayOfWeek', weekday: 'DayOfWeek'
     };
     const fn = partMap[part.toLowerCase()];
     return fn ? fn + '(' + dateArg.trim() + ')' : m;
@@ -818,6 +822,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/,\s*["'](?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)["']\s*\)/gi, ')');
   f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
   f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
+  // Tableau WEEK(date) = week-of-year number. Sigma has NO Week() function
+  // (live query returned "Unknown function: Week", 2026-07-10) — the week number
+  // comes from DatePart("week", date). Handle one level of nested parens so
+  // WEEK(MakeDate(...)) / WEEK([Date]) both rewrite cleanly.
+  f = f.replace(/\bWEEK\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'DatePart("week", $1)');
 
   // STDEVP (population std dev) — Sigma has no population-stddev function;
   // population σ = Sqrt(population variance). Run before the STDEV map entry.
