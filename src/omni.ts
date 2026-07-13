@@ -257,9 +257,11 @@ export function convertOmniToSigma(
           median:         (e) => `Median(${e})`,
           sum_distinct:   (e) => `Sum(${e})`,
         };
-        formula = (aggWrap[type] ?? ((e: string) => `Sum(${e})`))(metricExpr);
+        const wrap = aggWrap[type];
+        if (!wrap) warnings.push(`⚠ measure "${name}": aggregate type "${type}" has no Sigma mapping — defaulted to Sum; verify the aggregation is correct.`);
+        formula = (wrap ?? ((e: string) => `Sum(${e})`))(metricExpr);
       } else {
-        formula = sigmaAggFormula(type, name);
+        formula = sigmaAggFormula(type, name, warnings);
       }
 
       const metricId = sigmaInodeId(name.toUpperCase());

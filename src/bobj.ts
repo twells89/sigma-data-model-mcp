@@ -414,7 +414,7 @@ export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {
         // surface bare cols used in the expr so they resolve
         for (const tk of innerTokens) if (tableKeyOf(tk.table) === homeKey) ensureRawCol(ctx, homeKey, tk.col);
       }
-      const fn = aggFormula(agg, formulaInner);
+      const fn = aggFormula(agg, formulaInner, warnings);
       const metricId = sigmaShortId();
       const m: SigmaMetric = { id: metricId, name: dispName, formula: fn };
       const fmt = inferSigmaFormat(fn, dispName);
@@ -832,7 +832,7 @@ function splitAggregate(sql: string, aggHint?: string): { agg: string; inner: st
   return { agg: (aggHint || 'sum').toLowerCase(), inner: (sql || '').trim() };
 }
 
-function aggFormula(agg: string, inner: string): string {
+function aggFormula(agg: string, inner: string, warnings?: string[]): string {
   const a = agg.toLowerCase().replace(/\s+/g, ' ');
   switch (a) {
     case 'sum': return `Sum(${inner})`;
@@ -843,7 +843,10 @@ function aggFormula(agg: string, inner: string): string {
     case 'max': case 'maximum': return `Max(${inner})`;
     case 'stddev': return `StdDev(${inner})`;
     case 'variance': return `Variance(${inner})`;
-    default: return `Sum(${inner})`;
+    default:
+      // Unknown BusinessObjects aggregation — keep Sum as a visible fallback but NEVER silently.
+      warnings?.push(`⚠ aggregation "${agg}" has no Sigma mapping — defaulted to Sum(${inner}); verify the aggregation is correct.`);
+      return `Sum(${inner})`;
   }
 }
 

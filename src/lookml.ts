@@ -1816,9 +1816,14 @@ export function convertLookMLToSigma(
       // bridge/junction table is needed for correct fan-out behaviour.
       let relType: 'N:1' | '1:1' | '1:N' = 'N:1';
       if (j.rel === 'one_to_one') relType = '1:1';
+      else if (j.rel === 'one_to_many') relType = '1:N';
+      else if (j.rel === 'many_to_one') relType = 'N:1';
       else if (j.rel === 'many_to_many') {
         relType = 'N:1';
         warnings.push(`⚠ Relationship "${j.alias}": LookML relationship is many_to_many, which Sigma does not support natively. Mapped to the closest type (N:1) — verify cardinality and introduce a bridge/junction table if the join can fan out on both sides (otherwise aggregates may double-count).`);
+      } else {
+        // Unrecognized relationship value — never guess silently (beads-sigma-lanq.2).
+        warnings.push(`⚠ Relationship "${j.alias}": unrecognized LookML relationship "${j.rel}" — defaulted to N:1 (many-to-one); verify the cardinality.`);
       }
 
       const srcEl = srcRes.element;

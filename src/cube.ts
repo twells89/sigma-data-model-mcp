@@ -247,7 +247,7 @@ export function convertCubeToSigma(
           // Strip [TABLE/col] → [col] for metric context
           inner = (translated || measure.sql).replace(/\[([^/\]]+)\/([^\]]+)\]/g, '[$2]');
         }
-        formula = wrapAggregate(type, inner);
+        formula = wrapAggregate(type, inner, warnings, measureName);
 
         // Apply filters if present
         if (measure.filters && measure.filters.length > 0) {
@@ -260,12 +260,12 @@ export function convertCubeToSigma(
           if (condParts.length > 0) {
             const cond = condParts.length === 1 ? condParts[0] : condParts.map(c => `(${c})`).join(' And ');
             const condStripped = cond.replace(/\[([^/\]]+)\/([^\]]+)\]/g, '[$2]');
-            formula = wrapAggregateIf(type, inner, condStripped);
+            formula = wrapAggregateIf(type, inner, condStripped, warnings, measureName);
           }
         }
       } else {
         // count_distinct etc with no sql
-        formula = sigmaAggFormula(type, measureName);
+        formula = sigmaAggFormula(type, measureName, warnings);
       }
 
       const metricId = sigmaShortId();
@@ -354,9 +354,7 @@ export function convertCubeToSigma(
         }
       }
 
-      const relType = join.relationship === 'one_to_many' ? '1:N'
-        : join.relationship === 'one_to_one' ? '1:1'
-        : 'N:1';
+      const relType = cubeRelType(join.relationship, `${cube.name} → ${join.name}`, warnings);
 
       const rel: any = {
         id: sigmaShortId(),
@@ -908,7 +906,24 @@ function translateCubeMeasureExpr(
   return expr;
 }
 
-function wrapAggregate(type: string, inner: string): string {
+/** Map a Cube relationship (canonical, legacy alias, or omitted) to a Sigma cardinality.
+ *  Warns loudly on legacy aliases, unrecognized values, and omitted relationships —
+ *  never a silent guess (an omitted/unknown relationship previously became N:1 silently,
+ *  the inverse of a 1:N join). See beads-sigma-lanq.2. */
+function cubeRelType(raw: string, ctx: string, warnings: string[]): '1:N' | '1:1' | 'N:1' {
+  const r = (raw || '').trim().toLowerCase();
+  const alias: Record<string, string> = { hasmany: 'one_to_many', belongsto: 'many_to_one', hasone: 'one_to_one' };
+  const canon = alias[r] || r;
+  if (r && alias[r]) warnings.push(`⚠ join "${ctx}": legacy Cube relationship "${raw}" normalized to ${canon}.`);
+  if (canon === 'one_to_many') return '1:N';
+  if (canon === 'one_to_one') return '1:1';
+  if (canon === 'many_to_one') return 'N:1';
+  warnings.push(`⚠ join "${ctx}": relationship ${raw ? `"${raw}" is not a recognized Cube cardinality` : 'is missing'} — defaulted to N:1 (many-to-one). Verify the join direction.`);
+  return 'N:1';
+}
+
+function wrapAggregate(type: string, inner: string, warnings?: string[], measureName?: string): string {
+  const label = measureName ? `"${measureName}"` : inner;
   const map: Record<string, (e: string) => string> = {
     sum: e => `Sum(${e})`,
     avg: e => `Avg(${e})`,
@@ -922,10 +937,19 @@ function wrapAggregate(type: string, inner: string): string {
     sum_boolean: e => `CountIf(${e})`,
     runningtotal: e => `Sum(${e})`,
   };
-  return (map[type] ?? ((e: string) => `Sum(${e})`))(inner);
+  const fn = map[type];
+  if (!fn) {
+    warnings?.push(`⚠ measure ${label}: aggregate type "${type}" has no Sigma mapping — defaulted to Sum; verify the aggregation is correct.`);
+    return `Sum(${inner})`;
+  }
+  if (type === 'runningtotal') {
+    warnings?.push(`⚠ measure ${label}: Cube runningTotal has no Sigma metric equivalent — approximated as a plain Sum (grand total, NOT a running total). Rebuild as a running/window calc in the workbook.`);
+  }
+  return fn(inner);
 }
 
-function wrapAggregateIf(type: string, inner: string, cond: string): string {
+function wrapAggregateIf(type: string, inner: string, cond: string, warnings?: string[], measureName?: string): string {
+  const label = measureName ? `"${measureName}"` : inner;
   const map: Record<string, (e: string, c: string) => string> = {
     sum: (e, c) => `SumIf(${e}, ${c})`,
     avg: (e, c) => `AvgIf(${e}, ${c})`,
@@ -936,7 +960,12 @@ function wrapAggregateIf(type: string, inner: string, cond: string): string {
     count_distinct: (e, c) => `CountDistinctIf(${e}, ${c})`,
     count_distinct_approx: (e, c) => `CountDistinctIf(${e}, ${c})`,
   };
-  return (map[type] ?? ((e: string, c: string) => `SumIf(${e}, ${c})`))(inner, cond);
+  const fn = map[type];
+  if (!fn) {
+    warnings?.push(`⚠ measure ${label}: filtered aggregate type "${type}" has no Sigma mapping — defaulted to SumIf; verify the aggregation is correct.`);
+    return `SumIf(${inner}, ${cond})`;
+  }
+  return fn(inner, cond);
 }
 
 // CASE WHEN converter — same shape as Omni's
@@ -1108,7 +1137,7 @@ function normalizeCubeFromYaml(c: any): CubeDef {
     })),
     joins: (c.joins || []).map((j: any): CubeJoin => ({
       name: String(j.name || ''),
-      relationship: String(j.relationship || 'many_to_one') as CubeJoin['relationship'],
+      relationship: j.relationship != null ? String(j.relationship) : '',
       sql: String(j.sql || ''),
     })),
   };
@@ -1488,7 +1517,7 @@ function normalizeCubeFromJs(obj: any): CubeDef {
     for (const [k, v] of Object.entries<any>(obj.joins)) {
       joins.push({
         name: k,
-        relationship: String(v.relationship || 'many_to_one') as CubeJoin['relationship'],
+        relationship: v.relationship != null ? String(v.relationship) : '',
         sql: String(v.sql || ''),
       });
     }
@@ -1554,7 +1583,7 @@ interface CubeMeasure {
 
 interface CubeJoin {
   name: string;
-  relationship: 'one_to_one' | 'one_to_many' | 'many_to_one';
+  relationship: string;  // raw Cube value (canonical | legacy alias | '' when omitted); normalized to a Sigma cardinality at emit by cubeRelType()
   sql: string;
 }
 
