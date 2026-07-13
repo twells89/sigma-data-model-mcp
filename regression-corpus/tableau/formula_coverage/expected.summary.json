@@ -1,0 +1,12 @@
+{
+  "description": "Phase A live coverage probe (bead tt3z.2): one calc column per DM-probeable Tableau function mapping against CSA.TJ.ORDER_FACT. Any type:error column = a claimed-OK mapping that does not resolve live.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 1,
+    "noErrorColumns": true
+  }
+}
