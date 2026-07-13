@@ -53,7 +53,7 @@ export function convertSqlToSigma(
   }
 
   for (const stmt of statements) {
-    const parsed = parseSqlFull(stmt.sql, db, sc);
+    const parsed = parseSqlFull(stmt.sql, db, sc, warnings);
 
     if (!parsed) {
       // Complex query (subquery, implicit cross-join) → Custom SQL element.
@@ -360,7 +360,7 @@ function extractSqlColumns(sql: string): string[] {
  * Returns primary table path, explicit JOINs (ON/USING), SELECT columns, and metrics.
  * Returns null if the query is too complex to auto-resolve (subquery in FROM, etc.).
  */
-function parseSqlFull(sql: string, db: string, sc: string): ParsedSql | null {
+function parseSqlFull(sql: string, db: string, sc: string, warnings: string[] = []): ParsedSql | null {
   let workSql = sql;
 
   // Skip CTEs: find the last top-level SELECT after all CTE definitions
@@ -456,23 +456,22 @@ function parseSqlFull(sql: string, db: string, sc: string): ParsedSql | null {
       const inner      = part.slice(parenOpen + 1, parenClose).trim();
       const multiAgg   = (part.match(/\b(SUM|COUNT|AVG|MIN|MAX)\s*\(/gi) ?? []).length > 1;
 
-      let formula: string;
       if (multiAgg) {
-        formula = `/* TODO: ${alias} — complex expression, wire manually */`;
-      } else {
-        const innerCol = inner.split('.').pop()!.replace(/["`[\]]/g, '').replace(/^\*$/, 'rows') || alias;
-        const sigmaFn: Record<string, string> = {
-          SUM: 'Sum', COUNT: 'CountIf', COUNTDISTINCT: 'CountDistinct',
-          AVG: 'Avg', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max',
-        };
-        const fn = sigmaFn[funcName] ?? 'Sum';
-        formula = funcName === 'COUNT'
-          ? `CountIf(IsNotNull([${sigmaDisplayName(innerCol)}]))`
-          : `${fn}([${sigmaDisplayName(innerCol)}])`;
-        metrics.push({ name: sigmaDisplayName(alias), formula, sourceCol: multiAgg ? null : innerCol });
+        // A compound aggregate (e.g. SUM(a) - SUM(b)) has no direct single-metric Sigma form.
+        // Never ship a placeholder formula as a real metric — warn and skip it.
+        warnings.push(`⚠ metric "${sigmaDisplayName(alias)}": compound aggregate expression (multiple aggregate calls) has no direct Sigma metric form — skipped. Recreate it in Sigma as a calculation over the base metrics.`);
         continue;
       }
-      metrics.push({ name: sigmaDisplayName(alias), formula, sourceCol: null });
+      const innerCol = inner.split('.').pop()!.replace(/["`[\]]/g, '').replace(/^\*$/, 'rows') || alias;
+      const sigmaFn: Record<string, string> = {
+        SUM: 'Sum', COUNT: 'CountIf', COUNTDISTINCT: 'CountDistinct',
+        AVG: 'Avg', AVERAGE: 'Avg', MIN: 'Min', MAX: 'Max',
+      };
+      const fn = sigmaFn[funcName] ?? 'Sum';
+      const formula = funcName === 'COUNT'
+        ? `CountIf(IsNotNull([${sigmaDisplayName(innerCol)}]))`
+        : `${fn}([${sigmaDisplayName(innerCol)}])`;
+      metrics.push({ name: sigmaDisplayName(alias), formula, sourceCol: innerCol });
     } else {
       if (!alias) continue;
 

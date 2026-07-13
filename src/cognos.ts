@@ -269,7 +269,7 @@ export function convertCognosIR(model: CognosModule, options: CognosConvertOptio
         }
       } else if (isMeasure) {
         ensureRawCol(ctx, key, item.identifier);
-        const agg = aggFn(item.aggregate!, `[${sigmaDisplayName(item.identifier)}]`);
+        const agg = aggFn(item.aggregate!, `[${sigmaDisplayName(item.identifier)}]`, warnings);
         const m: SigmaMetric = { id: sigmaShortId(), name: dispName, formula: agg };
         const fmt = inferSigmaFormat(agg, dispName); if (fmt) (m as any).format = fmt;
         ctx.metrics.push(m);
@@ -364,13 +364,19 @@ export function convertCognosToSigma(input: string | object, options: CognosConv
 
 const AGG_MAP: Record<string, string> = {
   total: 'Sum', sum: 'Sum', average: 'Avg', avg: 'Avg',
-  count: 'Count', 'count distinct': 'CountDistinct',
-  maximum: 'Max', max: 'Max', minimum: 'Min', min: 'Min',
+  // Real Cognos regularAggregate spellings arrive lowercased (see lc()): "countdistinct",
+  // not the spaced "count distinct" — keep both. Add median (Sigma-verified equivalent).
+  count: 'Count', 'count distinct': 'CountDistinct', countdistinct: 'CountDistinct',
+  maximum: 'Max', max: 'Max', minimum: 'Min', min: 'Min', median: 'Median',
 };
 const OVER_MAP: Record<string, string> = { total: 'SumOver', sum: 'SumOver', average: 'AvgOver', count: 'CountOver', maximum: 'MaxOver', minimum: 'MinOver' };
 
-function aggFn(agg: string, inner: string): string {
-  const fn = AGG_MAP[agg] || 'Sum';
+function aggFn(agg: string, inner: string, warnings?: string[]): string {
+  const fn = AGG_MAP[agg];
+  if (!fn) {
+    warnings?.push(`⚠ aggregation "${agg}" has no Sigma mapping — defaulted to Sum(${inner}); verify the aggregation is correct (e.g. standardDeviation/variance need manual authoring).`);
+    return `Sum(${inner})`;
+  }
   return `${fn}(${inner})`;
 }
 

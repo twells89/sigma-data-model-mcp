@@ -5,6 +5,18 @@
 
 const SIGMA_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const _usedIds = new Set<string>();
+// Per-run counter so IDs are DETERMINISTIC: the same input yields byte-identical
+// output every run (reproducible / diff-able / cacheable). IDs only need to be
+// unique within a single model, which the monotonic counter guarantees. Reset by
+// resetIds() at the start of each conversion.
+let _idCounter = 0;
+
+/** Deterministic base62 encoding of a positive integer, left-padded to `len`. */
+function encodeBase62(n: number, len: number): string {
+  let x = n, s = '';
+  while (x > 0) { s = SIGMA_CHARS[x % 62] + s; x = Math.floor(x / 62); }
+  return s.padStart(len, SIGMA_CHARS[0]);
+}
 
 /** Small words that Sigma keeps lowercase in display names (unless first word) */
 const SIGMA_LOWERCASE_WORDS = new Set([
@@ -12,18 +24,19 @@ const SIGMA_LOWERCASE_WORDS = new Set([
   'at','by','in','of','on','to','up','as','into','via','per'
 ]);
 
-/** Reset the ID registry — call at the start of each conversion run */
+/** Reset the ID registry + counter — call at the start of each conversion run. */
 export function resetIds(): void {
   _usedIds.clear();
+  _idCounter = 0;
 }
 
-/** Generate a unique short random ID (base62) */
+/** Generate a unique, DETERMINISTIC short ID (base62). Seeded by a per-run counter
+ *  (reset in resetIds), so the same input + call order produces the same IDs every
+ *  run. Unique within the run via the monotonic counter + registry guard. */
 export function sigmaShortId(len = 10): string {
   let id: string;
   do {
-    id = Array.from({ length: len }, () =>
-      SIGMA_CHARS[Math.floor(Math.random() * SIGMA_CHARS.length)]
-    ).join('');
+    id = encodeBase62(++_idCounter, len);
   } while (_usedIds.has(id));
   _usedIds.add(id);
   return id;
@@ -110,7 +123,7 @@ export function sigmaColFormula(tableName: string, identifier: string): string {
 }
 
 /** Metric formula: aggregation referencing column by display name (no table prefix) */
-export function sigmaAggFormula(agg: string, identifier: string): string {
+export function sigmaAggFormula(agg: string, identifier: string, warnings?: string[]): string {
   const dn = sigmaDisplayName(identifier);
   const map: Record<string, string> = {
     sum:            `Sum([${dn}])`,
@@ -125,7 +138,12 @@ export function sigmaAggFormula(agg: string, identifier: string): string {
     percentile:     `Percentile([${dn}], 0.5)`,
     sum_boolean:    `CountIf([${dn}])`,
   };
-  return map[agg?.toLowerCase()] || `Sum([${dn}])`;
+  const mapped = map[agg?.toLowerCase()];
+  if (mapped) return mapped;
+  // No documented Sigma mapping for this aggregation. Keep Sum as a visible fallback
+  // (so downstream metric refs don't break) but NEVER silently — flag it for review.
+  warnings?.push(`⚠ aggregation "${agg}" has no Sigma mapping for "${dn}" — defaulted to Sum([${dn}]); verify the aggregation is correct.`);
+  return `Sum([${dn}])`;
 }
 
 /**

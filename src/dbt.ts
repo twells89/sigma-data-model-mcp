@@ -168,7 +168,8 @@ function convertDbtSemanticModel(
   model: DbtSemanticModel,
   config: DbtConvertConfig,
   allMeasuresByModel: Record<string, { agg: string; exprId: string }>,
-  knownNames: Set<string> = new Set()
+  knownNames: Set<string> = new Set(),
+  warnings?: string[]
 ): ElementResult {
   const connectionId = config.connectionId || '<CONNECTION_ID>';
 
@@ -257,7 +258,7 @@ function convertDbtSemanticModel(
     if (!colIdMap[exprId]) addCol(exprId);
     const metric: SigmaMetric = {
       id: sigmaShortId(),
-      formula: sigmaAggFormula(measure.agg, exprId),
+      formula: sigmaAggFormula(measure.agg, exprId, warnings),
       name: sigmaDisplayName(measure.name),
     };
     if (measure.description) metric.description = measure.description;
@@ -272,7 +273,8 @@ function convertDbtSemanticModel(
 function convertDbtMetrics(
   metrics: DbtMetric[],
   allMeasuresByModel: Record<string, { agg: string; exprId: string }>,
-  elements: SigmaElement[]
+  elements: SigmaElement[],
+  warnings?: string[]
 ): { targetElementId: string; metric: { id: string; formula: string; name: string; description?: string } }[] {
   const result: { targetElementId: string; metric: { id: string; formula: string; name: string; description?: string } }[] = [];
   for (const metric of metrics || []) {
@@ -283,20 +285,20 @@ function convertDbtMetrics(
     if (metric.type === 'simple') {
       const mName = typeof tp.measure === 'object' ? tp.measure?.name : tp.measure;
       const src = allMeasuresByModel[mName || ''];
-      formula = src ? sigmaAggFormula(src.agg, src.exprId) : `/* measure: ${mName} */`;
+      formula = src ? sigmaAggFormula(src.agg, src.exprId, warnings) : `/* measure: ${mName} */`;
     } else if (metric.type === 'ratio') {
       const num = typeof tp.numerator === 'object' ? tp.numerator?.name : tp.numerator;
       const den = typeof tp.denominator === 'object' ? tp.denominator?.name : tp.denominator;
       const ns = allMeasuresByModel[num || ''], ds = allMeasuresByModel[den || ''];
-      const nf = ns ? sigmaAggFormula(ns.agg, ns.exprId) : `[${sigmaDisplayName(num || '')}]`;
-      const df = ds ? sigmaAggFormula(ds.agg, ds.exprId) : `[${sigmaDisplayName(den || '')}]`;
+      const nf = ns ? sigmaAggFormula(ns.agg, ns.exprId, warnings) : `[${sigmaDisplayName(num || '')}]`;
+      const df = ds ? sigmaAggFormula(ds.agg, ds.exprId, warnings) : `[${sigmaDisplayName(den || '')}]`;
       formula = `${nf} / NullIf(${df}, 0)`;
     } else if (metric.type === 'derived') {
       formula = (tp.expr || '').replace(
         /\{\{\s*metric\(['"]([^'"]+)['"]\)\s*\}\}/g,
         (_, m) => {
           const s = allMeasuresByModel[m];
-          return s ? sigmaAggFormula(s.agg, s.exprId) : `[${sigmaDisplayName(m)}]`;
+          return s ? sigmaAggFormula(s.agg, s.exprId, warnings) : `[${sigmaDisplayName(m)}]`;
         }
       ) || `/* derived: ${metric.name} */`;
     } else {
@@ -369,7 +371,7 @@ export function convertDbtToSigma(
 
   for (const model of semanticModels) {
     try {
-      const { element } = convertDbtSemanticModel(model, config, allMeasuresByModel, knownNames);
+      const { element } = convertDbtSemanticModel(model, config, allMeasuresByModel, knownNames, warnings);
       // Surface any skipped dimensions as warnings
       for (const { name, reason } of (element as any)._skippedDims || []) {
         warnings.push(`⚠ "${model.name}.${name}": skipped — contains ${reason}() which has no Sigma equivalent. Add this column manually in the Sigma UI.`);
@@ -451,12 +453,16 @@ export function convertDbtToSigma(
   });
 
   // Add derived/ratio metrics
-  for (const { targetElementId, metric } of convertDbtMetrics(dbtMetrics, allMeasuresByModel, elements)) {
+  for (const { targetElementId, metric } of convertDbtMetrics(dbtMetrics, allMeasuresByModel, elements, warnings)) {
     const el = elements.find(e => e.id === targetElementId);
-    if (el) {
-      if (!el.metrics) el.metrics = [];
-      el.metrics.push(metric);
+    if (!el) continue;
+    // Never ship a placeholder formula (/* ... */) as a real metric — warn and skip.
+    if (metric.formula.trim().startsWith('/*')) {
+      warnings.push(`⚠ metric "${metric.name}": could not be translated (${metric.formula.replace(/\/\*|\*\//g, '').trim()}) — skipped. Add it manually in Sigma.`);
+      continue;
     }
+    if (!el.metrics) el.metrics = [];
+    el.metrics.push(metric);
   }
 
   // ── Pull cross-element calc cols off source elements (moved to derived) ─
