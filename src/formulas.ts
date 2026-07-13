@@ -460,6 +460,12 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'ROUND': 'Round', 'SQRT': 'Sqrt', 'POWER': 'Power',
   // scalar math (verified resolve in Sigma 2026-06-15; Tableau LOG default base 10 == Sigma Log default base 10)
   'LN': 'Ln', 'LOG': 'Log', 'EXP': 'Exp', 'MOD': 'Mod', 'SIGN': 'Sign', 'PI': 'Pi',
+  // trig + angle conversion — same names/arg-order in Sigma (live-verified 2026-07-10, bead tt3z.3)
+  'SIN': 'Sin', 'COS': 'Cos', 'TAN': 'Tan', 'COT': 'Cot',
+  'ASIN': 'Asin', 'ACOS': 'Acos', 'ATAN': 'Atan', 'ATAN2': 'Atan2',
+  'DEGREES': 'Degrees', 'RADIANS': 'Radians',
+  // PROPER (title-case) — live-verified Sigma Proper() (bead tt3z.3)
+  'PROPER': 'Proper',
   'STR': 'Text', 'INT': 'Int', 'FLOAT': 'Number',
   'LEN': 'Len', 'UPPER': 'Upper', 'LOWER': 'Lower',
   'TRIM': 'Trim', 'LTRIM': 'Ltrim', 'RTRIM': 'Rtrim',
@@ -469,7 +475,9 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'TODAY': 'Today', 'NOW': 'Now',
   'YEAR': 'Year', 'MONTH': 'Month', 'DAY': 'Day',
   'HOUR': 'Hour', 'MINUTE': 'Minute', 'SECOND': 'Second',
-  'WEEK': 'Week', 'QUARTER': 'Quarter',
+  // NOTE: no 'WEEK' entry — Sigma has no Week() function; WEEK(date) is rewritten
+  // to DatePart("week", date) below (verified via docs + live query 2026-07-10).
+  'QUARTER': 'Quarter',
   'DATE': 'Date', 'DATETIME': 'Datetime', 'MAKEDATE': 'MakeDate',
   // regex (same arg order as Tableau)
   'REGEXP_EXTRACT': 'RegexpExtract', 'REGEXP_REPLACE': 'RegexpReplace', 'REGEXP_MATCH': 'RegexpMatch',
@@ -788,9 +796,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
   // DATEPART('year', [Date]) → Year([Date])
   f = f.replace(/\bDATEPART\s*\(\s*'(\w+)'\s*,\s*([^)]+)\)/gi, (m, part, dateArg) => {
+    // 'week' has no dedicated Sigma fn — use DatePart("week", …) (see WEEK above).
+    if (part.toLowerCase() === 'week') return 'DatePart("week", ' + dateArg.trim() + ')';
     const partMap: Record<string, string> = {
       year: 'Year', month: 'Month', day: 'Day', hour: 'Hour', minute: 'Minute',
-      second: 'Second', week: 'Week', quarter: 'Quarter', dayofweek: 'DayOfWeek', weekday: 'DayOfWeek'
+      second: 'Second', quarter: 'Quarter', dayofweek: 'DayOfWeek', weekday: 'DayOfWeek'
     };
     const fn = partMap[part.toLowerCase()];
     return fn ? fn + '(' + dateArg.trim() + ')' : m;
@@ -818,6 +828,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/,\s*["'](?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)["']\s*\)/gi, ')');
   f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
   f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
+  // Tableau WEEK(date) = week-of-year number. Sigma has NO Week() function
+  // (live query returned "Unknown function: Week", 2026-07-10) — the week number
+  // comes from DatePart("week", date). Handle one level of nested parens so
+  // WEEK(MakeDate(...)) / WEEK([Date]) both rewrite cleanly.
+  f = f.replace(/\bWEEK\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'DatePart("week", $1)');
 
   // STDEVP (population std dev) — Sigma has no population-stddev function;
   // population σ = Sqrt(population variance). Run before the STDEV map entry.
@@ -844,6 +859,14 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/\bUSERATTRIBUTE\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserAttributeText("$1")');
   f = f.replace(/\bISUSERNAME\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, '(CurrentUserEmail() = "$1")');
 
+  // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
+  // resolves live (bead tt3z.3, verified 2026-07-10):
+  //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
+  //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
+  // One level of nested parens in the arg is handled.
+  f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
+  f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
+
   // Map remaining functions
   for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
     f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
@@ -869,6 +892,31 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   // would otherwise pass through as a silently-broken formula.
   if (warnings && TABLEAU_TABLE_CALC_TOKEN_RE.test(f)) {
     warnings.push(`⚠ Table-calc function embedded in a larger expression — NOT translated in place. Untranslated fragment: ${f.slice(0, 120)}`);
+  }
+
+  // B1 catch-all — never let an unmapped Tableau function pass through silently.
+  // Every function we DO emit is PascalCase (Sum, DateTrunc, CurrentUserEmail…),
+  // so any residual ALL-CAPS `FUNC(` token is an unmapped Tableau function that
+  // would otherwise reach Sigma verbatim and error only at query time (the
+  // "agent falls off the rails" failure — e.g. FINDNTH, CHAR, MAKEDATETIME,
+  // MODEL_QUANTILE, the trig family). Mask string literals and column refs first
+  // so identifiers inside them aren't flagged; table-calc tokens are already
+  // reported just above, so skip them here to avoid duplicate warnings.
+  if (warnings) {
+    const masked = f.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]/g, '[]');
+    const unmapped = new Set<string>();
+    const scan = /\b([A-Z][A-Z0-9_]+)\s*\(/g;
+    let mm: RegExpExecArray | null;
+    while ((mm = scan.exec(masked)) !== null) {
+      const fn = mm[1];
+      if (TABLEAU_TABLE_CALC_TOKEN_RE.test(fn + '(')) continue; // already flagged above
+      unmapped.add(fn);
+    }
+    if (unmapped.size) {
+      warnings.push(
+        `⚠ Unmapped Tableau function(s) passed through unconverted: ${[...unmapped].join(', ')} — `
+        + `no validated Sigma equivalent yet. Rewrite manually; left as-is they error at query time.`);
+    }
   }
 
   return f.trim();
