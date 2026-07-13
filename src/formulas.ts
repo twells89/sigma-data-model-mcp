@@ -880,6 +880,31 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     warnings.push(`⚠ Table-calc function embedded in a larger expression — NOT translated in place. Untranslated fragment: ${f.slice(0, 120)}`);
   }
 
+  // B1 catch-all — never let an unmapped Tableau function pass through silently.
+  // Every function we DO emit is PascalCase (Sum, DateTrunc, CurrentUserEmail…),
+  // so any residual ALL-CAPS `FUNC(` token is an unmapped Tableau function that
+  // would otherwise reach Sigma verbatim and error only at query time (the
+  // "agent falls off the rails" failure — e.g. FINDNTH, CHAR, MAKEDATETIME,
+  // MODEL_QUANTILE, the trig family). Mask string literals and column refs first
+  // so identifiers inside them aren't flagged; table-calc tokens are already
+  // reported just above, so skip them here to avoid duplicate warnings.
+  if (warnings) {
+    const masked = f.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]/g, '[]');
+    const unmapped = new Set<string>();
+    const scan = /\b([A-Z][A-Z0-9_]+)\s*\(/g;
+    let mm: RegExpExecArray | null;
+    while ((mm = scan.exec(masked)) !== null) {
+      const fn = mm[1];
+      if (TABLEAU_TABLE_CALC_TOKEN_RE.test(fn + '(')) continue; // already flagged above
+      unmapped.add(fn);
+    }
+    if (unmapped.size) {
+      warnings.push(
+        `⚠ Unmapped Tableau function(s) passed through unconverted: ${[...unmapped].join(', ')} — `
+        + `no validated Sigma equivalent yet. Rewrite manually; left as-is they error at query time.`);
+    }
+  }
+
   return f.trim();
 }
 
