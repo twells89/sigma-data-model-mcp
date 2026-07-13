@@ -460,6 +460,12 @@ const TABLEAU_FUNC_MAP: Record<string, string> = {
   'ROUND': 'Round', 'SQRT': 'Sqrt', 'POWER': 'Power',
   // scalar math (verified resolve in Sigma 2026-06-15; Tableau LOG default base 10 == Sigma Log default base 10)
   'LN': 'Ln', 'LOG': 'Log', 'EXP': 'Exp', 'MOD': 'Mod', 'SIGN': 'Sign', 'PI': 'Pi',
+  // trig + angle conversion — same names/arg-order in Sigma (live-verified 2026-07-10, bead tt3z.3)
+  'SIN': 'Sin', 'COS': 'Cos', 'TAN': 'Tan', 'COT': 'Cot',
+  'ASIN': 'Asin', 'ACOS': 'Acos', 'ATAN': 'Atan', 'ATAN2': 'Atan2',
+  'DEGREES': 'Degrees', 'RADIANS': 'Radians',
+  // PROPER (title-case) — live-verified Sigma Proper() (bead tt3z.3)
+  'PROPER': 'Proper',
   'STR': 'Text', 'INT': 'Int', 'FLOAT': 'Number',
   'LEN': 'Len', 'UPPER': 'Upper', 'LOWER': 'Lower',
   'TRIM': 'Trim', 'LTRIM': 'Ltrim', 'RTRIM': 'Rtrim',
@@ -852,6 +858,14 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/\bISMEMBEROF\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserInTeam("$1")');
   f = f.replace(/\bUSERATTRIBUTE\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserAttributeText("$1")');
   f = f.replace(/\bISUSERNAME\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, '(CurrentUserEmail() = "$1")');
+
+  // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
+  // resolves live (bead tt3z.3, verified 2026-07-10):
+  //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
+  //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
+  // One level of nested parens in the arg is handled.
+  f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
+  f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
 
   // Map remaining functions
   for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
