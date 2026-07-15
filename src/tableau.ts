@@ -794,6 +794,51 @@ function qualifyTwoPartFqns(sql: string, db: string): string {
   });
 }
 
+// Custom-SQL relation text is stored XML-escaped inside the .twb. fast-xml-parser
+// decodes exactly ONE level of NAMED entities and leaves numeric character
+// references untouched, so two real cases reach us broken:
+//   • numeric refs (&#13; &#10; &#9;) — Tableau encodes SQL line breaks this way.
+//   • double-escaped text (&amp;lt;=) — round-tripped custom SQL where the parser's
+//     single pass leaves a residual &lt;= / &gt;=. That is invalid SQL (a human reads
+//     it as "<<" / ">>=") and fails in the warehouse.
+// Decode to a FIXED POINT so any escaping depth collapses to real operators. A bare
+// "&" that doesn't form a known entity (e.g. `A & B`) has no match and is left intact;
+// the (vanishingly rare) SQL that intends the literal text `&lt;` as data is decoded to
+// `<`, matching the existing numeric-entity decode's philosophy.
+function unescapeCustomSqlEntities(s: string): string {
+  const decodeOnce = (t: string): string =>
+    t.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+     .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)))
+     .replace(/&lt;/g, '<')
+     .replace(/&gt;/g, '>')
+     .replace(/&quot;/g, '"')
+     .replace(/&apos;/g, "'")
+     .replace(/&amp;/g, '&');
+  let out = s;
+  for (let i = 0; i < 5; i++) {
+    const next = decodeOnce(out);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+// Tableau's `_.fcp.ObjectModelEncapsulateLegacy` wrapper can serialize custom-SQL
+// comparison operators DOUBLED inside its CDATA block — `<` → `<<`, `>=` → `>>=`
+// (field-observed: DraftKings "High Risk Bets", 5/5 operators doubled, no XML
+// entities). CDATA is read verbatim, so the doubled form lands in source.statement
+// and the warehouse rejects it. `<<` / `>>` are not comparison operators in the
+// warehouses this converter targets (Snowflake/BigQuery/Databricks — they use
+// BITSHIFT* functions), so collapsing a run of 2+ identical angle brackets to one
+// restores the intended `<` / `>` / `<=` / `>=`. Two-char tokens made of DIFFERENT
+// brackets (`<>` not-equal) and the `<=`/`>=`/`==` families are untouched. Returns
+// the count of rewrites so the caller can emit a verify warning (never silent).
+function collapseDoubledComparisonOps(sql: string): { sql: string; rewrites: number } {
+  let rewrites = 0;
+  const out = sql.replace(/<{2,}|>{2,}/g, (m) => { rewrites++; return m[0]; });
+  return { sql: out, rewrites };
+}
+
 export function collapseCustomSqlBlend(
   elements: any[],
   connId: string,
@@ -2008,9 +2053,15 @@ export function convertTableauToSigma(
           // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
           // is not a real table, so a warehouse-table path would fail at migration).
           const isCustomSql = isCustomSqlRel;
-          const sqlText = isCustomSql
-            ? qualifyTwoPartFqns(String(rel['#text'] ?? '').trim(), dbOverride)
-            : '';
+          let sqlText = '';
+          if (isCustomSql) {
+            const decoded = qualifyTwoPartFqns(unescapeCustomSqlEntities(String(rel['#text'] ?? '')).trim(), dbOverride);
+            const collapsed = collapseDoubledComparisonOps(decoded);
+            sqlText = collapsed.sql;
+            if (collapsed.rewrites > 0) {
+              warnings.push(`⚠ Custom SQL relation "${fullName}": collapsed ${collapsed.rewrites} doubled comparison operator(s) (<<→<, >>=→>=) — a Tableau ObjectModel encapsulation artifact. VERIFY these are comparisons, not bit-shift operators.`);
+            }
+          }
           const source = (isCustomSql && sqlText)
             ? { connectionId: connId, kind: 'sql', statement: sqlText }
             : { connectionId: connId, kind: 'warehouse-table', path };
@@ -2217,15 +2268,20 @@ export function convertTableauToSigma(
       // (CLAUDE.md #3): OMIT the element-level name, and reference the SQL's output
       // columns with bare [Display Name] formulas (Sigma fuzzy-matches case/
       // underscore variants for self-references inside the same SQL element).
-      // fast-xml-parser decodes NAMED entities (&amp; &lt; …) but leaves numeric
-      // character references (&#13; &#10; &#9;) — Tableau encodes SQL line breaks
-      // that way, so decode them or they land literally in the statement and break
-      // the warehouse query.
-      const decodeNumericEntities = (s: string): string =>
-        s.replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-         .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(parseInt(d, 10)));
+      // fast-xml-parser decodes NAMED entities (&amp; &lt; …) exactly once and leaves
+      // numeric character references (&#13; &#10; &#9;) — Tableau encodes SQL line
+      // breaks that way, and round-tripped custom SQL can arrive double-escaped
+      // (&amp;lt;=). unescapeCustomSqlEntities decodes both to a fixed point so neither
+      // lands literally in the statement and breaks the warehouse query.
+      // A Tableau ObjectModel encapsulation can double comparison operators in the
+      // CDATA (<<, >>=); collapse them before repointing so the warehouse accepts the
+      // statement (see collapseDoubledComparisonOps).
+      const _collapsed = collapseDoubledComparisonOps(unescapeCustomSqlEntities((rootRelation['#text'] || '').toString()).trim());
+      if (_collapsed.rewrites > 0) {
+        warnings.push(`⚠ Custom SQL datasource: collapsed ${_collapsed.rewrites} doubled comparison operator(s) (<<→<, >>=→>=) — a Tableau ObjectModel encapsulation artifact. VERIFY these are comparisons, not bit-shift operators.`);
+      }
       const statement = _repointCustomSqlSchema(
-        decodeNumericEntities((rootRelation['#text'] || '').toString()).trim(),
+        _collapsed.sql,
         attr(rootConn, 'dbname'), attr(rootConn, 'schema'), dbOverride, schOverride);
       if (!statement) {
         warnings.push('⚠ Custom SQL relation carried no SQL text — no element emitted.');
