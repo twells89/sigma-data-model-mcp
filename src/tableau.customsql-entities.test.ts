@@ -60,3 +60,39 @@ describe('Custom SQL XML-entity decoding into source.statement', () => {
     assert.match(s, /'East & West'/);
   });
 });
+
+describe('Custom SQL doubled comparison operators (ObjectModel encapsulation artifact)', () => {
+  // Field case: Tableau's _.fcp.ObjectModelEncapsulateLegacy CDATA doubled every
+  // comparison operator (< → <<, >= → >>=). Raw `<<` is only legal inside CDATA
+  // (in a plain text node `<` opens a tag), so these fixtures wrap the SQL in CDATA
+  // exactly as the real .twb does. CDATA is read verbatim → the doubled form would
+  // land in the statement and the warehouse would reject it, absent the collapse.
+  const cdataTwb = (sql: string) => `<?xml version='1.0'?><workbook><datasources>
+   <datasource caption='C' name='federated.c'><connection class='snowflake' dbname='CSA' schema='TJ'>
+     <relation name='Custom SQL Query' type='text'><![CDATA[${sql}]]></relation>
+     <metadata-records><metadata-record class='column'><remote-name>ORDER_ID</remote-name><local-type>integer</local-type></metadata-record></metadata-records>
+   </connection></datasource></datasources>
+   <worksheet name='W'><table><view><datasources><datasource name='federated.c'/></datasources></view></table></worksheet></workbook>`;
+
+  test('<< / >>= collapse to < / >= and a verify warning is emitted', () => {
+    const out = convertTableauToSigma(
+      cdataTwb('SELECT ORDER_ID FROM CSA.TJ.BETS WHERE PLACEDDATETIME << TO_DATE(GETDATE()) AND ORDER_ID >>= 100'),
+      { connectionId: 'c1' });
+    const s = sqlOf(out);
+    assert.match(s, /PLACEDDATETIME < TO_DATE/i, '<< collapsed to <');
+    assert.match(s, /ORDER_ID >= 100/i, '>>= collapsed to >=');
+    assert.doesNotMatch(s, /<<|>>/, 'no doubled angle brackets remain');
+    assert.ok(out.warnings.some((w: string) => /doubled comparison operator/i.test(w)),
+      'a loud verify warning was emitted (never silent)');
+  });
+
+  test('not-equal <> and normal <= / >= are left untouched', () => {
+    const s = sqlOf(convertTableauToSigma(
+      cdataTwb("SELECT ORDER_ID FROM CSA.TJ.BETS WHERE STATUS <> 'X' AND A <= 1 AND B >= 2"),
+      { connectionId: 'c1' }));
+    assert.match(s, /STATUS <> 'X'/i, '<> preserved');
+    assert.match(s, /A <= 1/i);
+    assert.match(s, /B >= 2/i);
+    assert.doesNotMatch(s, /doubled/i);
+  });
+});

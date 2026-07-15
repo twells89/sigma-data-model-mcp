@@ -823,6 +823,22 @@ function unescapeCustomSqlEntities(s: string): string {
   return out;
 }
 
+// Tableau's `_.fcp.ObjectModelEncapsulateLegacy` wrapper can serialize custom-SQL
+// comparison operators DOUBLED inside its CDATA block — `<` → `<<`, `>=` → `>>=`
+// (field-observed: DraftKings "High Risk Bets", 5/5 operators doubled, no XML
+// entities). CDATA is read verbatim, so the doubled form lands in source.statement
+// and the warehouse rejects it. `<<` / `>>` are not comparison operators in the
+// warehouses this converter targets (Snowflake/BigQuery/Databricks — they use
+// BITSHIFT* functions), so collapsing a run of 2+ identical angle brackets to one
+// restores the intended `<` / `>` / `<=` / `>=`. Two-char tokens made of DIFFERENT
+// brackets (`<>` not-equal) and the `<=`/`>=`/`==` families are untouched. Returns
+// the count of rewrites so the caller can emit a verify warning (never silent).
+function collapseDoubledComparisonOps(sql: string): { sql: string; rewrites: number } {
+  let rewrites = 0;
+  const out = sql.replace(/<{2,}|>{2,}/g, (m) => { rewrites++; return m[0]; });
+  return { sql: out, rewrites };
+}
+
 export function collapseCustomSqlBlend(
   elements: any[],
   connId: string,
@@ -2037,9 +2053,15 @@ export function convertTableauToSigma(
           // than a warehouse-table path (the relation NAME — "Custom SQL Query1" —
           // is not a real table, so a warehouse-table path would fail at migration).
           const isCustomSql = isCustomSqlRel;
-          const sqlText = isCustomSql
-            ? qualifyTwoPartFqns(unescapeCustomSqlEntities(String(rel['#text'] ?? '')).trim(), dbOverride)
-            : '';
+          let sqlText = '';
+          if (isCustomSql) {
+            const decoded = qualifyTwoPartFqns(unescapeCustomSqlEntities(String(rel['#text'] ?? '')).trim(), dbOverride);
+            const collapsed = collapseDoubledComparisonOps(decoded);
+            sqlText = collapsed.sql;
+            if (collapsed.rewrites > 0) {
+              warnings.push(`⚠ Custom SQL relation "${fullName}": collapsed ${collapsed.rewrites} doubled comparison operator(s) (<<→<, >>=→>=) — a Tableau ObjectModel encapsulation artifact. VERIFY these are comparisons, not bit-shift operators.`);
+            }
+          }
           const source = (isCustomSql && sqlText)
             ? { connectionId: connId, kind: 'sql', statement: sqlText }
             : { connectionId: connId, kind: 'warehouse-table', path };
@@ -2251,8 +2273,15 @@ export function convertTableauToSigma(
       // breaks that way, and round-tripped custom SQL can arrive double-escaped
       // (&amp;lt;=). unescapeCustomSqlEntities decodes both to a fixed point so neither
       // lands literally in the statement and breaks the warehouse query.
+      // A Tableau ObjectModel encapsulation can double comparison operators in the
+      // CDATA (<<, >>=); collapse them before repointing so the warehouse accepts the
+      // statement (see collapseDoubledComparisonOps).
+      const _collapsed = collapseDoubledComparisonOps(unescapeCustomSqlEntities((rootRelation['#text'] || '').toString()).trim());
+      if (_collapsed.rewrites > 0) {
+        warnings.push(`⚠ Custom SQL datasource: collapsed ${_collapsed.rewrites} doubled comparison operator(s) (<<→<, >>=→>=) — a Tableau ObjectModel encapsulation artifact. VERIFY these are comparisons, not bit-shift operators.`);
+      }
       const statement = _repointCustomSqlSchema(
-        unescapeCustomSqlEntities((rootRelation['#text'] || '').toString()).trim(),
+        _collapsed.sql,
         attr(rootConn, 'dbname'), attr(rootConn, 'schema'), dbOverride, schOverride);
       if (!statement) {
         warnings.push('⚠ Custom SQL relation carried no SQL text — no element emitted.');
