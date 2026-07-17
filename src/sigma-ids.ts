@@ -43,8 +43,13 @@ export function sigmaShortId(len = 10): string {
 }
 
 /** Column IDs use Sigma's inode format: inode-{22-char base62}/{IDENTIFIER} */
-export function sigmaInodeId(identifier: string): string {
-  return `inode-${sigmaShortId(22)}/${identifier.toUpperCase()}`;
+// `casing` controls the physical-name folding: Snowflake/BigQuery fold unquoted
+// identifiers to UPPER (the default), but Databricks/Spark store them lower-case,
+// so those warehouses bind only against a lower-cased physical name. Default
+// 'upper' keeps every existing caller byte-identical.
+export function sigmaInodeId(identifier: string, casing: 'upper' | 'lower' = 'upper'): string {
+  const phys = casing === 'lower' ? identifier.toLowerCase() : identifier.toUpperCase();
+  return `inode-${sigmaShortId(22)}/${phys}`;
 }
 
 /**
@@ -65,16 +70,18 @@ export function sigmaInodeId(identifier: string): string {
  * CITY_NAME ("City Name" ✓), Sum_GrossMarginAmount → SUM_GROSS_MARGIN_AMOUNT
  * ("Sum Gross Margin Amount" ✓).
  */
-export function sigmaPhysicalName(s: string): string {
+export function sigmaPhysicalName(s: string, casing: 'upper' | 'lower' = 'upper'): string {
   const r = (s || '').trim();
-  if (/^[A-Z0-9_]+$/.test(r)) return r; // real warehouse-style name — keep verbatim
+  const verbatim = casing === 'lower' ? /^[a-z0-9_]+$/ : /^[A-Z0-9_]+$/;
+  if (verbatim.test(r)) return r; // real warehouse-style name in the target case — keep verbatim
   const normalized = r
     .replace(/[^A-Za-z0-9_\s]/g, ' ')           // identifier-safe
     .replace(/([a-z])([A-Z])/g, '$1_$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .replace(/([A-Za-z])([0-9])/g, '$1_$2')
     .replace(/([0-9])([A-Za-z])/g, '$1_$2');
-  return normalized.toUpperCase().split(/[_\s]+/).filter(Boolean).join('_');
+  const joined = normalized.split(/[_\s]+/).filter(Boolean).join('_');
+  return casing === 'lower' ? joined.toLowerCase() : joined.toUpperCase();
 }
 
 /**

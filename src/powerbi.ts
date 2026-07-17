@@ -1832,6 +1832,12 @@ export interface PowerBIConvertOptions {
   connectionId?: string;
   database?: string;
   schema?: string;
+  // Target warehouse dialect. Snowflake/BigQuery (the default) fold unquoted
+  // identifiers to UPPER; Databricks/Spark store them lower-case and bind only
+  // against a lower-cased physical name/path. Pass 'databricks' (or the Sigma
+  // connection `type`) so physical identifiers fold to the right case
+  // (beads-sigma-lanq.7). Unset → UPPER (unchanged for existing callers).
+  warehouseType?: string;
 }
 
 // ── Time-intelligence → grouped DM elements (DateLookback / CumulativeSum) ──
@@ -1940,8 +1946,14 @@ export function convertPowerBIToSigma(
     throw new Error('Invalid model — no "tables" array found');
   }
 
-  const dbOverride = (database || '').toUpperCase();
-  const schOverride = (schema || '').toUpperCase();
+  // Physical-identifier casing. Databricks/Spark store identifiers lower-case and
+  // bind only against a lower-cased physical name/path; Snowflake/BigQuery fold to
+  // UPPER (the historical default). beads-sigma-lanq.7.
+  const whLower = /\b(databricks|spark|hive|delta)\b/i.test(options.warehouseType || '');
+  const physCasing: 'upper' | 'lower' = whLower ? 'lower' : 'upper';
+  const physCase = (s: string) => whLower ? String(s).toLowerCase() : String(s).toUpperCase();
+  const dbOverride = physCase(database || '');
+  const schOverride = physCase(schema || '');
   const warnings: string[] = [];
   const security: SecurityRule[] = [];   // detected RLS/OLS — reported, not injected (architecture B)
   const elements: SigmaElement[] = [];
@@ -2038,6 +2050,24 @@ export function convertPowerBIToSigma(
       }
     }
   }
+
+  // Does the MODEL span multiple warehouse schemas / catalogs? (beads-sigma-lanq.6)
+  // A single `database`/`schema` override is a repoint that is safe on a single-
+  // schema model but, on a multi-schema model (one catalog, N schemas), would
+  // collapse every table onto one schema and mass-break the binding — the exact
+  // reported bug. Detect the spread here so the override below applies only where
+  // it isn't destructive.
+  const _schemasSeen = new Set<string>();
+  const _catalogsSeen = new Set<string>();
+  for (const t of model.tables) {
+    if (measureOnlyTables.has(t.name) || calcGroupTables.has(t.name)) continue;
+    if (t.name.startsWith('LocalDateTable_') || t.name.startsWith('DateTableTemplate_')) continue;
+    const _expr = ((t.partitions || [])[0])?.source?.expression;
+    const _mp = _expr ? pbiExtractPathFromM(Array.isArray(_expr) ? _expr.join('\n') : String(_expr)) : null;
+    if (_mp && _mp.length >= 3) { _catalogsSeen.add(_mp[0]); _schemasSeen.add(_mp[1]); }
+  }
+  const modelMultiSchema = _schemasSeen.size > 1;
+  const modelMultiCatalog = _catalogsSeen.size > 1;
 
   // ── Convert tables to Sigma elements ────────────────────────────────────────
   for (const t of model.tables) {
@@ -2149,15 +2179,27 @@ export function convertPowerBIToSigma(
         }
       }
     }
-    // Apply overrides
+    // Apply the caller's database/schema override. It is a REPOINT — honored on a
+    // single-schema / single-catalog model (the j89 behavior) — but NOT applied to
+    // a model that spans multiple schemas/catalogs, where a single override would
+    // collapse every table onto one schema (beads-sigma-lanq.6: the converter
+    // "assumed all schemas in the same catalog"). There each table's own M-resolved
+    // segment wins; explicit per-table repoints stay the job of --table-map.
     if (path) {
-      if (dbOverride && path.length >= 3) path[0] = dbOverride;
-      if (schOverride && path.length >= 3) path[1] = schOverride;
-      else if (schOverride && path.length === 2) path[0] = schOverride;
+      if (path.length >= 3) {
+        if (dbOverride && !modelMultiCatalog) path[0] = dbOverride;
+        if (schOverride && !modelMultiSchema) path[1] = schOverride;
+      } else if (schOverride && path.length === 2) {
+        path[0] = schOverride; // legacy 2-part handling (unchanged)
+      }
     } else {
-      path = [dbOverride || 'DATABASE', schOverride || 'SCHEMA', tableName.toUpperCase()];
+      path = [dbOverride || physCase('DATABASE'), schOverride || physCase('SCHEMA'), physCase(tableName)];
       warnings.push(`⚠ Table "${tableName}": could not extract source path from M expression — using default.`);
     }
+    // Physical binding path uses the warehouse's identifier case (Databricks →
+    // lower); the element name + [TABLE/Col] formula refs stay in the logical
+    // (UPPER) case and remain internally consistent (beads-sigma-lanq.7).
+    const physPath = whLower && path ? path.map((s: string) => String(s).toLowerCase()) : path;
 
     // Columns
     const columns: SigmaColumn[] = [];
@@ -2175,7 +2217,7 @@ export function convertPowerBIToSigma(
       }
       const sourceCol = c.sourceColumn || c.name;
       const displayName = sigmaDisplayName(sourceCol);
-      const colId = sigmaInodeId(sigmaPhysicalName(sourceCol));
+      const colId = sigmaInodeId(sigmaPhysicalName(sourceCol, physCasing), physCasing);
       tableColMap[tableName][c.name] = colId;
       pbiToSigmaName[c.name] = displayName;
       allPbiToSigmaNames[c.name] = displayName;
@@ -2193,7 +2235,7 @@ export function convertPowerBIToSigma(
     const srcElProxy: SigmaElement = {
       id: elementId, kind: 'table',
       name: (path && path.length ? path[path.length - 1] : tableName.toUpperCase()),
-      source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path },
+      source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path: physPath },
       columns, order,
     };
 
@@ -2352,7 +2394,7 @@ export function convertPowerBIToSigma(
     const baseElementName = (path && path.length ? path[path.length - 1] : tableName.toUpperCase());
     const element: SigmaElement = {
       id: elementId, kind: 'table', name: baseElementName,
-      source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path },
+      source: { connectionId: connectionId || '<CONNECTION_ID>', kind: 'warehouse-table', path: physPath },
       columns, order
     };
     if (metrics.length > 0) (element as any).metrics = metrics;
