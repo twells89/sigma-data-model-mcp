@@ -1092,6 +1092,16 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
       else if (kind === 'table' || kind === 'view') tbl = m[1];
     }
     if (tbl) {
+      // BigQuery (default/v1 connector): the PROJECT tier is a bare {[Name="proj"]}[Data]
+      // nav with NO Kind, while dataset/table ARE Kind-tagged (Schema/Table) — so `db`
+      // is null though a schema+table were found, and the 3-part path would silently
+      // drop the project. Recover it from the first bare-Name nav (dataset/table Kind
+      // navs never match the bare regex). Impl="2.0" tags the project Kind="Database"
+      // and is already covered above. (beads-sigma-lanq.9; grounded 2026-07-17.)
+      if (!db && sch) {
+        const bare0 = mExpr.match(/\{\s*\[\s*Name\s*=\s*"([^"]+)"\s*\]\s*\}\s*\[\s*Data\s*\]/i);
+        if (bare0) db = bare0[1];
+      }
       const parts = [db, sch, tbl].filter((s): s is string => !!s);
       if (parts.length >= 2) return parts.map(s => s.toUpperCase());
     }
@@ -1114,10 +1124,53 @@ function pbiExtractPathFromM(mExpr: string): string[] | null {
     return [nameNavMatches[0][1].toUpperCase(), nameNavMatches[1][1].toUpperCase()];
   }
 
-  // Pattern 3: SQL query fallback
-  const tblMatch = mExpr.match(/FROM\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?\.\[?(\w+)\]?/i);
-  if (tblMatch) {
-    return [tblMatch[1] || '', tblMatch[2], tblMatch[3]].filter(Boolean).map((s: string) => s.toUpperCase());
+  // Pattern 2c: FLAT single-record connector navigation {[...Item="T"...]} — a whole
+  // family the Kind/bare-Name patterns above miss (beads-sigma-lanq.9; shapes grounded
+  // against real public PBIP 2026-07-17):
+  //   SQL Server / Synapse : Sql.Database("srv","DB") + Source{[Schema="dbo",Item="T"]}[Data]
+  //   PostgreSQL           : PostgreSQL.Database("srv","db") + {[Schema="public",Item="t"]}
+  //   Databricks shape-B   : DatabricksMultiCloud.Catalogs(...) + {[Item="t",Schema="s",Catalog="c"]}
+  // Keys (Item / Schema / Catalog / Database) appear in ANY order within one record.
+  const flatRec = mExpr.match(/\{\s*\[([^\]]*\bItem\s*=\s*"[^"]+"[^\]]*)\]\s*\}/i);
+  if (flatRec) {
+    const body = flatRec[1];
+    const key = (k: string) => (body.match(new RegExp('\\b' + k + '\\s*=\\s*"([^"]+)"', 'i')) || [])[1] || null;
+    const item = key('Item');
+    const schema = key('Schema');
+    const recCatalog = key('Catalog');
+    const recDatabase = key('Database');
+    // Top tier: the record's Catalog (Databricks) or Database, else the SQL/Sql-Server
+    // db baked into Sql.Database("srv","DB"). PostgreSQL/Redshift Sigma paths are
+    // [schema, table] (no db tier — sources-warehouse.md), so DON'T prepend their db arg.
+    const sqlServerDb = (mExpr.match(/\bSql\.Database\s*\(\s*"[^"]*"\s*,\s*"([^"]+)"/i) || [])[1] || null;
+    const top = recCatalog || recDatabase || sqlServerDb; // null for Postgres → 2-part
+    if (item) {
+      const parts = [top, schema, item].filter((s): s is string => !!s);
+      if (parts.length >= 2) return parts.map(s => s.toUpperCase());
+    }
+  }
+
+  // Pattern 3: native-query / raw-SQL fallback. Covers Value.NativeQuery(<nav>, "SELECT
+  // … FROM sch.tbl", …) and Sql.Database(…,[Query="… FROM dbo.T"]) (beads-sigma-lanq.9).
+  // Tolerate M string escapes (#(lf)/#(tab)) + quoted/bracketed/backtick identifiers,
+  // and accept a 2- or 3-part FROM. When the FROM is only schema.table, prepend the
+  // catalog/db from the wrapping connector nav (a NativeQuery over an already-navigated
+  // catalog issues a schema-qualified FROM).
+  const sql = mExpr.replace(/#\(lf\)|#\(tab\)|#\(cr\)/gi, ' ');
+  const fromM = sql.match(/\bFROM\s+([`"\[]?[\w$-]+[`"\]]?(?:\s*\.\s*[`"\[]?[\w$-]+[`"\]]?){1,2})/i);
+  if (fromM) {
+    let parts = fromM[1].split('.').map(s => s.replace(/[`"\[\]\s]/g, '')).filter(Boolean);
+    if (parts.length === 2) {
+      const navDb = (sql.match(/\[\s*Name\s*=\s*"([^"]+)"\s*,\s*Kind\s*=\s*"Database"\s*\]/i) || [])[1]
+        || (sql.match(/\bCatalog\s*=\s*"([^"]+)"/i) || [])[1]
+        || (sql.match(/\bSql\.Database\s*\(\s*"[^"]*"\s*,\s*"([^"]+)"/i) || [])[1]  // SQL Server [Query=] db arg
+        || null;
+      // Postgres/Redshift stay 2-part; Databricks/Snowflake/SqlServer prepend the catalog|db.
+      if (navDb && !/\bPostgreSQL\.Database\s*\(|\bAmazonRedshift\.Database\s*\(/i.test(mExpr)) {
+        parts = [navDb, ...parts];
+      }
+    }
+    if (parts.length >= 2) return parts.map(s => s.toUpperCase());
   }
 
   return null;
