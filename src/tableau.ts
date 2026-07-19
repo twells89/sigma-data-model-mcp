@@ -8,7 +8,7 @@
 
 import { XMLParser } from 'fast-xml-parser';
 import {
-  resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements, makeRlsSecurity,
+  resetIds, clampId, sigmaShortId, sigmaInodeId, sigmaDisplayName, inferSigmaFormat, buildDerivedElements, makeRlsSecurity,
   type SigmaElement, type ConversionResult, type SecurityRule, type WorkbookPattern,
 } from './sigma-ids.js';
 import {
@@ -23,7 +23,10 @@ import {
  *  build layer materialises the control under this id and the param-switch
  *  formula references it. e.g. "Parameter 17" → "ctl-parameter-17". */
 function paramControlId(rawName: string): string {
-  return 'ctl-' + rawName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  // Clamp to Sigma's 64-char id limit (W2.4): a very long parameter name would
+  // overflow. Deterministic, so the control id and every formula ref derived from
+  // this same call agree, and the v5.6 controlId dedupe stays correct.
+  return clampId('ctl-' + rawName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase());
 }
 
 // ── XML Parsing Helpers ──────────────────────────────────────────────────────
@@ -1551,8 +1554,13 @@ export function convertTableauToSigma(
   // sequence minted identical element ids ("AAAAAAAAAB" twice) and the merged
   // dm-spec failed DM POST on duplicate ids. Children continue the counter
   // (monotonic => unique, still deterministic in forEach order); top-level
-  // single-DS conversions keep the reset (corpus id determinism preserved).
-  if (!options.__multiDsChild) resetIds();
+  // conversions SEED the counter from this invocation's input (.twb + which
+  // datasource) so two INDEPENDENT top-level conversions in one process land in
+  // disjoint id-spaces — no cross-invocation id collisions — while the same input
+  // still reproduces the same ids (deterministic; corpus determinism preserved).
+  if (!options.__multiDsChild) {
+    resetIds(`ds${options.datasourceIndex ?? 0} ${xmlContent}`);
+  }
 
   const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;
   _tableMapping = tableMapping || {};
@@ -3033,7 +3041,7 @@ export function convertTableauToSigma(
         // Use the parameter's user-facing name when known so the control id
         // matches the existing parameter→control emit step.
         const ctlSourceName = param?.name || top.countControl;
-        const cidBase = sigmaDisplayName(ctlSourceName).replace(/\s+/g, '-');
+        const cidBase = clampId(sigmaDisplayName(ctlSourceName).replace(/\s+/g, '-'));
         controlId = cidBase;
         const defaultVal = parseInt(param?.defaultVal || '10', 10) || 10;
         if (param) topNParamControls[param.name] = { controlId: cidBase, defaultVal };

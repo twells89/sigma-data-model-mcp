@@ -7,8 +7,9 @@ const SIGMA_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456
 const _usedIds = new Set<string>();
 // Per-run counter so IDs are DETERMINISTIC: the same input yields byte-identical
 // output every run (reproducible / diff-able / cacheable). IDs only need to be
-// unique within a single model, which the monotonic counter guarantees. Reset by
-// resetIds() at the start of each conversion.
+// unique within a single model, which the monotonic counter guarantees. Reset —
+// and, for callers that supply one, SEEDED — by resetIds() at the start of each
+// conversion. See resetIds() for the per-invocation id-space scoping (W2.4).
 let _idCounter = 0;
 
 /** Deterministic base62 encoding of a positive integer, left-padded to `len`. */
@@ -18,16 +19,66 @@ function encodeBase62(n: number, len: number): string {
   return s.padStart(len, SIGMA_CHARS[0]);
 }
 
+/** Deterministic 32-bit FNV-1a hash of a string → unsigned integer. Pure JS (no
+ *  node:crypto) so the bundled/vendored converter stays self-contained. */
+function fnv1a32(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+// Per-invocation id-space scoping (W2.4). A module-global counter reset to 0 at
+// every top-level convert made two INDEPENDENT conversions in one process mint
+// byte-identical id sequences ("AAAAAAAAAB" twice); merged (multi-datasource /
+// multi-workbook), the DM POST failed on duplicate ids. Seeding the counter from
+// a stable hash of the invocation's input partitions the counter into disjoint
+// BLOCKS: different input ⇒ different NAMESPACE ⇒ ranges [ns·BLOCK, ns·BLOCK+used)
+// never overlap, so the two runs' ids are disjoint by construction. Same input ⇒
+// same namespace ⇒ same ids (determinism / stable goldens preserved). NS_MODULUS
+// buckets × BLOCK ids/run stays well under Number.MAX_SAFE_INTEGER (2^53) so
+// encodeBase62's %/÷ never lose precision (max base ≈ 1.48e13 ≪ 9.007e15).
+const NS_MODULUS = 62 ** 4;    // 14,776,336 namespace buckets
+const NS_BLOCK = 1_000_000;    // ids per invocation (a model mints ~thousands)
+
 /** Small words that Sigma keeps lowercase in display names (unless first word) */
 const SIGMA_LOWERCASE_WORDS = new Set([
   'a','an','the','and','but','or','for','nor','so','yet',
   'at','by','in','of','on','to','up','as','into','via','per'
 ]);
 
-/** Reset the ID registry + counter — call at the start of each conversion run. */
-export function resetIds(): void {
+/**
+ * Reset the ID registry + counter — call at the start of each conversion run.
+ *
+ * With NO argument the counter restarts at 0 (historical behavior — every
+ * converter that calls `resetIds()` is byte-identical). With a `seed` (the
+ * top-level invocation's input — e.g. the .twb text + datasourceIndex) the
+ * counter is SEEDED into a per-invocation block so two independent conversions
+ * in one process get disjoint id-spaces (W2.4): different seed ⇒ different
+ * namespace ⇒ no collision; same seed ⇒ same ids ⇒ deterministic/stable output.
+ * Only top-level entries seed; multi-datasource CHILD conversions skip resetIds
+ * entirely and continue the parent's counter (id continuity from #107).
+ */
+export function resetIds(seed?: string): void {
   _usedIds.clear();
-  _idCounter = 0;
+  _idCounter = seed == null ? 0 : (fnv1a32(seed) % NS_MODULUS) * NS_BLOCK;
+}
+
+/**
+ * Clamp an emitted id to Sigma's 64-char id limit. Ids ≤ max pass through
+ * verbatim. Longer ids (only the inode column id `inode-{22}/{PHYS}` and the
+ * name-derived control ids can overflow) keep a human-readable prefix and get a
+ * DETERMINISTIC hash suffix of the full id, so the same input always yields the
+ * same clamped id (goldens stay stable) and two distinct long ids can't collide
+ * after truncation. The 22-char uniqueness segment of an inode id lives inside
+ * the retained prefix, so uniqueness is preserved.
+ */
+export function clampId(id: string, max = 64): string {
+  if (id.length <= max) return id;
+  const suffix = '~' + encodeBase62(fnv1a32(id) % (62 ** 6), 6); // 7 chars, stable
+  return id.slice(0, max - suffix.length) + suffix;
 }
 
 /** Generate a unique, DETERMINISTIC short ID (base62). Seeded by a per-run counter
@@ -49,7 +100,11 @@ export function sigmaShortId(len = 10): string {
 // 'upper' keeps every existing caller byte-identical.
 export function sigmaInodeId(identifier: string, casing: 'upper' | 'lower' = 'upper'): string {
   const phys = casing === 'lower' ? identifier.toLowerCase() : identifier.toUpperCase();
-  return `inode-${sigmaShortId(22)}/${phys}`;
+  // Clamp to Sigma's 64-char id limit: a very long physical column name (e.g. a
+  // Custom-SQL-derived alias) would push `inode-{22}/{PHYS}` past 64. The 22-char
+  // uniqueness segment is inside the retained prefix, so clamping the PHYS tail is
+  // safe (binding is via the column's [TABLE/Display Name] formula, not this id).
+  return clampId(`inode-${sigmaShortId(22)}/${phys}`);
 }
 
 /**
