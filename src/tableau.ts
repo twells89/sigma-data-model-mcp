@@ -1695,13 +1695,20 @@ export function convertTableauToSigma(
   const guidOwnerRel: Record<string, string> = {};   // guid(lower) → owning relation name (e.g. "ORDER_FACT (CSA.ORDER_FACT)")
   {
     // (1) <cols><map> — GUID → owning relation. Key/value carry the GUID; the value's
-    // leading bracket segment is the owning relation name.
-    for (const mp of asArray((ds.ds as any)?.cols?.map || [])) {
-      const key = (attr(mp, 'key') || '').replace(/^\[|\]$/g, '');
-      const val = (attr(mp, 'value') || '');
-      const guid = (key.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
-      const ownerRel = (val.match(/^\[([^\]]+)\]/) || [])[1];
-      if (guid && ownerRel) guidOwnerRel[guid.toLowerCase()] = ownerRel;
+    // leading bracket segment is the owning relation name. The block lives under
+    // <datasource> in collection (object-model) workbooks but under <connection>
+    // in published/virtual-connection workbooks — scan both. NOTE: 'cols' is in
+    // the parser's isArray list, so each `.cols` is an ARRAY of <cols> blocks
+    // (`.cols.map` would be Array.prototype.map, not the children).
+    for (const colsBlock of [...asArray((ds.ds as any)?.cols || []),
+                             ...asArray((rootConn as any)?.cols || [])]) {
+      for (const mp of asArray((colsBlock as any)?.map || [])) {
+        const key = (attr(mp, 'key') || '').replace(/^\[|\]$/g, '');
+        const val = (attr(mp, 'value') || '');
+        const guid = (key.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+        const ownerRel = (val.match(/^\[([^\]]+)\]/) || [])[1];
+        if (guid && ownerRel) guidOwnerRel[guid.toLowerCase()] = ownerRel;
+      }
     }
     // (2) metadata-records — GUID → caption (most authoritative; carries <caption>).
     for (const mr of asArray((rootConn as any)?.['metadata-records']?.['metadata-record'] || [])) {
@@ -1749,6 +1756,21 @@ export function convertTableauToSigma(
   // collection branch below; used to decide whether a GUID column is a genuine fact
   // column or a flattened dimension column.
   let factRelName: string | null = null;
+
+  // Published/virtual-connection join relationships DROPPED because a join-key
+  // GUID could not be resolved to a caption (see the join branch below). Each
+  // entry drives the consistency cull near the end of conversion: metrics/calcs
+  // that reference the now-unreachable joined side are removed so the emitted
+  // spec is never inconsistent (relationship gone but refs to the joined side
+  // left dangling — the downstream relationship-reachability guard rejects that).
+  const droppedVcJoinRels: Array<{ source: string; target: string; relName: string; unresolved: string[] }> = [];
+
+  // Fold a display caption to its physical warehouse column name. This MUST
+  // mirror sigma-migration-skills' join-plan fold (scripts/lib/join_plan.rb
+  // physical_name: `display.to_s.strip.gsub(/\s+/, '_').upcase`) — the join
+  // probe and the phantom-column filter both fold captions this way, and a
+  // divergent fold here would re-introduce phantom join-key columns.
+  const captionToPhysical = (cap: string): string => cap.trim().replace(/\s+/g, '_').toUpperCase();
 
   // GUIDs of relation columns that are Tableau-DERIVED, not physical warehouse columns —
   // e.g. a date-parsed field `<column date-parse-format='yyyyMMdd' name='guid'/>` inside
@@ -1821,9 +1843,35 @@ export function convertTableauToSigma(
           if (elementMap[tableName]) continue;
 
           const columns: any[] = [], order: string[] = [];
+          const guidColIds: Record<string, string> = {}; // GUID (upper) → colId
           for (const col of asArray(t.rel?.columns?.column || [])) {
-            const key = attr(col, "name").toUpperCase();
-        if (!key || _isTableauVirtualField(attr(col, "name"))) continue;
+            const rawName = attr(col, 'name');
+            if (!rawName || _isTableauVirtualField(rawName)) continue;
+            const bare = rawName.replace(/^\[|\]$/g, '');
+            // ── Published/virtual-connection GUID column ──────────────────
+            // VC .twbs name relation columns by internal Tableau field GUID and
+            // carry NO metadata-records; the datasource-level
+            // <column caption='…' name='[GUID]'> defs are the only handle on the
+            // physical column. Resolve GUID → caption and emit the column under
+            // the caption (folded to the physical name downstream) instead of a
+            // garbled `[TABLE/[Guid…]]` phantom the phantom-column filter culls.
+            if (GUID_RE.test(bare)) {
+              const g = bare.toLowerCase();
+              // Tableau-derived relation column (date-parse / calculation) — no
+              // physical counterpart in the warehouse; never emit as a base column.
+              if (attr(col, 'date-parse-format') || col.calculation || derivedRelColGuids.has(g)) continue;
+              const cap = guidCaption[g];
+              if (!cap) {
+                warnings.push(`⚠ ${tableName}: dropped relation column ${bare} — GUID-named with no caption anywhere in the .twb; emitting it would produce an unresolvable [${tableName}/${bare}] reference.`);
+                continue;
+              }
+              const id = sigmaInodeId(captionToPhysical(cap));
+              columns.push({ id, formula: `[${tableName}/${cap}]`, name: cap });
+              order.push(id);
+              guidColIds[bare.toUpperCase()] = id;
+              continue;
+            }
+            const key = rawName.toUpperCase();
             const id = sigmaInodeId(key);
             columns.push({ id, formula: `[${tableName}/${sigmaDisplayName(key)}]` });
             order.push(id);
@@ -1841,6 +1889,7 @@ export function convertTableauToSigma(
               colIdMap[m[1].replace(/\s+/g, '_').toUpperCase()] = c.id;
             }
           });
+          Object.assign(colIdMap, guidColIds); // GUID join-key ids resolve to their column
           elementMap[tableName] = { element: el, colIdMap };
           elements.push(el);
         }
@@ -1848,6 +1897,48 @@ export function convertTableauToSigma(
         // Wire relationships
         const primaryTableName = extractPath(tables[0].rel, dbOverride, schOverride).pop() || '';
         const primaryEntry = elementMap[primaryTableName];
+
+        // Resolve one side of a join clause to a column id on `entry`.
+        // A published/virtual-connection workbook serializes the key as an
+        // internal Tableau field GUID (`[TABLE].[<guid>]`) with NO
+        // metadata-records — resolve it through the datasource's caption
+        // metadata (guidCaption) and fold caption → physical name with the SAME
+        // upcase+underscore fold sigma-migration-skills' join_plan.rb uses
+        // (physical_probe_key / physical_name — do not diverge). Returns the
+        // unresolved GUID instead of inventing a phantom `[TABLE/<GUID>]` key
+        // column: that phantom is exactly what the downstream phantom-column
+        // filter culls, taking the whole relationship with it (the historical
+        // "relationships: [] on every VC workbook" failure).
+        const resolveJoinKey = (
+          entry: { element: any; colIdMap: Record<string, string> }, key: string, tableName: string
+        ): { colId?: string; display: string; unresolvedGuid?: string } => {
+          let colId = entry.colIdMap[key] || entry.colIdMap[sigmaDisplayName(key).toUpperCase()];
+          if (colId) {
+            const col = (entry.element.columns as any[]).find((c: any) => c.id === colId);
+            const disp = col?.name || ((col?.formula || '').match(/\/([^\]]+)\]$/) || [])[1] || key;
+            return { colId, display: disp };
+          }
+          if (GUID_RE.test(key)) {
+            const cap = guidCaption[key.toLowerCase()];
+            if (!cap) return { display: key, unresolvedGuid: key };
+            const phys = captionToPhysical(cap);
+            colId = entry.colIdMap[cap.toUpperCase()] || entry.colIdMap[phys];
+            if (!colId) {
+              colId = sigmaInodeId(phys);
+              entry.element.columns.push({ id: colId, formula: `[${tableName}/${cap}]`, name: cap });
+              entry.element.order.push(colId);
+              entry.colIdMap[phys] = colId;
+              entry.colIdMap[cap.toUpperCase()] = colId;
+            }
+            entry.colIdMap[key] = colId;
+            return { colId, display: cap };
+          }
+          colId = sigmaInodeId(key);
+          entry.element.columns.push({ id: colId, formula: `[${tableName}/${sigmaDisplayName(key)}]` });
+          entry.element.order.push(colId);
+          entry.colIdMap[key] = colId;
+          return { colId, display: sigmaDisplayName(key) };
+        };
 
         for (let i = 1; i < tables.length; i++) {
           const t = tables[i];
@@ -1858,30 +1949,32 @@ export function convertTableauToSigma(
           const tgtEntry = elementMap[tgtName];
           if (!primaryEntry || !tgtEntry) continue;
 
-          let srcColId = primaryEntry.colIdMap[leftKey] || primaryEntry.colIdMap[sigmaDisplayName(leftKey).toUpperCase()];
-          if (!srcColId) {
-            srcColId = sigmaInodeId(leftKey);
-            primaryEntry.element.columns.push({ id: srcColId, formula: `[${primaryTableName}/${sigmaDisplayName(leftKey)}]` });
-            primaryEntry.element.order.push(srcColId);
-            primaryEntry.colIdMap[leftKey] = srcColId;
-          }
-
-          let tgtColId = tgtEntry.colIdMap[rightKey] || tgtEntry.colIdMap[sigmaDisplayName(rightKey).toUpperCase()];
-          if (!tgtColId) {
-            tgtColId = sigmaInodeId(rightKey);
-            tgtEntry.element.columns.push({ id: tgtColId, formula: `[${tgtName}/${sigmaDisplayName(rightKey)}]` });
-            tgtEntry.element.order.push(tgtColId);
-            tgtEntry.colIdMap[rightKey] = tgtColId;
+          const src = resolveJoinKey(primaryEntry, leftKey, primaryTableName);
+          const tgt = resolveJoinKey(tgtEntry, rightKey, tgtName);
+          if (src.unresolvedGuid || tgt.unresolvedGuid || !src.colId || !tgt.colId) {
+            // Resolution genuinely failed (GUID key with no caption anywhere in
+            // the .twb). Never wire a join on a phantom column — drop the
+            // relationship, LOUDLY, and record it so the end-of-conversion cull
+            // removes every metric/calc that references the now-unreachable
+            // joined side (an inconsistent spec — refs into a side with no
+            // relationship — is rejected by the downstream reachability guard).
+            const bad = [src.unresolvedGuid, tgt.unresolvedGuid].filter(Boolean) as string[];
+            droppedVcJoinRels.push({
+              source: primaryTableName, target: tgtName,
+              relName: attr(t.rel, 'name') || tgtName, unresolved: bad,
+            });
+            warnings.push(`⚠ DROPPED relationship ${primaryTableName} → ${tgtName} (${t.joinType || 'left'}): join-key GUID(s) ${bad.join(', ')} resolve to no caption in the .twb, so the physical join columns cannot be recovered. Columns/metrics referencing the ${tgtName} side will be culled to keep the spec consistent — wire this relationship manually in Sigma.`);
+            continue;
           }
 
           if (!primaryEntry.element.relationships) primaryEntry.element.relationships = [];
           primaryEntry.element.relationships.push({
             id: sigmaShortId(),
             targetElementId: tgtEntry.element.id,
-            keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
+            keys: [{ sourceColumnId: src.colId, targetColumnId: tgt.colId }],
             name: tgtName
           });
-          warnings.push(`ℹ Join ${primaryTableName} → ${tgtName} (${t.joinType || 'left'}) on ${leftKey} = ${rightKey}`);
+          warnings.push(`ℹ Join ${primaryTableName} → ${tgtName} (${t.joinType || 'left'}) on ${src.display} = ${tgt.display}`);
         }
 
         // Sort: dims first, fact last
@@ -3405,7 +3498,35 @@ export function convertTableauToSigma(
         // Regular (non-calculated) source column — add to factEl if not already tracked
         const physCol = normalizeColumnName(fieldKey);
         const displayName = caption || sigmaDisplayName(physCol);
-        if (!displayNameMap[displayName.toUpperCase()] && !displayNameMap[physCol]) {
+        const _role = attr(col, 'role') || '';
+        const _dataType = attr(col, 'datatype') || '';
+        const _isNumericMeasure = _role === 'measure' &&
+          (_dataType === 'real' || _dataType === 'integer' || _dataType === 'decimal');
+        const _tracked = displayNameMap[displayName.toUpperCase()] || displayNameMap[physCol];
+        if (_tracked) {
+          // Column already exists as a real element column (e.g. a VC join-key
+          // column emitted under its resolved caption). A numeric measure still
+          // deserves its auto Sum() metric — but only when the column lives on
+          // the FACT element (Sigma metrics are single-element; a measure on a
+          // related dimension element can't back a fact metric — surface that
+          // instead of silently losing it).
+          if (_isNumericMeasure) {
+            if (!(factEl as any).metrics) (factEl as any).metrics = [];
+            const _mets = (factEl as any).metrics as any[];
+            if (_tracked.el === factEl) {
+              if (!_mets.some(m => (m.name || '').toUpperCase() === displayName.toUpperCase())) {
+                const _fmt = inferSigmaFormat(`Sum([${displayName}])`, displayName);
+                const _met: any = { id: sigmaShortId(), formula: `Sum([${displayName}])`, name: displayName };
+                if (_fmt) _met.format = _fmt;
+                _mets.push(_met);
+              }
+            } else if (!warnings.some(w => w.includes(`Measure "${displayName}" lives on related element`))) {
+              warnings.push(`⚠ Measure "${displayName}" lives on related element — no auto Sum() metric on the fact (Sigma metrics are single-element). Aggregate it through the relationship in the workbook layer, or author the metric manually.`);
+            }
+          }
+          continue;
+        }
+        {
           // A kind:'sql' fact (e.g. a collapsed multi-source blend) has a FIXED
           // generated SELECT — we cannot invent a physical column that isn't in it.
           // Emitting a `[FACT/<caption>]` cross-element ref here produces a NAMELESS
@@ -4069,6 +4190,66 @@ export function convertTableauToSigma(
     }
     if (topNHelpers.length > 0) {
       warnings.push(`ℹ ${topNHelpers.length} Top-N helper element(s) created (kind:sql)`);
+    }
+  }
+
+  // ── Consistency cull for DROPPED virtual-connection relationships ────────
+  // A VC join relationship dropped above (unresolvable GUID join key) leaves its
+  // joined side unreachable. Any column/metric that still references a
+  // joined-side field would make the spec inconsistent — the downstream
+  // relationship-reachability guard correctly refuses such a spec — so cull
+  // them, loudly, naming the dropped relationship and every affected item.
+  if (droppedVcJoinRels.length > 0) {
+    for (const drop of droppedVcJoinRels) {
+      // Captions owned by the dropped relation, per the <cols><map> ownership
+      // index (GUID → owning relation name) + GUID → caption metadata.
+      const orphanCaps = new Set<string>();
+      for (const g of Object.keys(guidOwnerRel)) {
+        if (guidOwnerRel[g] !== drop.relName) continue;
+        const cap = guidCaption[g];
+        if (cap) orphanCaps.add(cap.toUpperCase());
+      }
+      if (orphanCaps.size === 0) continue;
+      const refsOrphan = (f: any): string | null => {
+        if (typeof f !== 'string') return null;
+        for (const m of f.match(/\[([^\]]+)\]/g) || []) {
+          const ref = m.slice(1, -1);
+          const last = ref.includes('/') ? ref.split('/').pop() || ref : ref;
+          if (orphanCaps.has(last.toUpperCase())) return last;
+        }
+        return null;
+      };
+      // The dropped target element itself keeps its own columns (it remains a
+      // valid, if disconnected, element) — cull only refs from OTHER elements.
+      const targetEl = (elements as any[]).find(e =>
+        ((e.source?.path || [])[(e.source?.path || []).length - 1] || '') === drop.target);
+      const culled: string[] = [];
+      for (const el of elements) {
+        if (el !== targetEl) {
+          for (let i = (el.columns || []).length - 1; i >= 0; i--) {
+            const c = el.columns[i];
+            const hit = refsOrphan(c.formula);
+            if (hit) {
+              culled.push(`column "${c.name || hit}"`);
+              el.columns.splice(i, 1);
+              el.order = (el.order || []).filter((id: string) => id !== c.id);
+            }
+          }
+        }
+        const mets = (el as any).metrics;
+        if (Array.isArray(mets)) {
+          for (let i = mets.length - 1; i >= 0; i--) {
+            const hit = refsOrphan(mets[i].formula);
+            if (hit) {
+              culled.push(`metric "${mets[i].name || hit}"`);
+              mets.splice(i, 1);
+            }
+          }
+        }
+      }
+      if (culled.length > 0) {
+        warnings.push(`⚠ Dropped relationship ${drop.source} → ${drop.target}: culled ${culled.length} joined-side item(s) so the spec stays consistent — ${culled.join(', ')}. Recreate them after wiring the relationship manually.`);
+      }
     }
   }
 
