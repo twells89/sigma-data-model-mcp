@@ -1009,12 +1009,18 @@ function resolveTableName(tbl: string): string {
   return stripped;
 }
 
-function extractPath(rel: any, dbOverride: string, schOverride: string): string[] {
+function extractPath(rel: any, dbOverride: string, schOverride: string, casing: Casing = 'upper'): string[] {
   const rawTable = attr(rel, 'table') || attr(rel, 'name') || '';
   // Strip brackets, disambiguation suffixes (e.g. "(CSA.TABLE)"), then filter UUID path segments
   const cleaned = rawTable.replace(/[\[\]]/g, '').replace(/\s*\([^)]*\)/g, '');
+  // Snowflake/BigQuery fold unquoted identifiers to UPPER (the historical
+  // default); Databricks/Spark/Hive/Delta are case-PRESERVING and bind against
+  // the identifier exactly as written — force-uppercasing their table path yields
+  // a name the warehouse never has → DM POST 404 (companion to
+  // sigma-migration-skills #454). fold() honors the warehouse class.
+  const fold = (s: string): string => casing === 'preserve' ? s : s.toUpperCase();
   const parts = cleaned.split('.').filter(Boolean)
-    .map((s: string) => s.toUpperCase().trim())
+    .map((s: string) => fold(s).trim())
     .filter((p: string) => !/^[0-9A-F]{8}-[0-9A-F]{4}-/i.test(p));
 
   // Strip Tableau hex-hash suffix from the table name segment: "ORDER_FACT_A1B2C3D4E5F60718" → "ORDER_FACT"
@@ -1026,7 +1032,7 @@ function extractPath(rel: any, dbOverride: string, schOverride: string): string[
   } else if (parts.length === 1) {
     path = [schOverride || 'SCHEMA', resolveTableName(stripHash(parts[0]))];
   } else {
-    path = [resolveTableName(attr(rel, 'name').toUpperCase()) || 'UNKNOWN'];
+    path = [resolveTableName(fold(attr(rel, 'name'))) || 'UNKNOWN'];
   }
 
   if (dbOverride) {
@@ -1047,11 +1053,12 @@ function extractPath(rel: any, dbOverride: string, schOverride: string): string[
 // connections name their own database/schema in the workbook itself; there is
 // NO default database to fall back to, and a fabricated one never resolves.
 // Non-warehouse connections (published/VC proxies, extracts, files) are skipped.
+const NON_WAREHOUSE_CONN = new Set(['sqlproxy', 'hyper', 'excel-direct', 'textscan', 'csv', 'google-sheets', 'virtual-connection', 'vconn']);
+
 function warehouseDbSchemaFromConn(connVal: any): [string, string] {
-  const NON_WAREHOUSE = new Set(['sqlproxy', 'hyper', 'excel-direct', 'textscan', 'csv', 'google-sheets', 'virtual-connection', 'vconn']);
   for (const c of allConnections(connVal)) {
     const cls = (attr(c, 'class') || '').toLowerCase();
-    if (NON_WAREHOUSE.has(cls)) continue;
+    if (NON_WAREHOUSE_CONN.has(cls)) continue;
     const db = attr(c, 'dbname') || attr(c, 'database') || '';
     const sch = attr(c, 'schema') || '';
     if (!db || !sch) continue;
@@ -1059,6 +1066,36 @@ function warehouseDbSchemaFromConn(connVal: any): [string, string] {
     return [db, sch];
   }
   return ['', ''];
+}
+
+// Warehouse identifier case-folding policy. Snowflake/BigQuery up-fold unquoted
+// identifiers (the historical default → 'upper'); Databricks/Spark/Hive/Delta are
+// case-PRESERVING and bind against the identifier exactly as written (→ 'preserve').
+// Uppercasing a case-preserving table path emits a name the warehouse never has,
+// so the DM POST 404s (companion to sigma-migration-skills #454, which stamps the
+// real warehouse class onto the connection). Default 'upper' when the class is
+// unknown — matches Snowflake and every historical caller (byte-identical).
+type Casing = 'upper' | 'preserve';
+const CASE_PRESERVING_WH = /\b(databricks|spark|hive|delta)\b/i;
+function warehouseCasing(cls: string | undefined): Casing {
+  return CASE_PRESERVING_WH.test(cls || '') ? 'preserve' : 'upper';
+}
+
+// The live warehouse connection's class (e.g. 'databricks', 'snowflake'), drilling
+// past the 'federated' wrapper and extract/proxy connections — mirrors
+// warehouseDbSchemaFromConn's connection selection so the casing decision keys
+// off the SAME connection the path's db/schema does. 'federated' is the outer
+// wrapper element (it names no warehouse); skip it here so we reach the real
+// warehouse child. warehouseDbSchemaFromConn already skips it implicitly (it
+// carries no dbname/schema), so this does not touch that function's behavior.
+const NON_WAREHOUSE_CLASS = new Set([...NON_WAREHOUSE_CONN, 'federated']);
+function warehouseClassFromConn(connVal: any): string {
+  for (const c of allConnections(connVal)) {
+    const cls = (attr(c, 'class') || '').toLowerCase();
+    if (!cls || NON_WAREHOUSE_CLASS.has(cls)) continue;
+    return cls;
+  }
+  return '';
 }
 
 // ── Collect Tables from Join Tree ────────────────────────────────────────────
@@ -1187,7 +1224,8 @@ function blendFieldName(qualified: string): string {
 /** Build a merged Sigma data model from a Tableau data blend, or null if the
  *  workbook has no <datasource-relationships> blend block. */
 function tryBuildBlendModel(
-  parsed: any, datasources: any[], dbOverride: string, schOverride: string, connId: string
+  parsed: any, datasources: any[], dbOverride: string, schOverride: string, connId: string,
+  warehouseType: string = ''
 ): ConversionResult | null {
   const wb = parsed.workbook;
   const relsBlock = wb && wb['datasource-relationships'];
@@ -1231,7 +1269,10 @@ function tryBuildBlendModel(
   // Blends can span datasources on DIFFERENT warehouses — each side falls back
   // to its own <connection dbname/schema> when no global override was passed.
   const [pDb, pSch] = warehouseDbSchemaFromConn(primary.ds?.connection);
-  const pPath = extractPath(primaryRel, dbOverride || pDb, schOverride || pSch);
+  // Each blend side can sit on a DIFFERENT warehouse — derive its casing from its
+  // own connection class (explicit warehouseType override wins). Companion #454.
+  const pCasing = warehouseCasing(warehouseType || warehouseClassFromConn(primary.ds?.connection));
+  const pPath = extractPath(primaryRel, dbOverride || pDb, schOverride || pSch, pCasing);
   const pTable = pPath[pPath.length - 1] || 'PRIMARY';
   const pCols = blendColumns(primary);
   const pColId: Record<string, { id: string; display: string }> = {};
@@ -1255,7 +1296,8 @@ function tryBuildBlendModel(
 
   for (const link of links) {
     const [sDb, sSch] = warehouseDbSchemaFromConn(link.sec.ds?.connection);
-    const sPath = extractPath(connRelations(link.sec.ds.connection)[0], dbOverride || sDb, schOverride || sSch);
+    const sCasing = warehouseCasing(warehouseType || warehouseClassFromConn(link.sec.ds?.connection));
+    const sPath = extractPath(connRelations(link.sec.ds.connection)[0], dbOverride || sDb, schOverride || sSch, sCasing);
     const sTable = sPath[sPath.length - 1] || 'SECONDARY';
     const sCols = blendColumns(link.sec);
     const sLinkWh = new Set(link.pairs.map(p => p.s));
@@ -1429,6 +1471,13 @@ export interface TableauConvertOptions {
   datasourceIndex?: number;
   /** Map Tableau table names to warehouse names: { "Orders": "ORDERS", "People": "PEOPLE" } */
   tableMapping?: Record<string, string>;
+  /** Target warehouse dialect/class. Snowflake/BigQuery (the default) fold
+   *  unquoted identifiers to UPPER; Databricks/Spark/Hive/Delta are case-
+   *  preserving and bind against the physical name exactly as written. Pass the
+   *  connection class (e.g. 'databricks') so table paths keep the right case
+   *  (companion to sigma-migration-skills #454). Unset → derived from the
+   *  workbook's own warehouse connection class; falls back to UPPER when unknown. */
+  warehouseType?: string;
   /** INTERNAL: set on the per-datasource sub-conversions the multi-datasource
    *  path spawns, to prevent infinite recursion back into that path. */
   __multiDsChild?: boolean;
@@ -1656,7 +1705,7 @@ export function convertTableauToSigma(
   // Data blend: if the workbook declares a <datasource-relationships> block,
   // build ONE merged model (secondary pre-grouped to link grain, many-to-one
   // lookup) instead of silently converting only the first datasource.
-  const blendResult = tryBuildBlendModel(parsed, datasources, dbOverride, schOverride, connectionId || '<CONNECTION_ID>');
+  const blendResult = tryBuildBlendModel(parsed, datasources, dbOverride, schOverride, connectionId || '<CONNECTION_ID>', options.warehouseType || '');
   if (blendResult) {
     // The blend path returns BEFORE the single-datasource calc/pattern processor
     // below, so a NATIVE-blend workbook never emits its param measure-pickers,
@@ -1708,6 +1757,10 @@ export function convertTableauToSigma(
   const [connDb, connSchema] = warehouseDbSchemaFromConn(ds.connection);
   const dbEff = dbOverride || connDb;
   const schEff = schOverride || connSchema;
+  // Case-folding policy for physical table paths: explicit caller override wins,
+  // else the workbook's own warehouse connection class (Databricks/Spark/etc. are
+  // case-preserving; Snowflake/unknown → UPPER). Companion to skills #454.
+  const whCasing = warehouseCasing(options.warehouseType || warehouseClassFromConn(ds.connection));
   const warnings: string[] = [];
   const security: SecurityRule[] = [];   // detected RLS — reported, not injected (architecture B)
   // Window/table calcs whose faithful Sigma equivalent only works in CHART /
@@ -1892,7 +1945,7 @@ export function convertTableauToSigma(
     const relType = attr(rootRelation, 'type') || 'table';
 
     if (relType === 'table') {
-      const path = extractPath(rootRelation, dbEff, schEff);
+      const path = extractPath(rootRelation, dbEff, schEff, whCasing);
       const tableName = path[path.length - 1] || '';
       const columns: any[] = [], order: string[] = [];
       for (const col of asArray(rootRelation?.columns?.column || [])) {
@@ -1916,7 +1969,7 @@ export function convertTableauToSigma(
         const elementMap: Record<string, { element: any; colIdMap: Record<string, string> }> = {};
 
         for (const t of tables) {
-          const path = extractPath(t.rel, dbEff, schEff);
+          const path = extractPath(t.rel, dbEff, schEff, whCasing);
           const tableName = path[path.length - 1] || attr(t.rel, 'name') || '';
           if (elementMap[tableName]) continue;
 
@@ -1973,7 +2026,7 @@ export function convertTableauToSigma(
         }
 
         // Wire relationships
-        const primaryTableName = extractPath(tables[0].rel, dbEff, schEff).pop() || '';
+        const primaryTableName = extractPath(tables[0].rel, dbEff, schEff, whCasing).pop() || '';
         const primaryEntry = elementMap[primaryTableName];
 
         // Resolve one side of a join clause to a column id on `entry`.
@@ -2028,7 +2081,7 @@ export function convertTableauToSigma(
           const leftRaw = t.leftKeys && t.leftKeys.length ? t.leftKeys : (t.leftKey ? [t.leftKey] : []);
           const rightRaw = t.rightKeys && t.rightKeys.length ? t.rightKeys : (t.rightKey ? [t.rightKey] : []);
           if (!leftRaw.length || leftRaw.length !== rightRaw.length) continue;
-          const tgtName = extractPath(t.rel, dbEff, schEff).pop() || '';
+          const tgtName = extractPath(t.rel, dbEff, schEff, whCasing).pop() || '';
           const tgtEntry = elementMap[tgtName];
           if (!primaryEntry || !tgtEntry) continue;
 
@@ -2170,7 +2223,7 @@ export function convertTableauToSigma(
 
         for (const rel of childRels) {
           const fullName  = attr(rel, 'name') || attr(rel, 'table') || 'TABLE';
-          const path      = extractPath(rel, dbEff, schEff);
+          const path      = extractPath(rel, dbEff, schEff, whCasing);
           const cleanName = path[path.length - 1] || fullName;
 
           const columns: any[] = [], order: string[] = [], colIdMap: Record<string, string> = {};
