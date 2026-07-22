@@ -1594,6 +1594,31 @@ function buildMultiDatasourceModel(
   } as any;
 }
 
+/**
+ * Index of the FIRST top-level (depth-0) SELECT in a `WITH … SELECT` custom-SQL
+ * statement — the boundary between the CTE definitions and the final query body.
+ * Returns -1 when there is no depth-0 SELECT (a plain SELECT with no CTEs, or
+ * none at all).
+ *
+ * MUST pick the FIRST depth-0 SELECT, not the last: when the final body is a
+ * multi-branch `UNION ALL`, every branch's SELECT sits at depth 0, so taking the
+ * last one splits the body mid-union and splices `__lod_base AS (…)` right after
+ * a `UNION ALL`, producing SQL that fails to compile (field report: a FIXED LOD
+ * over a Custom SQL fact whose body was a 3-branch UNION ALL). The first depth-0
+ * SELECT is always the start of the final body — CTE bodies are inside
+ * balanced parens (depth ≥ 1), so their SELECTs never register at depth 0.
+ */
+export function firstTopLevelSelectIndex(stmt: string): number {
+  let depth = 0;
+  for (let i = 0; i < stmt.length; i++) {
+    const ch = stmt[i];
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth === 0 && /^SELECT\b/i.test(stmt.slice(i))) return i;
+  }
+  return -1;
+}
+
 export function convertTableauToSigma(
   xmlContent: string,
   options: TableauConvertOptions = {}
@@ -2680,29 +2705,19 @@ export function convertTableauToSigma(
       if (fe?.source?.kind === 'sql' && fe.source.statement) {
         const stmt: string = fe.source.statement;
         // Find where the outermost SELECT starts (after all CTEs). Strategy: scan
-        // for "WITH" at the top, then find the last standalone SELECT not inside
-        // a balanced-paren CTE body. We do this by scanning paren depth.
+        // for "WITH" at the top, then find the FIRST depth-0 SELECT — the start
+        // of the final query body. (A UNION ALL body has several depth-0 SELECTs;
+        // the boundary is the first, see firstTopLevelSelectIndex.)
         const upperStmt = stmt.trimStart();
         if (/^WITH\s/i.test(upperStmt)) {
-          // Walk through the statement tracking parenthesis depth to find the
-          // final top-level SELECT (the one that is NOT inside any CTE body).
-          let depth = 0;
-          let lastTopSelectIdx = -1;
-          for (let i = 0; i < stmt.length; i++) {
-            const ch = stmt[i];
-            if (ch === '(') { depth++; continue; }
-            if (ch === ')') { depth--; continue; }
-            if (depth === 0 && /^SELECT\b/i.test(stmt.slice(i))) {
-              lastTopSelectIdx = i;
-            }
-          }
-          if (lastTopSelectIdx > 0) {
-            // ctePart: everything before the final top-level SELECT (including "WITH ")
+          const firstTopSelectIdx = firstTopLevelSelectIndex(stmt);
+          if (firstTopSelectIdx > 0) {
+            // ctePart: everything before the final query body (the CTE defs).
             // We strip the leading "WITH " since callers will add their own "WITH ".
-            const ctePart = stmt.slice(0, lastTopSelectIdx)
+            const ctePart = stmt.slice(0, firstTopSelectIdx)
               .replace(/^\s*WITH\s+/i, '')   // drop leading WITH keyword
               .replace(/,?\s*$/, '');         // drop trailing comma
-            const selectPart = stmt.slice(lastTopSelectIdx);
+            const selectPart = stmt.slice(firstTopSelectIdx);
             return {
               ctePrefix: `${ctePart},\n__lod_base AS (\n${selectPart}\n),\n`,
               fromClause: '__lod_base',
