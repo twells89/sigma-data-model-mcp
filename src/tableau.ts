@@ -1394,9 +1394,13 @@ function buildMultiDatasourceModel(
     let kept = 0;
     for (const el of els) {
       // Controls are workbook-global (repeated identically in every sub-model) —
-      // keep one copy, keyed by name.
+      // keep one copy, keyed by controlId (the field that must be globally
+      // unique). Keying on name??id let duplicates through: control elements
+      // carry no `name`, and each sub-model's per-run counter gives them
+      // different `id`s, so identical Region params survived twice → POST
+      // "Duplicate id: 'Region'".
       if (el.kind === 'control') {
-        const key = String(el.name ?? el.id);
+        const key = String(el.controlId ?? el.name ?? el.id);
         if (!controlNames.has(key)) { controlNames.add(key); controls.push(el); }
         continue;
       }
@@ -1464,7 +1468,11 @@ export function convertTableauToSigma(
   xmlContent: string,
   options: TableauConvertOptions = {}
 ): ConversionResult {
-  resetIds();
+  // Only the TOP-LEVEL conversion resets the shared id counter. Multi-datasource
+  // children (__multiDsChild) must NOT reset it — otherwise each child restarts
+  // at 0 and the first table element of every datasource gets the same id
+  // (AAAAAAAAAB), colliding when the sub-models are merged → POST "Duplicate id".
+  if (!options.__multiDsChild) resetIds();
 
   const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;
   void options.__multiDsChild; // (destructured usage is via options.__multiDsChild at the multi-DS guard)
