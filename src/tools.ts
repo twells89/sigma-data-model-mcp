@@ -880,17 +880,21 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
 
   server.tool(
     'convert_qlikview_prj_to_sigma',
-    `Convert a QlikView ".qvw" app to Sigma Computing data model JSON via its "-prj"
+    `Convert a QlikView ".qvw" app to a Sigma Computing DATA MODEL JSON via its "-prj"
 project folder. QlikView .qvw binaries have no parser; the migration path is the
 developer-opt-in <name>-prj/ folder (QlikView Desktop "Create project folder").
 
-Pass the folder's files as a JSON array of { name, content }. The converter reads:
+Pass the folder's files as a JSON array of { name, content }. This builds the data
+model from LoadScript.txt only:
 - LoadScript.txt → tables + (post-rename) fields → warehouse elements + relationships
-- CH*.xml (chart objects) → expression measures (and calculated dimensions)
+  (a lib://.../TABLE.qvd load resolves to warehouse table TABLE).
 
-Set Analysis / Range / Dual / Class are translated; Aggr / inter-record / $(var) are
-dropped with a warning. Relationships are inferred from shared field names only (a -prj
-folder carries no row counts) — review join directions. POST the output to /v2/dataModels/spec.`,
+Relationships are inferred from shared field names only (a -prj folder carries no row
+counts) — review join directions. POST the output to /v2/dataModels/spec.
+
+NOTE: chart expressions/measures and the workbook/sheet layout (CH*.xml,
+QlikViewProject.xml) are NOT parsed here — the qlik-to-sigma migration skill's
+qlik-prj-discover.py handles those for a full data-model + workbook build.`,
     {
       prj_files_json: z.string().describe('JSON array of the -prj folder files: [{ "name": "LoadScript.txt", "content": "..." }, { "name": "CH01.xml", "content": "..." }, ...]'),
       connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
