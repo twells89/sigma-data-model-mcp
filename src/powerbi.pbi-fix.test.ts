@@ -458,7 +458,7 @@ test('VAR/RETURN inlines into a single expression (no longer dropped)', () => {
   const out = pbiDaxToSigma('VAR rev = [Total Net Rev] VAR ord = [Order Count] RETURN DIVIDE(rev, ord)', [], 'AOV');
   // VAR substitution parenthesizes each var, DIVIDE parenthesizes operands —
   // the double wrap is harmless and keeps precedence safe (hs5h).
-  assert.equal(out, '(([Total Net Rev])) / (([Order Count]))');
+  assert.equal(out, '(([Total Net Rev])) / NullIf((([Order Count])), 0)');
   // a VAR referencing an earlier VAR
   const out2 = pbiDaxToSigma('VAR a = [X] VAR b = a * 2 RETURN b + [Y]', [], 'm');
   assert.equal(out2, '(([X]) * 2) + [Y]');
@@ -482,7 +482,7 @@ test('iterator over FILTER/TOPN or with a nested aggregate is NOT mis-translated
 
 test('CALCULATE(<agg>, ALL(<wholeTable>)) -> GrandTotal(<agg>) (%-of-total now translates)', () => {
   assert.equal(pbiDaxToSigma("DIVIDE([Total Sales], CALCULATE([Total Sales], ALL('SAMPLE_SUPERSTORE')))", [], 'Pct'),
-    '([Total Sales]) / (GrandTotal([Total Sales]))');
+    '([Total Sales]) / NullIf((GrandTotal([Total Sales])), 0)');
   assert.equal(pbiDaxToSigma('CALCULATE(SUM(Sales[Amount]), REMOVEFILTERS(Sales))', [], 'gt'),
     'GrandTotal(Sum([Amount]))');
   // partial ALL (a column) and multi-arg CALCULATE must NOT be mis-translated

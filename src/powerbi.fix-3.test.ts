@@ -17,20 +17,21 @@ import { pbiDaxToSigma, convertPowerBIToSigma, hasBareWindowFn } from './powerbi
 
 const COMP_BIM = '/tmp/pbi-migrate/workforce-comp-distribution-untested-dax/model/model.bim';
 
-test('hs5h: DIVIDE(a - b, c) parenthesizes both operands', () => {
+test('hs5h: DIVIDE(a - b, c) parenthesizes both operands (with divide-by-zero guard)', () => {
   const out = pbiDaxToSigma('DIVIDE([Dept Med] - [Co Med], [Co Med])', [], 'X');
   assert.ok(out, 'should translate');
-  // numerator subtraction must be wrapped: "(... - ...) / (...)"
-  assert.match(out!, /\)\s*\/\s*\(/, `expected (num) / (den), got: ${out}`);
+  // numerator subtraction must be wrapped, denominator guarded: "(... - ...) / NullIf((...), 0)"
+  assert.match(out!, /\)\s*\/\s*NullIf\(/, `expected (num) / NullIf((den), 0), got: ${out}`);
   // and NOT the broken "x - y / z" form
   assert.doesNotMatch(out!, /\]\s*-\s*\[[^\]]+\]\s*\/\s/, `unparenthesized subtraction leaked: ${out}`);
 });
 
-test('qx16: CALCULATE([measureRef], KEEPFILTERS(SEARCH..>0)) → CountDistinctIf', () => {
+test('qx16: CALCULATE([measureRef], KEEPFILTERS(SEARCH..>0)) → CountDistinct(If(...)) (dax-fidelity #1)', () => {
   const dax = 'COALESCE(CALCULATE([Headcount], KEEPFILTERS(SEARCH("Manager", EMPLOYEES[ROLE], 1, 0) > 0)), 0)';
   const out = pbiDaxToSigma(dax, [], 'Mgmt Headcount', { Headcount: 'DISTINCTCOUNT(EMPLOYEES[EMPLOYEE_ID])' });
   assert.ok(out, `should translate, got null`);
-  assert.match(out!, /CountDistinctIf\(/, `expected CountDistinctIf, got: ${out}`);
+  assert.match(out!, /CountDistinct\(If\(/, `expected CountDistinct(If(...)), got: ${out}`);
+  assert.doesNotMatch(out!, /CountDistinctIf\(/, `must not emit the two-arg CountDistinctIf form: ${out}`);
   assert.match(out!, /Find\(\[ROLE\]/, `expected SEARCH→Find on [ROLE], got: ${out}`);
   assert.doesNotMatch(out!, /KEEPFILTERS/i, `KEEPFILTERS not stripped: ${out}`);
 });
@@ -81,8 +82,8 @@ test('qx16 end-to-end: Comp model emits a Mgmt Headcount metric (not dropped)', 
   const allMetrics = els.flatMap((e: any) => e.metrics || []);
   const mgmt = allMetrics.find((m: any) => m.name === 'Mgmt Headcount');
   assert.ok(mgmt, 'Mgmt Headcount metric should be emitted (was dropped before qx16)');
-  // Headcount = COUNTROWS(EMPLOYEES) → CountIf(pred); a DISTINCTCOUNT base → CountDistinctIf.
-  assert.match(String(mgmt.formula), /Count(Distinct)?If\(/, `got: ${mgmt && mgmt.formula}`);
+  // Headcount = COUNTROWS(EMPLOYEES) → CountIf(pred); a DISTINCTCOUNT base → CountDistinct(If(...)).
+  assert.match(String(mgmt.formula), /CountDistinct\(If\(|CountIf\(/, `got: ${mgmt && mgmt.formula}`);
   assert.match(String(mgmt.formula), /Find\(\[Role\]/, `expected SEARCH→Find on [Role], got: ${mgmt.formula}`);
 });
 

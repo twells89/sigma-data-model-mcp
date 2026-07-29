@@ -278,30 +278,30 @@ test('f3 unit: IN {…} → or-chain (Sigma has no IsIn); NOT IN → and-chain o
   assert.ok(!/\bIsIn\b/.test(out || ''), 'IsIn must never be emitted');
 });
 
-test('f3 unit: <> → !=; TRUE() → True', () => {
+test('f3 unit: <> → !=; TRUE() → True (DISTINCTCOUNT → CountDistinct(If(...)), dax-fidelity #1)', () => {
   assert.equal(
     pbiDaxToSigma('CALCULATE(DISTINCTCOUNT(S[ID]), FILTER(S, S[SEV] <> "Low"))', [], 'x'),
-    'CountDistinctIf([ID], [SEV] != "Low")');
+    'CountDistinct(If([SEV] != "Low", [ID], null))');
   assert.equal(
     pbiDaxToSigma('CALCULATE(COUNTROWS(S), S[FLAG] = TRUE())', [], 'x'),
     'CountIf([FLAG] = True)');
 });
 
-test('f3 unit: FILTER(ALL(T), pred) — context strip → GrandTotal(AggIf(…))', () => {
+test('f3 unit: FILTER(ALL(T), pred) — whole-table context strip → GrandTotal(AggIf(…))', () => {
   assert.equal(
     pbiDaxToSigma('CALCULATE(SUM(T[AMT]), FILTER(ALL(T), T[AMT] > 100))', [], 'x'),
     'GrandTotal(SumIf([AMT], [AMT] > 100))');
 });
 
-test('f3 unit: REMOVEFILTERS(T[col]) / ALL(T[col]) → GrandTotal + loud caveat warning', () => {
+test('f3 unit: REMOVEFILTERS(T[col]) / ALL(T[col]) → filter-scoped metric (NOT GrandTotal), dax-fidelity #5', () => {
   const w1: string[] = [];
   assert.equal(pbiDaxToSigma('CALCULATE(SUM(T[AMT]), REMOVEFILTERS(T[REGION]))', w1, 'm1'),
-    'GrandTotal(Sum([AMT]))');
-  assert.ok(w1.some(w => /EXACT when \[REGION\] is the only grouping/.test(w)));
+    'Sum([AMT])');
+  assert.ok(w1.some(w => /removes filter context on ONE column/.test(w) && /IGNORES any control/.test(w)));
   const w2: string[] = [];
   assert.equal(pbiDaxToSigma('CALCULATE(SUM(T[AMT]), ALL(T[REGION]))', w2, 'm2'),
-    'GrandTotal(Sum([AMT]))');
-  assert.ok(w2.some(w => /window total over the remaining dimensions/.test(w)));
+    'Sum([AMT])');
+  assert.ok(w2.some(w => /must NOT collapse to a GrandTotal/.test(w)));
 });
 
 test('f3 unit: ALLEXCEPT / ALLSELECTED → flag-not-drop with the DAX preserved', () => {
@@ -320,7 +320,7 @@ test('f3 unit: predicate comparing to a measure/aggregate still refuses (windowe
 test('f3 unit: spliced conditional aggregates survive inside DIVIDE / COALESCE wrappers', () => {
   assert.equal(
     pbiDaxToSigma('DIVIDE(CALCULATE(SUM(T[AMT]), T[A] = 1), CALCULATE(SUM(T[AMT]), T[B] = 2))', [], 'x'),
-    '(SumIf([AMT], [A] = 1)) / (SumIf([AMT], [B] = 2))');
+    '(SumIf([AMT], [A] = 1)) / NullIf((SumIf([AMT], [B] = 2)), 0)');
 });
 
 test('f3: integration — metrics emit clean Sigma, no raw DAX tokens', () => {
