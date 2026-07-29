@@ -623,6 +623,88 @@ export function convertQvdsToSigma(
   return result;
 }
 
+// ── QlikView QVW (PRJ-folder) ingestion ──────────────────────────────────────
+// QlikView .qvw apps are an undocumented binary with no parser. The practical
+// migration path is the developer-opt-in "-prj" project folder (QlikView Desktop
+// writes one when "Create project folder" / version-control export is enabled).
+// We read the plain-text LoadScript.txt (the data model — reliable) plus the chart
+// object files (CH*.xml — expression measures / calculated dimensions) and synthesize
+// the qtr-shaped JSON convertQlikToSigma already accepts.
+// Spec: help.qlik.com/.../QV_QlikView/QlikView_Project_Files.htm
+export interface QvwPrjFile { name: string; content: string; }
+
+/** Parse a Qlik/QlikView LOAD script into tables + in-memory (post-rename) field names.
+ *  Uses the alias side of `expr AS Field`, the file name for unlabeled tables, and skips
+ *  bare expressions without an alias. (No row counts — a -prj folder carries no data.) */
+export function parseQlikLoadScript(script: string): Array<{ name: string; fields: string[] }> {
+  // strip /* */ and // comments
+  const s = script.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+  const tables: Array<{ name: string; fields: string[] }> = [];
+  // [Label:] [PRECEDING] (LOAD|SQL SELECT) <body> until FROM/RESIDENT/INLINE/AUTOGENERATE/;
+  const blockRe = /(?:^|\n)[ \t]*(?:([A-Za-z_]\w*)\s*:\s*)?(?:[A-Za-z]+[ \t]+)?\b(?:LOAD|SQL\s+SELECT)\b([\s\S]*?)(?:\b(?:FROM|RESIDENT|INLINE|AUTOGENERATE)\b([\s\S]*?))?;/gi;
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(s))) {
+    const label = m[1];
+    const body = m[2] || '';
+    const tail = m[3] || '';
+    const fields: string[] = [];
+    for (const raw of splitTopLevel(body, ',')) {
+      let f = raw.trim();
+      if (!f || f === '*') continue;
+      const asM = f.match(/\s+AS\s+(.+)$/is);
+      if (asM) f = asM[1].trim();                 // in-memory name = the alias
+      f = f.replace(/^[\["']+|[\]"']+$/g, '').trim();
+      // accept only a clean field name (letters/digits/underscore/space) — skip leftover expressions
+      if (!/^[A-Za-z_][\w ]*$/.test(f)) continue;
+      fields.push(f);
+    }
+    if (!fields.length) continue;
+    // name: explicit label, else the source file/table tail, else TableN
+    let name = label;
+    if (!name) {
+      const fileM = tail.match(/\[[^\]]*?([A-Za-z0-9_]+)\.(?:qvd|csv|txt|xlsx?)\b/i)
+        || tail.match(/\b([A-Za-z0-9_]+)\s*$/);
+      name = fileM ? fileM[1] : `Table${tables.length + 1}`;
+    }
+    tables.push({ name, fields });
+  }
+  return tables;
+}
+
+/**
+ * Convert a QlikView "-prj" project folder to a Sigma **data model** spec.
+ * Pass the folder's files as `{ name, content }[]` (at minimum LoadScript.txt).
+ * The load script yields the tables/fields + shared-key relationships. Chart
+ * expressions and the workbook/sheet layout (CH*.xml / QlikViewProject.xml) are
+ * NOT parsed here — the qlik-to-sigma skill's qlik-prj-discover.py handles those
+ * for the full data-model + workbook build against the authentic QlikView schema.
+ */
+export function convertQvwPrjToSigma(
+  prjFiles: QvwPrjFile[],
+  options: QlikConvertOptions = {},
+): ConversionResult {
+  const warnings: string[] = [];
+  const find = (re: RegExp) => prjFiles.filter(f => re.test(f.name));
+  const scriptFile = find(/LoadScript\.txt$/i)[0] || find(/\.qvs$/i)[0];
+  if (!scriptFile) {
+    throw new Error('No LoadScript.txt found in the -prj folder. Enable "Create project folder" in QlikView Desktop and upload the full <name>-prj/ contents.');
+  }
+  const tables = parseQlikLoadScript(scriptFile.content);
+  if (!tables.length) warnings.push('LoadScript.txt parsed but no LOAD tables recovered — check the script syntax.');
+  warnings.push('QlikView -prj ingestion: relationships are inferred from shared field names only (no row counts in a -prj folder) — review join directions in Sigma.');
+  warnings.push('This converter builds the DATA MODEL from LoadScript.txt only. Chart expressions, measures, and the workbook layout in CH*.xml / QlikViewProject.xml are handled by the qlik-to-sigma skill (scripts/qlik-prj-discover.py -> full data-model + workbook pipeline).');
+
+  const qtr = tables.map(t => ({
+    qName: t.name,
+    qNoOfRows: 0,
+    qFields: t.fields.map(name => ({ qName: name })),
+  }));
+  const appName = (scriptFile.name.match(/^(.*?)-prj/i)?.[1]) || 'QlikView App';
+  const result = convertQlikToSigma({ appName, qtr, masterMeasures: [], masterDimensions: [] }, options);
+  result.warnings = [...warnings, ...result.warnings];
+  return result;
+}
+
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 function qlikParseInput(raw: any): { tables: any[]; masterMeasures: any[]; masterDimensions: any[]; appName: string } {

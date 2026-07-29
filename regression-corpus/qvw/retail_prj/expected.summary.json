@@ -1,0 +1,13 @@
+{
+  "description": "QlikView QVW -prj folder -> DATA MODEL. convertQvwPrjToSigma parses LoadScript.txt (tables/fields + shared-key relationships) into qtr JSON -> Sigma DM; POSTs live. Chart expressions + workbook layout are handled by the qlik-to-sigma skill (qlik-prj-discover.py), not this DM converter.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "database": "CSA",
+    "schema": "TJ"
+  },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 2,
+    "noErrorColumns": true
+  }
+}

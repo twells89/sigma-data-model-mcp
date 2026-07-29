@@ -14,7 +14,7 @@ import { convertTableauToSigma } from './tableau.js';
 import { convertOmniToSigma } from './omni.js';
 import { convertSqlToSigma } from './sql.js';
 import { convertThoughtSpotToSigma } from './thoughtspot.js';
-import { convertQlikToSigma } from './qlik.js';
+import { convertQlikToSigma, convertQvwPrjToSigma } from './qlik.js';
 import { convertAtlanToSigma } from './atlan.js';
 import { convertAlteryxToSigma } from './alteryx.js';
 import { convertOacToSigma } from './oac.js';
@@ -868,6 +868,52 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
               ...(result.security?.length ? { security: result.security } : {}),
               ...(result.workbookPatterns?.length ? { workbookPatterns: result.workbookPatterns } : {}),
             }, null, 2),
+          }],
+        };
+      } catch (e: any) {
+        return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── convert_qlikview_prj_to_sigma ─────────────────────────────────────────
+
+  server.tool(
+    'convert_qlikview_prj_to_sigma',
+    `Convert a QlikView ".qvw" app to a Sigma Computing DATA MODEL JSON via its "-prj"
+project folder. QlikView .qvw binaries have no parser; the migration path is the
+developer-opt-in <name>-prj/ folder (QlikView Desktop "Create project folder").
+
+Pass the folder's files as a JSON array of { name, content }. This builds the data
+model from LoadScript.txt only:
+- LoadScript.txt → tables + (post-rename) fields → warehouse elements + relationships
+  (a lib://.../TABLE.qvd load resolves to warehouse table TABLE).
+
+Relationships are inferred from shared field names only (a -prj folder carries no row
+counts) — review join directions. POST the output to /v2/dataModels/spec.
+
+NOTE: chart expressions/measures and the workbook/sheet layout (CH*.xml,
+QlikViewProject.xml) are NOT parsed here — the qlik-to-sigma migration skill's
+qlik-prj-discover.py handles those for a full data-model + workbook build.`,
+    {
+      prj_files_json: z.string().describe('JSON array of the -prj folder files: [{ "name": "LoadScript.txt", "content": "..." }, { "name": "CH01.xml", "content": "..." }, ...]'),
+      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
+      database: z.string().describe('Override database name; pass empty string to omit'),
+      schema: z.string().describe('Override schema name; pass empty string to omit'),
+    },
+    async ({ prj_files_json, connection_id, database, schema }) => {
+      try {
+        const files = JSON.parse(prj_files_json);
+        if (!Array.isArray(files)) throw new Error('prj_files_json must be a JSON array of { name, content } objects.');
+        const result = convertQvwPrjToSigma(files, {
+          connectionId: connection_id || undefined,
+          database: database || undefined,
+          schema: schema || undefined,
+        });
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
           }],
         };
       } catch (e: any) {
