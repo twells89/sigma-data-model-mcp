@@ -604,10 +604,37 @@ test('the title-case predicate still warns for every multi-word-mismatch case, n
 // the number Track A actually achieved), but it goes RED against pre-Track-A
 // commit 0be8116 (see task-6-report.md for the pasted failure) and RED again
 // the moment a future refactor re-breaks the paren gate, the And()/Or() call
-// form, the Today()() double-paren, or COUNT(DISTINCT) leaking [Distinct] as
-// a column. The >= 37 floor may only rise as the converter improves further;
-// the four defect-class assertions are exact zeros and must never move.
-const normalizeDomo = (s: string) => s.replace(/`([^`]+)`/g, (_m, c) => `[${c}]`).trim();
+// form, the Today()() double-paren, COUNT(DISTINCT) leaking [Distinct] as a
+// column, or a residual raw CASE/WHEN/THEN/END keyword surviving into the
+// output. The >= 37 floor may only rise as the converter improves further;
+// the five defect-class assertions below are exact zeros and must never move.
+//
+// SCOPE LIMIT (round-1 review finding 1) — read before trusting a green run:
+// every check in `live Domo Beast Mode corpus: rules are reached and output
+// is not corrupt` is STRUCTURAL — it screens for specific bad string
+// patterns (a leaked keyword, an unbalanced paren, a doubled call-paren) and
+// a rule-reached floor. None of it is semantic: a change that inverts an
+// `If(cond, then, else)` branch order, swaps an operand, or maps a column to
+// the wrong name produces output that is still perfectly balanced, has no
+// `[Distinct]`, no `And(`/`Or(`/`When(`, no `)()`, and no residual CASE
+// keyword — and this test will report `ok` regardless. Semantic correctness
+// is covered separately, by the golden-value tests immediately below (a
+// handful of exact-string pins over real corpus entries) and by every
+// task-1–5 unit test earlier in this file. Treat this corpus test as a
+// tripwire for "did the converter stop reaching / stop cleaning up after
+// itself," not as proof any individual formula converts to the right value.
+//
+// Replicates BOTH pre-steps of convert-beast-modes.rb's normalize_bm
+// (plugins/domo-to-sigma/skills/domo-to-sigma/scripts/convert-beast-modes.rb:84-90):
+// 1. MySQL backtick identifiers → Sigma [bracket] form.
+// 2. WEEKDAY(...) → DAYOFWEEK(...) (Beast Mode does this itself; Domo's own
+//    script replicates it for parity, so this fixture must too — see the
+//    round-1 finding-3 measurement in task-6-report.md for what this reveals).
+const normalizeDomo = (s: string) => {
+  let out = s.replace(/`([^`]+)`/g, (_m, c) => `[${c}]`).trim();
+  out = out.replace(/\bWEEKDAY\s*\(/gi, 'DAYOFWEEK(');
+  return out;
+};
 
 test('live Domo Beast Mode corpus: rules are reached and output is not corrupt', () => {
   const corpus: string[] = JSON.parse(
@@ -620,6 +647,7 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
   const callForm: string[] = [];
   const doubleParen: string[] = [];
   const unbalanced: string[] = [];
+  const residualCase: string[] = [];
 
   for (const sql of corpus) {
     const n = normalizeDomo(sql);
@@ -630,6 +658,7 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
     if (/\b(?:And|Or|When)\s*\(/.test(out)) callForm.push(out);
     if (/\)\s*\(\)/.test(out)) doubleParen.push(out);
     if ((out.match(/\(/g) || []).length !== (out.match(/\)/g) || []).length) unbalanced.push(out);
+    if (hasResidualCaseKeyword(out)) residualCase.push(out);
   }
 
   // Baseline before Track A was 0. Every paren-wrapped CASE (37) plus the other
@@ -639,4 +668,51 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
   assert.deepEqual(callForm, [], 'And()/Or()/When() call form silently nulls rows (A4)');
   assert.deepEqual(doubleParen, [], 'no Today()() style doubled parens (A5)');
   assert.deepEqual(unbalanced, [], 'no unbalanced parentheses');
+  // NOTE (round-1 review finding 2): this assertion is added exactly as
+  // specified and is NOT expected to be empty right now — see
+  // task-6-report.md "Round 1 fix" for the honest, measured result and why
+  // it is not being silently narrowed to make this pass.
+  assert.deepEqual(residualCase, [], 'no residual raw CASE/WHEN/THEN/END keyword may survive in the output');
+});
+
+// ── Task 6 round-1 review finding 1: golden-value spot checks ───────────────
+// The structural screen above cannot see a semantically-wrong-but-clean
+// conversion (proven by the reviewer: flipping If(cond, then, else) branch
+// order leaves every check above green). These three pins are a small,
+// deliberately-not-exhaustive semantic tripwire over real corpus entries,
+// spanning the shapes the brief calls out: a simple (non-nested) CASE ratio,
+// a CASE nested inside a COUNT(...) argument that is itself inside an outer
+// CASE, and a COUNT(DISTINCT) ratio. Indices are corpus[]'s own (0-based),
+// so a future corpus edit that reorders/removes these entries fails loudly
+// here rather than silently losing semantic coverage.
+test('live Domo Beast Mode corpus: golden-value spot checks over representative shapes (round-1 finding 1)', () => {
+  const corpus: string[] = JSON.parse(
+    readFileSync(new URL('./sql.beastmode.corpus.json', import.meta.url), 'utf8')
+  );
+  const convert = (idx: number) => {
+    const n = normalizeDomo(corpus[idx]);
+    return lookSqlToSigmaRules(n) ?? lookConvertExpression(n);
+  };
+
+  // corpus[26]: simple, single-level CASE ratio — "(CASE WHEN SUM(x)=0 THEN 0 ELSE SUM(y)/SUM(x) END)"
+  assert.equal(
+    convert(26),
+    'If(Sum([NumberSent]) = 0, 0, Sum([NumberDelivered]) / Sum([NumberSent]))'
+  );
+
+  // corpus[13]: COUNT(DISTINCT ...) ratio — "(CASE WHEN COUNT(DISTINCT x)=0 THEN 0 ELSE SUM(y)/COUNT(DISTINCT x) END)"
+  assert.equal(
+    convert(13),
+    'If(CountDistinct([Id]) = 0, 0, Sum([Reaction Count]) / CountDistinct([Id]))'
+  );
+
+  // corpus[11]: a CASE nested inside two COUNT(...) arguments, each of which is
+  // itself a condition/branch of the outer CASE (the task-4b "corpus item 11"
+  // shape, pinned here to an exact string rather than only structural checks).
+  assert.equal(
+    convert(11),
+    'If(Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )) = 0, 0, ' +
+    'Count((If(([status] = "Closed") AND ((DateDiff(Today(),[created_on]) - 1) <= 30), [id], null) )) / ' +
+    'Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )))'
+  );
 });
