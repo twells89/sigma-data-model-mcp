@@ -762,6 +762,34 @@ export function hasResidualCaseKeyword(s: string): boolean {
   return /\b(?:CASE|WHEN|THEN|END)\b/i.test(masked);
 }
 
+/**
+ * True if `s` still contains a bare, untranslated SQL infix operator that has
+ * NO Sigma equivalent -- LIKE, BETWEEN -- outside a `[bracketed identifier]`
+ * or a "..."/'...' literal. Same masking idiom as `hasResidualCaseKeyword`,
+ * for the same reason a column legitimately named `[Between]` or a literal
+ * containing the word "like" must never false-positive.
+ *
+ * Task-4c round-1 review finding 1: converting an embedded CASE span can
+ * silence `hasResidualCaseKeyword` (no more CASE/WHEN/THEN/END survives)
+ * while a DIFFERENT untranslated SQL construct still sits, unconverted,
+ * inside the newly-produced `If(...)` condition -- corpus[63]'s
+ * `LOWER(...) LIKE 'usa'` is the measured example: pre-task-4c this left a
+ * residual CASE keyword (so tools.ts honestly reported `converted: false`);
+ * post-task-4c the CASE converts cleanly but the LIKE survives untranslated,
+ * and nothing was checking for THAT, so the same formula started being
+ * reported as fully converted. No function anywhere in this file translates
+ * LIKE or BETWEEN to a Sigma equivalent -- LIKE in particular has no direct
+ * Sigma operator at all (Contains/RegexpMatch differ in wildcards, anchoring,
+ * and case-sensitivity, so mapping to either would silently change behavior,
+ * not just syntax) -- so this is "report honestly that no translation
+ * exists," the same posture `hasResidualCaseKeyword` already takes for an
+ * unsupported CASE shape, not "invent a translation."
+ */
+export function hasResidualInfixOperator(s: string): boolean {
+  const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]]*\]/g, ' ');
+  return /\b(?:LIKE|BETWEEN)\b/i.test(masked);
+}
+
 function _unmaskCountDistinct(s: string, args: string[]): string {
   return s.replace(/(\d+)/g, (_m, i) => {
     const raw = stripOuterParens(args[Number(i)]);
@@ -882,14 +910,24 @@ export function lookConvertExpression(expr: string): string {
 
   // Unmask in mirror order relative to how the three masks were applied
   // above (CD mask -> literal mask -> CASE mask): CASE splice first, since it
-  // was masked LAST / is the innermost layer. This is more than cosmetic
-  // symmetry — a converted CASE branch can itself contain an as-yet-unmasked
-  // COUNT(DISTINCT) sentinel (e.g. `CASE WHEN (COUNT(DISTINCT [Id]) = 0) ...`
-  // masks the DISTINCT call before the CASE scan ever runs, so the sentinel
-  // rides along inertly inside `lookConvertCase`'s recursive output). Splicing
-  // the CASE result back in FIRST is what surfaces that inner sentinel so the
-  // `_unmaskCountDistinct` call below — which must run last, since it was
-  // masked first / is the outermost layer — can find and convert it.
+  // was masked LAST / is the innermost layer, then literals, then
+  // COUNT(DISTINCT) last (masked first / outermost layer).
+  //
+  // CORRECTION (round-1 review, minor 2): an earlier version of this comment
+  // claimed a converted CASE branch could still carry an as-yet-unmasked
+  // COUNT(DISTINCT) sentinel "riding along inertly" into this splice, making
+  // splice-before-CD-unmask load-bearing rather than merely tidy. That is no
+  // longer true: `_restoreRawCountDistinct` (see `_convertNestedCases`) already
+  // restores any such sentinel to genuine raw `COUNT(DISTINCT ...)` SQL text
+  // BEFORE the span is ever handed to `lookConvertCase`, so the recursive call
+  // fully masks/converts/unmasks it within its own frame and returns a block
+  // with no control byte left in it at all — verified directly: the block
+  // produced for `100 * (CASE WHEN (COUNT(DISTINCT [Id]) = 0) THEN 'a' ELSE
+  // 'b' END)` contains zero STX/ETX bytes. This mirror ordering is kept
+  // anyway as cheap, defensive belt-and-suspenders (it costs nothing and
+  // guards against a FUTURE change to `_convertNestedCases`/
+  // `_restoreRawCountDistinct` reintroducing a leak), not because a live
+  // constraint currently depends on it.
   expr = _spliceNestedCases(expr, ec!.blocks);
   return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
 }

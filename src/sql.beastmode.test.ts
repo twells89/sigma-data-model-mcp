@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword, lookUnknownFunctions } from './formulas.js';
+import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword, hasResidualInfixOperator, lookUnknownFunctions } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
   assert.equal(stripOuterParens('(x)'), 'x');
@@ -487,6 +487,42 @@ test('hasResidualCaseKeyword does not false-positive on a legitimate [End] colum
   assert.equal(hasResidualCaseKeyword('CASE [Region] WHEN 1 THEN 2 ELSE 3 END'), true);
 });
 
+// task-4c round-1 review finding 1: brand-new helper (no prior state to be
+// red against — same non-regression-pin framing task-4b used for
+// hasResidualCaseKeyword itself). Masks brackets/literals first so a
+// legitimately-named [Between] column or a literal containing "like" never
+// false-positives, mirroring hasResidualCaseKeyword's own masking idiom.
+test('hasResidualInfixOperator does not false-positive on a legitimate [Between] column ref or a literal containing "like", and DOES flag a genuine LIKE/BETWEEN (task-4c round-1 finding 1)', () => {
+  assert.equal(hasResidualInfixOperator('If([Between] = 1, 1, 0)'), false);
+  assert.equal(hasResidualInfixOperator('[X] = "we like this"'), false);
+  assert.equal(hasResidualInfixOperator('Lower([Region]) LIKE "usa"'), true);
+  assert.equal(hasResidualInfixOperator('[Age] BETWEEN 18 AND 65'), true);
+});
+
+// task-4c round-1 review finding 1: the actual bug, reproduced against the
+// exact tools.ts convert_sql_to_sigma_formula handler logic (no test file
+// imports src/tools.ts directly — confirmed via grep, same gap task-4b's
+// report noted; tsc is its only prior gate — so this replicates the handler's
+// branch logic exactly, the same approach task-4b used to verify its own
+// tools.ts fix).
+// Verified red at a0e2ca5 (round-1 fix, before this round's finding-1 fix):
+//   fallbackConverted = !hasResidualCaseKeyword(fallback)  // LIKE not checked
+//   -> true, for a formula whose only defect is an untranslated LIKE —
+//   tools.ts would have reported `converted: true` on output Sigma cannot
+//   evaluate as written.
+test('the tools.ts fallback-converted logic honestly reports false when only a residual infix operator survives, not just a residual CASE keyword (task-4c round-1 finding 1)', () => {
+  const sql = "SUM((CASE WHEN (LOWER([Account.BillingCountry]) LIKE 'united states') THEN 0 WHEN (LOWER([Account.BillingCountry]) LIKE 'usa') THEN 0 WHEN (LOWER([Account.BillingCountry]) LIKE 'us') THEN 0 ELSE 1 END ))";
+  const ruled = lookSqlToSigmaRules(sql);
+  assert.equal(ruled, null, 'must fall through to lookConvertExpression — this pins WHY tools.ts needs the fallback check at all');
+  const fallback = lookConvertExpression(sql);
+  // Round-1-only check (a0e2ca5): silences the finding — reproduces the RED
+  // behavior directly rather than merely asserting the fixed one.
+  assert.equal(!hasResidualCaseKeyword(fallback), true, 'the CASE itself DOES fully convert — hasResidualCaseKeyword alone is silenced');
+  // Fixed logic (this round): both checks together correctly report false.
+  const fallbackConverted = !hasResidualCaseKeyword(fallback) && !hasResidualInfixOperator(fallback);
+  assert.equal(fallbackConverted, false, 'a residual LIKE must still be reported as not-fully-converted');
+});
+
 // BUNDLED MINOR: the `_isBalanced` backstop (requirement 4) is load-bearing
 // but was untested on its own — every other test that reaches null does so via
 // an earlier structural check. `[Revenue (USD]` is a well-formed bracket span
@@ -778,8 +814,12 @@ test('the title-case predicate still warns for every multi-word-mismatch case, n
 // tripwire for "did the converter stop reaching / stop cleaning up after
 // itself," not as proof any individual formula converts to the right value.
 //
-// Replicates BOTH pre-steps of convert-beast-modes.rb's normalize_bm
-// (plugins/domo-to-sigma/skills/domo-to-sigma/scripts/convert-beast-modes.rb:84-90):
+// Replicates BOTH pre-steps of convert-beast-modes.rb's normalize_bm function
+// (plugins/domo-to-sigma/skills/domo-to-sigma/scripts/convert-beast-modes.rb —
+// cited by FUNCTION NAME, not a line range: task-4c round-1 review caught a
+// stale line-number citation here (this file is a shared, synced artifact
+// across many worktrees, and line numbers drift as it's edited elsewhere —
+// exactly the kind of citation that silently goes wrong and is cheap to avoid):
 // 1. MySQL backtick identifiers → Sigma [bracket] form.
 // 2. WEEKDAY(...) → DAYOFWEEK(...) (Beast Mode does this itself; Domo's own
 //    script replicates it for parity, so this fixture must too — see the
@@ -802,8 +842,9 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
   const doubleParen: string[] = [];
   const unbalanced: string[] = [];
   const residualCase: string[] = [];
+  const residualInfixIndices: number[] = [];
 
-  for (const sql of corpus) {
+  corpus.forEach((sql, idx) => {
     const n = normalizeDomo(sql);
     const ruled = lookSqlToSigmaRules(n);
     const out = ruled ?? lookConvertExpression(n);
@@ -813,7 +854,8 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
     if (/\)\s*\(\)/.test(out)) doubleParen.push(out);
     if ((out.match(/\(/g) || []).length !== (out.match(/\)/g) || []).length) unbalanced.push(out);
     if (hasResidualCaseKeyword(out)) residualCase.push(out);
-  }
+    if (hasResidualInfixOperator(out)) residualInfixIndices.push(idx);
+  });
 
   // Baseline before Track A was 0. Every paren-wrapped CASE (37) plus the other
   // rule-matching shapes must now be reached.
@@ -827,6 +869,35 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
   // task-6-report.md "Round 1 fix" for the honest, measured result and why
   // it is not being silently narrowed to make this pass.
   assert.deepEqual(residualCase, [], 'no residual raw CASE/WHEN/THEN/END keyword may survive in the output');
+
+  // Task-4c round-1 review finding 1: converting an embedded CASE span can
+  // silence residualCase above while a DIFFERENT untranslated SQL construct —
+  // an infix LIKE or BETWEEN, neither of which any function in this file
+  // translates — still sits inside the newly-produced condition. corpus[63]
+  // (`LOWER(...) LIKE 'usa'`, nested inside a CASE that itself only reaches
+  // lookConvertExpression via task-4c's new embedded-CASE seam) is the
+  // measured, genuinely-unavoidable example: Sigma has no infix LIKE operator
+  // at all, and mapping it to Contains/RegexpMatch would silently change
+  // semantics (wildcards, anchoring, case-sensitivity all differ) rather than
+  // just translate syntax — that is separate work, explicitly out of scope
+  // here, not something to paper over with an approximate translation.
+  //
+  // This assertion is pinned to the EXACT known, hand-verified set — not
+  // merely "must be empty" (an assert.deepEqual(residualInfixIndices, [])
+  // here would be knowingly, permanently red the same way Task 6's own
+  // residualCase assertion was left red pending this task, which would
+  // reopen the 26-known-failures full-suite gate rather than close it) and
+  // not merely "must be non-empty" either. It goes red — loudly, on purpose —
+  // in BOTH directions: if corpus[63]'s LIKE unexpectedly stops leaking (a
+  // behavior change worth investigating, not silently accepting), and if any
+  // OTHER formula starts leaking an infix operator it didn't before (a
+  // genuine new regression). See task-4c-report.md round-2 for the full
+  // count and reasoning.
+  assert.deepEqual(
+    residualInfixIndices,
+    [63],
+    `residual infix operator (LIKE/BETWEEN) set must be EXACTLY the known, justified corpus[63] LIKE case, got indices: ${JSON.stringify(residualInfixIndices)}`
+  );
 });
 
 // ── Task 6 round-1 review finding 1: golden-value spot checks ───────────────
@@ -839,6 +910,21 @@ test('live Domo Beast Mode corpus: rules are reached and output is not corrupt',
 // CASE, and a COUNT(DISTINCT) ratio. Indices are corpus[]'s own (0-based),
 // so a future corpus edit that reorders/removes these entries fails loudly
 // here rather than silently losing semantic coverage.
+//
+// Task-4c round-1 review finding 4: corpus[26]/[13]/[11] above are all
+// byte-identical before and after task-4c (diffed directly — task-4c's fix
+// only changes output for 16 of the 74 corpus formulas, and none of these
+// three are among them). That means NONE of the golden pins above would have
+// caught a semantic inversion in the specific code path task-4c added —
+// only the 16 newly-converted formulas exercise it. The three pins below
+// extend coverage into that path: corpus[3] is the exact two-level example
+// task-4c-brief.md opens with (a CASE dividing the whole expression, whose
+// ELSE branch aggregates a second, nested CASE), corpus[61] is a CASE with a
+// compound AND condition using date functions, and corpus[63] is the
+// LIKE-carrying formula from finding 1 above — pinned here specifically to
+// show the CASE structure itself converts correctly (nested If/If, correct
+// branch order, correct operands) even though the LIKE inside it is
+// deliberately left untranslated.
 test('live Domo Beast Mode corpus: golden-value spot checks over representative shapes (round-1 finding 1)', () => {
   const corpus: string[] = JSON.parse(
     readFileSync(new URL('./sql.beastmode.corpus.json', import.meta.url), 'utf8')
@@ -868,5 +954,35 @@ test('live Domo Beast Mode corpus: golden-value spot checks over representative 
     'If(Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )) = 0, 0, ' +
     'Count((If(([status] = "Closed") AND ((DateDiff(Today(),[created_on]) - 1) <= 30), [id], null) )) / ' +
     'Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )))'
+  );
+
+  // corpus[3] (task-4c-brief.md's own headline example): a CASE dividing the
+  // whole expression — `(CASE ... END) / COUNT(Name)` — whose ELSE branch
+  // aggregates a SECOND, nested CASE via SUM(...). Never matches
+  // lookSqlToSigmaRules (confirmed elsewhere in this file, task-4c's own
+  // unit test) so this exercises the embedded-CASE seam end to end.
+  assert.equal(
+    convert(3),
+    '((If(Count([Name]) = 0, 0, Sum((If([IsClosed] = "true", 1, 0) ))) ) / Count([Name]))'
+  );
+
+  // corpus[61]: SUM(...) aggregate wrapping a CASE whose single condition is a
+  // compound AND of two date-function equalities (current year/quarter) —
+  // `SUM((CASE WHEN ((YEAR(x)=YEAR(CURRENT_DATE())) AND (QUARTER(x)=QUARTER(CURRENT_DATE()))) THEN Amount ELSE 0 END))`.
+  assert.equal(
+    convert(61),
+    'Sum((If((Year([CloseDate])=Year(Today())) AND (Quarter([CloseDate])=Quarter(Today())), [Amount], 0) ))'
+  );
+
+  // corpus[63]: the finding-1 LIKE example. Pinned here to show the CASE
+  // structure itself (three WHEN branches plus ELSE, correctly nested into
+  // If/If/If) converts correctly even though the LIKE operator inside each
+  // condition is deliberately left untranslated (Sigma has no equivalent) —
+  // a semantic inversion in the newly-converted branch order/operands would
+  // fail this pin even though hasResidualInfixOperator still (correctly)
+  // flags the formula above.
+  assert.equal(
+    convert(63),
+    'Sum((If(Lower([Account.BillingCountry]) LIKE "united states", 0, If(Lower([Account.BillingCountry]) LIKE "usa", 0, If(Lower([Account.BillingCountry]) LIKE "us", 0, 1))) ))'
   );
 });

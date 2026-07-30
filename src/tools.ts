@@ -24,7 +24,7 @@ import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
-import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword, lookUnknownFunctions } from './formulas.js';
+import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword, hasResidualInfixOperator, lookUnknownFunctions } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
 
@@ -473,8 +473,15 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
         // its mechanical passes, which leave raw WHEN/THEN/END sitting in the
         // output as literal text rather than translating them. Report that
         // honestly instead of claiming `converted: true` on residual raw SQL
-        // (task-4b round-1 review finding 2).
-        const fallbackConverted = !hasResidualCaseKeyword(fallback);
+        // (task-4b round-1 review finding 2). ALSO check for a residual infix
+        // operator (LIKE/BETWEEN) with no Sigma equivalent (task-4c round-1
+        // review finding 1): task-4c taught lookConvertExpression to convert
+        // an embedded CASE span even when it's wrapped in arithmetic/an
+        // aggregate, which can silence hasResidualCaseKeyword (the CASE
+        // itself converts cleanly to If(...)) while a DIFFERENT untranslated
+        // construct — LIKE, measured on the live corpus — still sits inside
+        // the newly-produced condition. Neither check alone is sufficient.
+        const fallbackConverted = !hasResidualCaseKeyword(fallback) && !hasResidualInfixOperator(fallback);
         return {
           content: [{
             type: 'text' as const,
@@ -484,7 +491,7 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
               warnings,
               note: fallbackConverted
                 ? 'Used general expression converter — review for accuracy'
-                : 'Could not fully translate — output still contains raw CASE/WHEN/THEN SQL syntax, do not use as-is',
+                : 'Could not fully translate — output still contains raw SQL syntax Sigma has no equivalent for (CASE/WHEN/THEN, or an infix LIKE/BETWEEN), do not use as-is',
             }, null, 2),
           }],
         };
