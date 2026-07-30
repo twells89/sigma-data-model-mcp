@@ -9,7 +9,7 @@ import {
   type SigmaElement, type SigmaColumn, type SigmaMetric,
   type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction, hasResidualCaseKeyword, hasResidualInfixOperator } from './formulas.js';
 
 interface DbtEntity {
   name: string;
@@ -235,7 +235,21 @@ function convertDbtSemanticModel(
       } else {
         const preBracketed = preBracketKnownNames(rawExpr, knownNames);
         const formula = lookSqlToSigmaRules(preBracketed);
-        if (formula) {
+        // lookSqlToSigmaRules is not guaranteed residue-free: its CASE/ROUND/
+        // arithmetic patterns can splice a converted sub-expression back into
+        // a template that still carries an untranslated construct — a CASE
+        // condition with a bare LIKE/BETWEEN (no Sigma equivalent), or an
+        // unsupported "simple CASE" shape that survives raw. Drop and warn
+        // rather than emit broken Sigma, same posture as the
+        // detectUnsupportedSigmaFunction check just above and lookml.ts's
+        // computed-measure guard.
+        if (formula && (hasResidualCaseKeyword(formula) || hasResidualInfixOperator(formula))) {
+          (element as any)._skippedDims = (element as any)._skippedDims || [];
+          (element as any)._skippedDims.push({
+            name: dim.name,
+            reason: hasResidualInfixOperator(formula) ? 'LIKE/BETWEEN' : 'CASE',
+          });
+        } else if (formula) {
           const id = sigmaShortId();
           const semantic = dim.name.toUpperCase();
           colIdMap[semantic] = id;

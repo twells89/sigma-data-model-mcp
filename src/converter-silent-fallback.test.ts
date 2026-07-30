@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { convertSqlToSigma } from './sql.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertDbtToSigma } from './dbt.js';
+import { convertSnowflakeSemanticView } from './snowflake.js';
 import { convertCognosToSigma } from './cognos.js';
 import { convertOmniToSigma } from './omni.js';
 import { convertBobjToSigma } from './bobj.js';
@@ -14,6 +15,11 @@ import { convertBobjToSigma } from './bobj.js';
 const metricsOf = (model: any): { name: string; formula: string }[] => {
   const out: any[] = [];
   for (const p of model?.pages || []) for (const e of p.elements || []) for (const m of e.metrics || []) out.push({ name: m.name, formula: m.formula });
+  return out;
+};
+const columnsOf = (model: any): { name?: string; formula: string }[] => {
+  const out: any[] = [];
+  for (const p of model?.pages || []) for (const e of p.elements || []) for (const c of e.columns || []) out.push({ name: c.name, formula: c.formula });
   return out;
 };
 const warned = (ws: string[], re: RegExp) => ws.some(w => re.test(w));
@@ -146,4 +152,58 @@ test('cube: canonical one_to_many maps to 1:N with no relationship warning (lanq
   const r = cubeRel('one_to_many');
   assert.equal(relTypeOf(r.model), '1:N');
   assert.ok(!warned(r.warnings, /relationship is missing|legacy Cube|not a recognized/i), 'no spurious relationship warning on a canonical value');
+});
+
+// ── Final review Important finding 3: dbt/snowflake dimension formulas gained
+// new (task-4c) output via lookSqlToSigmaRules with no residual-construct
+// gate — a CASE wrapping a bare LIKE/BETWEEN converts cleanly on the outside
+// (hasResidualCaseKeyword silenced) while the LIKE itself, which has no Sigma
+// equivalent, survives raw inside the emitted column formula. Same defect
+// class this file already guards for unmapped aggregations/metrics: never
+// ship it silently — drop + warn instead. The genuinely-clean CASE and plain
+// arithmetic dimensions in each fixture must still convert; only the LIKE one
+// should be dropped.
+// Verified red at 36e5e08 (direct probe, isolated worktree via `git stash` on
+// just src/dbt.ts / src/snowflake.ts before this fix existed):
+//   dbt "like_flag" column emitted: {"name":"Like Flag","formula":"If(Lower([Country]) LIKE \"usa\", 1, 0)"}, no warning
+//   snowflake "like_flag"/"like_flag_td" columns emitted identically, warnings: []
+test('dbt: a dimension CASE with a residual LIKE is dropped+warned, not shipped broken; a clean CASE and plain arithmetic dimension still convert (final review, Important 3)', () => {
+  const yamlText = `semantic_models:
+  - name: orders
+    model: ref('fct_orders')
+    entities: [{name: order_id, type: primary}]
+    dimensions:
+      - {name: is_usa, type: categorical, expr: "CASE WHEN COUNTRY = 'usa' THEN 1 ELSE 0 END"}
+      - {name: net_amount, type: categorical, expr: "(GROSS - DISCOUNT)"}
+      - {name: like_flag, type: categorical, expr: "CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END"}
+    measures:
+      - {name: order_total, agg: sum, expr: amount}`;
+  const r = convertDbtToSigma(yamlText, { database: 'ANALYTICS', schema: 'DBT' });
+  const cols = columnsOf(r.model);
+  assert.ok(cols.some(c => c.name === 'Is Usa' && /^If\(\[Country\] = "usa", 1, 0\)$/.test(c.formula)), JSON.stringify(cols));
+  assert.ok(cols.some(c => c.name === 'Net Amount' && c.formula === '[Gross] - [Discount]'), JSON.stringify(cols));
+  assert.ok(!cols.some(c => c.name === 'Like Flag'), `broken LIKE column was emitted: ${JSON.stringify(cols)}`);
+  assert.ok(warned(r.warnings, /"orders\.like_flag".*skipped/i), r.warnings.join('\n'));
+});
+
+test('snowflake: a dimension AND a time_dimension CASE with a residual LIKE are both dropped+warned, not shipped broken; a clean CASE and plain arithmetic dimension still convert (final review, Important 3)', () => {
+  const yamlText = `name: orders_view
+tables:
+  - name: orders
+    base_table: {database: ANALYTICS, schema: PUBLIC, table: ORDERS}
+    dimensions:
+      - {name: is_usa, expr: "CASE WHEN COUNTRY = 'usa' THEN 1 ELSE 0 END"}
+      - {name: net_amount, expr: "(GROSS - DISCOUNT)"}
+      - {name: like_flag, expr: "CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END"}
+    time_dimensions:
+      - {name: like_flag_td, expr: "CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END"}
+    facts:
+      - {name: amount}`;
+  const r = convertSnowflakeSemanticView(yamlText, { connectionId: 'test-conn' });
+  const cols = columnsOf(r.model);
+  assert.ok(cols.some(c => c.name === 'Is Usa' && /^If\(\[Country\] = "usa", 1, 0\)$/.test(c.formula)), JSON.stringify(cols));
+  assert.ok(cols.some(c => c.name === 'Net Amount' && c.formula === '[Gross] - [Discount]'), JSON.stringify(cols));
+  assert.ok(!cols.some(c => c.name === 'Like Flag' || c.name === 'Like Flag Td'), `broken LIKE column was emitted: ${JSON.stringify(cols)}`);
+  assert.ok(warned(r.warnings, /"orders\.LIKE_FLAG".*skipped/i), r.warnings.join('\n'));
+  assert.ok(warned(r.warnings, /"orders\.LIKE_FLAG_TD".*skipped/i), r.warnings.join('\n'));
 });
