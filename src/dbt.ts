@@ -9,7 +9,7 @@ import {
   type SigmaElement, type SigmaColumn, type SigmaMetric,
   type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction, hasResidualCaseKeyword, hasResidualInfixOperator, _SQL_KEYWORD_RE } from './formulas.js';
 
 interface DbtEntity {
   name: string;
@@ -84,7 +84,7 @@ function preBracketKnownNames(expr: string, knownNames: Set<string>): string {
   for (let i = 0; i < parts.length; i++) {
     if (i % 2 === 1) continue; // odd indices are string literals — leave alone
     parts[i] = parts[i].replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g, (m) => {
-      if (/^(AND|OR|NOT|NULL|IS|IN|BETWEEN|LIKE|THEN|ELSE|END|WHEN|CASE|TRUE|FALSE)$/i.test(m)) return m;
+      if (_SQL_KEYWORD_RE.test(m)) return m;
       return knownNames.has(m.toUpperCase()) ? m.toUpperCase() : m;
     });
   }
@@ -235,7 +235,21 @@ function convertDbtSemanticModel(
       } else {
         const preBracketed = preBracketKnownNames(rawExpr, knownNames);
         const formula = lookSqlToSigmaRules(preBracketed);
-        if (formula) {
+        // lookSqlToSigmaRules is not guaranteed residue-free: its CASE/ROUND/
+        // arithmetic patterns can splice a converted sub-expression back into
+        // a template that still carries an untranslated construct — a CASE
+        // condition with a bare LIKE/BETWEEN (no Sigma equivalent), or an
+        // unsupported "simple CASE" shape that survives raw. Drop and warn
+        // rather than emit broken Sigma, same posture as the
+        // detectUnsupportedSigmaFunction check just above and lookml.ts's
+        // computed-measure guard.
+        if (formula && (hasResidualCaseKeyword(formula) || hasResidualInfixOperator(formula))) {
+          (element as any)._skippedDims = (element as any)._skippedDims || [];
+          (element as any)._skippedDims.push({
+            name: dim.name,
+            reason: hasResidualInfixOperator(formula) ? 'LIKE/BETWEEN' : 'CASE',
+          });
+        } else if (formula) {
           const id = sigmaShortId();
           const semantic = dim.name.toUpperCase();
           colIdMap[semantic] = id;

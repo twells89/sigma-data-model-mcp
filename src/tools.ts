@@ -24,7 +24,7 @@ import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
-import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
+import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword, hasResidualInfixOperator, lookUnknownFunctions } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
 
@@ -454,15 +454,65 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
     },
     async ({ sql }) => {
       try {
+        // Names pass 1 of lookConvertExpression would title-case without a real
+        // Sigma mapping (e.g. AddDate -> Adddate — not a Sigma function). Computed
+        // from the ORIGINAL input so it also catches an unmapped name embedded
+        // inside a branch of a CASE that lookSqlToSigmaRules otherwise converts
+        // successfully (lookConvertCase runs lookConvertExpression per-branch
+        // internally, so `converted: true` alone would not surface it).
+        const warnings = lookUnknownFunctions(sql).map(
+          fn => `${fn}() has no Sigma mapping — emitted as-is; verify it exists in Sigma.`
+        );
         const result = lookSqlToSigmaRules(sql);
         if (result) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaFormula: result, converted: true }, null, 2) }] };
+          // lookSqlToSigmaRules is NOT guaranteed residue-free: its ROUND,
+          // CASE, and arithmetic/NULLIF patterns can all splice a converted
+          // sub-expression back into a template that still carries an
+          // untranslated construct (e.g. a ROUND(...) wrapping a CASE whose
+          // condition has a residual LIKE). The fallback path below already
+          // runs both residual checks — this path must too, or the exact same
+          // defect (claiming `converted: true` on output Sigma cannot
+          // evaluate as written) survives on non-null output.
+          const resultConverted = !hasResidualCaseKeyword(result) && !hasResidualInfixOperator(result);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                sigmaFormula: result,
+                converted: resultConverted,
+                warnings,
+                ...(resultConverted ? {} : {
+                  note: 'Could not fully translate — output still contains raw SQL syntax Sigma has no equivalent for (CASE/WHEN/THEN, or an infix LIKE/BETWEEN), do not use as-is',
+                }),
+              }, null, 2),
+            }],
+          };
         }
         const fallback = lookConvertExpression(sql);
+        // lookConvertExpression cannot itself fail (its contract is string ->
+        // string), so a CASE the rule engine couldn't parse falls through to
+        // its mechanical passes, which leave raw WHEN/THEN/END sitting in the
+        // output as literal text rather than translating them. Report that
+        // honestly instead of claiming `converted: true` on residual raw SQL.
+        // ALSO check for a residual infix operator (LIKE/BETWEEN) with no
+        // Sigma equivalent: lookConvertExpression converts an embedded CASE
+        // span even when it's wrapped in arithmetic/an aggregate, which can
+        // silence hasResidualCaseKeyword (the CASE itself converts cleanly to
+        // If(...)) while a DIFFERENT untranslated construct — LIKE, measured
+        // on the live corpus — still sits inside the newly-produced
+        // condition. Neither check alone is sufficient.
+        const fallbackConverted = !hasResidualCaseKeyword(fallback) && !hasResidualInfixOperator(fallback);
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ sigmaFormula: fallback, converted: true, note: 'Used general expression converter — review for accuracy' }, null, 2),
+            text: JSON.stringify({
+              sigmaFormula: fallback,
+              converted: fallbackConverted,
+              warnings,
+              note: fallbackConverted
+                ? 'Used general expression converter — review for accuracy'
+                : 'Could not fully translate — output still contains raw SQL syntax Sigma has no equivalent for (CASE/WHEN/THEN, or an infix LIKE/BETWEEN), do not use as-is',
+            }, null, 2),
           }],
         };
       } catch (e: any) {

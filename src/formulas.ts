@@ -102,18 +102,45 @@ export function tableauInToSigma(formula: string): string {
  * whole chain (`"a" + [x] + "b"`) converts in one call.
  */
 const _TEXT_FN_RE = /(?:Coalesce|Concat|Text|Left|Right|Mid|Substring|Substr|Upper|Lower|Trim|Replace|MonthName|WeekdayName|DateName|Proper)$/i;
-function _isTextOperand(op: string, isTextRef?: (name: string) => boolean): boolean {
-  let s = op.trim();
-  // Unwrap balanced outer parens: `([CW_COUNTRY])` → `[CW_COUNTRY]`.
-  while (/^\(.*\)$/s.test(s)) {
-    let depth = 0, ok = true;
+
+/**
+ * Strip parentheses that wrap an ENTIRE expression: `((x))` → `x`. Repeats while a
+ * wrapper remains. `(a) + (b)` is left untouched — its first group closes before the
+ * end, so the outer parens are two groups, not one wrapper. Quoted spans are skipped
+ * so a `)` inside a string literal is treated as data, not structure. A `[bracketed
+ * identifier]` span is likewise treated as atomic: a `'`/`"` inside brackets (e.g.
+ * `[Manager's Approval]`) is part of the identifier, not a string-literal delimiter —
+ * otherwise the scanner would enter a permanent in-quote state, swallow the real
+ * closing `)`, and silently leave the outer parens in place.
+ *
+ * Domo wraps every Beast Mode in outer parens, which made lookSqlToSigmaRules'
+ * anchored patterns (`/^CASE\b/i`, `/^ROUND\s*\(/i`, …) unreachable — measured: 0 of
+ * 74 live Beast Modes matched any rule before this.
+ */
+export function stripOuterParens(s: string): string {
+  s = s.trim();
+  while (s.length > 1 && s.startsWith('(') && s.endsWith(')')) {
+    let depth = 0, quote = '', inBracket = false, wraps = true;
     for (let i = 0; i < s.length; i++) {
-      if (s[i] === '(') depth++;
-      else if (s[i] === ')') { depth--; if (depth === 0 && i < s.length - 1) { ok = false; break; } }
+      const c = s[i];
+      if (inBracket) { if (c === ']') inBracket = false; continue; }
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '[') { inBracket = true; continue; }
+      if (c === "'" || c === '"') { quote = c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        if (depth === 0 && i < s.length - 1) { wraps = false; break; }
+      }
     }
-    if (!ok || depth !== 0) break;
+    if (!wraps || depth !== 0) break;
     s = s.slice(1, -1).trim();
   }
+  return s;
+}
+
+function _isTextOperand(op: string, isTextRef?: (name: string) => boolean): boolean {
+  let s = stripOuterParens(op.trim());
   if (!s) return false;
   if (/^"(?:[^"\\]|\\.)*"$/.test(s) || /^'(?:[^'\\]|\\.)*'$/.test(s)) return true;   // string literal
   const ref = s.match(/^\[([^\]\/]+)\]$/);
@@ -269,54 +296,306 @@ const LOOK_FUNC_MAP: Record<string, string> = {
   'TO_DATE': 'ToDate', 'TO_NUMBER': 'ToNumber', 'TO_VARCHAR': 'Text',
 };
 
-/** Convert CASE WHEN ... THEN ... ELSE ... END to nested If() */
-export function lookConvertCase(expr: string): string | null {
-  const body = expr.replace(/^CASE\s*/i, '').replace(/\s*END\s*$/i, '').trim();
-  const branches: { cond: string; val: string }[] = [];
+// ── Structural (depth-aware) CASE parsing ───────────────────────────────────
+// A naive split on every bare `\bWHEN\b` is blind to nesting. A nested CASE
+// (routine in the live Domo corpus — e.g. inside a COUNT(...) aggregate
+// argument) has its own WHEN/THEN/ELSE/END, and such a split would cut
+// straight across them: the resulting fragments would straddle structural
+// boundaries, producing output that is not merely wrong but shredded
+// (unbalanced parens, or — worse — a plausible-looking string with a whole raw
+// "CASE ... END" span duplicated into a branch VALUE).
 
-  // Split on WHEN keyword boundaries — each part is "cond THEN val [ELSE elseVal]"
-  const parts = body.split(/\bWHEN\b/i).filter(Boolean);
-  let elseVal: string | null = null;
+interface _CaseMarker { type: 'WHEN' | 'THEN' | 'ELSE'; start: number; end: number }
+interface _CaseScan { endStart: number; endIndex: number; markers: _CaseMarker[] }
 
-  for (const part of parts) {
-    // Match: everything up to THEN (non-greedy), then THEN val, then optionally ELSE elseVal
-    const elseMatch = part.match(/^([\s\S]+?)\s+THEN\s+([\s\S]+?)(?:\s+ELSE\s+([\s\S]+))?$/i);
-    if (!elseMatch) {
-      // Try to extract a bare ELSE from this part
-      const e = part.match(/\bELSE\s+([\s\S]+)$/i);
-      if (e && !elseVal) elseVal = e[1].trim();
+const _CASE_KW_RE = /^(CASE|WHEN|THEN|ELSE|END)\b/i;
+
+/**
+ * Scan `s` — already literal-masked via `_maskLiterals`, so no live quotes
+ * remain outside `[...]` and only bracket-awareness is needed here, not
+ * quote-awareness — starting at `pos`, the index right after a "CASE" keyword
+ * that put us at case-nesting depth 1. Tracks paren depth and further CASE
+ * nesting: a nested CASE bumps depth to 2 (and its own END brings it back to
+ * 1), so its WHEN/THEN/ELSE are never mistaken for markers belonging to the
+ * CASE that opened this scan — requirement 1's "CASE-nesting depth 0",
+ * expressed relative to that opening CASE. A `[bracketed identifier]` span is
+ * skipped whole (same idiom as `stripOuterParens`/`_maskLiterals`) so a
+ * keyword-shaped substring inside an identifier is never mistaken for
+ * structure. Stops the instant depth returns to 0 — the END matching the
+ * opening CASE. `endIndex === -1` means unterminated (no matching END).
+ */
+function _scanCase(s: string, pos: number): _CaseScan {
+  const markers: _CaseMarker[] = [];
+  let caseDepth = 1, parenDepth = 0, i = pos;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      const close = s.indexOf(']', i + 1);
+      i = close === -1 ? s.length : close + 1;
       continue;
     }
-    const cond = elseMatch[1].trim();
-    let val = elseMatch[2].trim();
-    // Check if val itself contains an ELSE clause
-    const elseInVal = val.match(/^([\s\S]+?)\s+ELSE\s+([\s\S]+)$/i);
-    if (elseInVal) {
-      val = elseInVal[1].trim();
-      if (!elseVal) elseVal = elseInVal[2].trim();
+    if (c === '(') { parenDepth++; i++; continue; }
+    if (c === ')') { parenDepth--; i++; continue; }
+    if (/[A-Za-z]/.test(c) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1]))) {
+      const m = _CASE_KW_RE.exec(s.slice(i));
+      if (m) {
+        const kw = m[1].toUpperCase(), start = i, end = i + m[1].length;
+        if (kw === 'CASE') {
+          caseDepth++;
+        } else if (kw === 'END') {
+          caseDepth--;
+          if (caseDepth === 0) return { endStart: start, endIndex: end, markers };
+        } else if (caseDepth === 1 && parenDepth === 0) {
+          markers.push({ type: kw as 'WHEN' | 'THEN' | 'ELSE', start, end });
+        }
+        i = end;
+        continue;
+      }
     }
-    branches.push({ cond, val });
+    i++;
   }
+  return { endStart: -1, endIndex: -1, markers };
+}
 
-  // Also check for top-level ELSE (e.g. "ELSE 'other'" at end of body)
-  const topElse = body.match(/\bELSE\s+([\s\S]+)$/i);
-  if (topElse && !elseVal) elseVal = topElse[1].trim();
+/**
+ * Parens/brackets balanced in FINAL Sigma-formed output — the backstop
+ * requirement 4 asks for. Skips content inside a double-quoted Sigma string
+ * literal (with `\"` escapes, matching `_unmaskLiterals`'s escaping) so a
+ * paren/bracket that is DATA inside a literal (e.g. `"Sales (Q1)"`) is never
+ * miscounted as structure.
+ */
+function _isBalanced(s: string): boolean {
+  let paren = 0, bracket = 0, inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === '\\') { i++; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '(') paren++;
+    else if (c === ')') { paren--; if (paren < 0) return false; }
+    else if (c === '[') bracket++;
+    else if (c === ']') { bracket--; if (bracket < 0) return false; }
+  }
+  return paren === 0 && bracket === 0 && !inStr;
+}
+
+// Sentinel for masking a nested CASE...END out of a chunk before it goes
+// through lookConvertExpression's mechanical regex passes, mirroring
+// _maskCountDistinct's mask-before/unmask-after shape (requirement 2's "same
+// machinery" — the same recursive-conversion pattern _unmaskCountDistinct
+// already uses). Uses EOT/ENQ so it cannot collide with the literal mask
+// (NUL/SOH) or the COUNT(DISTINCT) mask (STX/ETX) and — like both of those —
+// carries no letters, so it is inert to pass 1/3's identifier regexes.
+const _NESTED_CASE_UNMASK_RE = /(\d+)/g;
+
+/**
+ * Find every top-level "CASE ... END" span occurring anywhere inside `s` (a
+ * literal-masked chunk — bracket-aware only, same reasoning as `_scanCase`),
+ * recursively convert each via `lookConvertCase` (a full CASE always routes
+ * there via `lookSqlToSigmaRules`'s pattern 4 — this IS the
+ * `lookSqlToSigmaRules(inner) ?? lookConvertExpression(inner)` shape, just
+ * inlined since `inner` is already known to start with CASE), and replace it
+ * with the inert EOT/ENQ sentinel above so the surrounding mechanical passes
+ * never see raw CASE/WHEN/END text.
+ *
+ * Used from two seams with two different failure contracts, selected by
+ * `onUnparseable` (same scanner, not a fourth one; only the failure-handling
+ * branch differs between the two call sites):
+ *
+ *  - `'abort'` (default) — `lookConvertCase`'s own `convertLeaf`, for a CASE
+ *    nested inside a cond/val chunk. `lookConvertCase` returns `string | null`
+ *    and CAN refuse, so the instant any nested CASE cannot be parsed
+ *    confidently (or is unterminated), this returns `null` and propagates
+ *    failure to the WHOLE containing formula: falling back to running raw
+ *    "CASE WHEN ... END" text through `lookConvertExpression`'s regex passes
+ *    would leave keywords sitting in the output as literal text — the exact
+ *    shredding this whole scanner exists to prevent.
+ *
+ *  - `'leave-raw'` — `lookConvertExpression` itself, for a CASE embedded in
+ *    an arithmetic/aggregate expression that never reaches `lookConvertCase`
+ *    via `lookSqlToSigmaRules`'s anchored pattern 4 (e.g. `100 * (CASE ...
+ *    END)`, `SUM((CASE ... END))`). `lookConvertExpression` returns plain
+ *    `string` — it CANNOT refuse. Here a span that fails to parse (or an
+ *    unterminated CASE with no matching END at all) is left EXACTLY as found
+ *    — still masked, still carrying its raw CASE/WHEN/END text — and, for a
+ *    parse failure, the scan resumes right after that span so the REST of
+ *    the expression still converts. Never partially converts a failed span:
+ *    on failure nothing is written for that span at all, so its ORIGINAL
+ *    masked text survives untouched into the final output, where
+ *    `hasResidualCaseKeyword` is the honest signal to the caller that this
+ *    particular span didn't come through. An unterminated CASE has no
+ *    reliable span boundary at all, so the scan simply stops — the entire
+ *    remainder of the string from that point on is left untouched rather
+ *    than guessed at.
+ */
+function _convertNestedCases(
+  s: string,
+  lits: string[],
+  onUnparseable: 'abort' | 'leave-raw' = 'abort',
+  // Only ever non-empty from lookConvertExpression's embedded-CASE seam,
+  // which runs AFTER _maskCountDistinct — see _restoreRawCountDistinct.
+  // The 'abort' call site (convertLeaf) never needs this: its input always
+  // traces back to genuinely raw SQL (lookSqlToSigmaRules' pattern 4, or a
+  // span already restored here), so a CD sentinel never reaches it in the
+  // first place and this stays a harmless no-op default there.
+  cdArgs: string[] = [],
+): { text: string; blocks: string[] } | null {
+  const blocks: string[] = [];
+  let out = '', last = 0, i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      const close = s.indexOf(']', i + 1);
+      i = close === -1 ? s.length : close + 1;
+      continue;
+    }
+    if (/[A-Za-z]/.test(c) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1])) && /^CASE\b/i.test(s.slice(i))) {
+      const caseStart = i;
+      const scan = _scanCase(s, i + 4);
+      if (scan.endIndex === -1) {
+        if (onUnparseable === 'abort') return null;                // unterminated nested CASE
+        break;                                                     // leave-raw: no reliable end — stop, rest stays as-is
+      }
+      const rawSpan = _restoreRawCountDistinct(_restoreRawLiterals(s.slice(caseStart, scan.endIndex), lits), cdArgs);
+      const converted = lookConvertCase(rawSpan);
+      if (converted === null) {
+        if (onUnparseable === 'abort') return null;                // nested CASE failed to parse — fail the whole formula
+        i = scan.endIndex;                                          // leave-raw: skip past it, leave this span raw
+        continue;
+      }
+      out += s.slice(last, caseStart) + `\x04${blocks.push(converted) - 1}\x05`;
+      last = scan.endIndex;
+      i = scan.endIndex;
+      continue;
+    }
+    i++;
+  }
+  return { text: out + s.slice(last), blocks };
+}
+
+function _spliceNestedCases(s: string, blocks: string[]): string {
+  // `?? _m` is defensive, not reachable from real SQL: every sentinel this
+  // masks is one we just minted from `blocks.push(...)`, so the index is
+  // always in range. Guards only a crafted/adversarial input containing the
+  // literal sentinel bytes.
+  return s.replace(_NESTED_CASE_UNMASK_RE, (_m, i) => blocks[Number(i)] ?? _m);
+}
+
+/**
+ * Convert CASE WHEN ... THEN ... ELSE ... END to nested If().
+ *
+ * Parses structurally rather than by naive WHEN-splitting: `_scanCase` finds
+ * WHEN/THEN/ELSE markers only at case-nesting depth 1 and paren depth 0
+ * (requirement 1), so a nested CASE anywhere in a condition or branch value —
+ * even one with no enclosing parens at all — never has its own keywords
+ * mistaken for the outer CASE's structure. Each cond/val chunk is then
+ * independently scanned for an embedded nested CASE and, if found, that inner
+ * CASE is recursively converted via this same function (requirement 2) before
+ * the chunk's surrounding text goes through `lookConvertExpression`. Returns
+ * null — never a best-effort partial parse (requirement 3) — the moment
+ * anything is structurally ambiguous: an unmatched CASE/END, a WHEN with no
+ * THEN, a nested CASE that itself fails to parse, or a final balance check
+ * (requirement 4) that doesn't come out even.
+ */
+export function lookConvertCase(expr: string): string | null {
+  const trimmed = expr.trim();
+  const head = /^CASE\b/i.exec(trimmed);
+  if (!head) return null;
+
+  const { masked, lits } = _maskLiterals(trimmed);
+  const scan = _scanCase(masked, head[0].length);
+  if (scan.endIndex === -1) return null;                           // unterminated CASE — no matching END
+  if (masked.slice(scan.endIndex).trim() !== '') return null;      // trailing content after the matching END
+
+  const m = scan.markers;
+  const firstMarkerStart = m.length ? m[0].start : scan.endStart;
+  // Content between "CASE" and the first WHEN means this is (or claims to be)
+  // a "simple CASE" (`CASE expr WHEN val THEN ...`), a form this parser does
+  // not support — fail honestly rather than silently discard `expr` and
+  // misinterpret the first WHEN's value as a standalone boolean condition.
+  if (masked.slice(head[0].length, firstMarkerStart).trim() !== '') return null;
+
+  const branches: { cond: string; val: string }[] = [];
+  let elseVal: string | null = null;
+  let idx = 0;
+  while (true) {
+    if (idx >= m.length || m[idx].type !== 'WHEN') return null;     // missing WHEN
+    const whenTok = m[idx++];
+    if (idx >= m.length || m[idx].type !== 'THEN') return null;     // WHEN with no THEN
+    const thenTok = m[idx++];
+    const condText = masked.slice(whenTok.end, thenTok.start);
+
+    let valEnd: number, sawElse = false;
+    if (idx < m.length && m[idx].type === 'WHEN') {
+      valEnd = m[idx].start;
+    } else if (idx < m.length && m[idx].type === 'ELSE') {
+      valEnd = m[idx].start;
+      sawElse = true;
+    } else if (idx === m.length) {
+      valEnd = scan.endStart;
+    } else {
+      return null;                                                  // unexpected marker order (e.g. THEN, THEN)
+    }
+    branches.push({ cond: condText, val: masked.slice(thenTok.end, valEnd) });
+
+    if (sawElse) {
+      const elseTok = m[idx++];
+      if (idx !== m.length) return null;                            // structural marker(s) survive after ELSE
+      elseVal = masked.slice(elseTok.end, scan.endStart);
+      break;
+    }
+    if (idx === m.length) break;                                     // no ELSE — done
+    // otherwise idx now points at the next WHEN — loop continues
+  }
 
   if (branches.length === 0) return null;
 
-  const convertVal = (v: string): string => {
-    v = v.trim();
-    if (/^'[^']*'$/.test(v)) return v;        // string literal
-    if (/^-?\d+(\.\d+)?$/.test(v)) return v;  // number literal
-    return lookConvertExpression(v);
+  const convertLeaf = (maskedChunk: string, allowNumber: boolean): string | null => {
+    const v = maskedChunk.trim();
+    // An empty chunk — `WHEN THEN`, `THEN ELSE`, `ELSE END` with nothing
+    // between them — is not a value or condition, it's a hole. Splicing it in
+    // anyway would produce exactly the shredded-but-balanced output this whole
+    // task exists to prevent: `If(, 1, 2)`. Caught below by the
+    // `!spliced.trim()` check (an empty `v` strips/converts/splices down to
+    // '' too, so one check covers both an empty chunk and a non-empty chunk
+    // that collapses to nothing, e.g. `()`).
+    // NOTE: string literals are deliberately NOT special-cased here —
+    // lookConvertExpression masks/unmasks literals itself, emitting Sigma's
+    // required double-quoted form ("West", not 'West'). A literal
+    // short-circuit here would silently re-introduce single-quoted SQL-style
+    // output for every CASE-THEN/ELSE string value (A6).
+    if (allowNumber && /^-?\d+(\.\d+)?$/.test(v)) return v;          // number literal
+    // Strip a whole-chunk paren wrapper HERE, at the point the chunk is handed
+    // onward — not inside lookConvertExpression itself:
+    // lookConvertExpression is a SHARED contract across lookml.ts, tools.ts,
+    // etc.; confining the strip to this CASE-specific call site avoids any
+    // risk of it re-associating a caller that splices its result elsewhere).
+    const stripped = stripOuterParens(v);
+    const nc = _convertNestedCases(stripped, lits);
+    if (nc === null) return null;
+    const raw = _restoreRawLiterals(nc.text, lits);
+    const converted = lookConvertExpression(raw);
+    const spliced = _spliceNestedCases(converted, nc.blocks);
+    // Catches BOTH an originally-empty chunk (`v` was '') and a non-empty
+    // chunk that strips/converts down to nothing — `()` is the live case —
+    // since either way `spliced` ends up empty.
+    if (!spliced.trim()) return null;
+    return spliced;
   };
 
-  let result = elseVal ? convertVal(elseVal) : 'null';
+  let result: string | null = elseVal !== null ? convertLeaf(elseVal, true) : 'null';
+  if (result === null) return null;
   for (let i = branches.length - 1; i >= 0; i--) {
-    const sigmaCond = lookConvertExpression(branches[i].cond);
-    const sigmaVal  = convertVal(branches[i].val);
+    const sigmaCond = convertLeaf(branches[i].cond, false);
+    const sigmaVal = convertLeaf(branches[i].val, true);
+    if (sigmaCond === null || sigmaVal === null) return null;
     result = `If(${sigmaCond}, ${sigmaVal}, ${result})`;
   }
+
+  if (!_isBalanced(result)) return null;                             // requirement 4 backstop
   return result;
 }
 
@@ -329,12 +608,296 @@ export function lookConvertMathExpr(expr: string): string {
   return lookConvertExpression(expr);
 }
 
+// Rewriting passes below (function mapping, IN-lists, bare-identifier bracketing) are
+// regex-driven and cannot tell code from data. Masking string literals out before
+// they run — and restoring them after — is what stops `'AK'` becoming `'[Ak]'`.
+//
+// The sentinel is NUL + digits + SOH, and deliberately contains NO letters: a
+// letter-bearing placeholder is itself a bare ALL-CAPS identifier, so pass 3 brackets
+// it — verified, a ` L0 ` sentinel comes back as `[L 0]`. Bare digits are skipped by
+// pass 3's own `/^\d+$/` guard, and control characters cannot occur in SQL.
+const _LIT_RE = /'(?:[^']|'')*'/g;
+
+// A `[bracketed identifier]` span is atomic: an apostrophe inside it
+// (`[Manager's Approval]`) is part of the identifier, not a string-literal
+// delimiter. Running `_LIT_RE` naively over the whole string would treat that
+// apostrophe as an opening quote and swallow everything up to the NEXT real
+// quote — corrupting both the identifier and the literal that followed it
+// (e.g. `[Manager's Approval] = 'AK'` masked the *wrong* span, then unmasked
+// to `[Manager"s Approval] = "[Ak]'` — same class of bug Task 1's review
+// caught in stripOuterParens). Bracketed spans are skipped whole below;
+// `_LIT_RE` only ever runs against text that is outside of `[...]`.
+function _maskLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      // An unterminated '[' (no matching ']' anywhere in the rest of the
+      // string) is not a real bracketed span — treat it as an ordinary
+      // character and keep scanning. Swallowing to end-of-string here would
+      // skip masking every literal after it, reintroducing exactly the A3
+      // corruption this function exists to prevent.
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === "'") {
+      _LIT_RE.lastIndex = i;
+      const m = _LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed to a
+// single apostrophe, and any embedded double quote backslash-escaped. Matches the
+// live-verified Tableau path (see the `'x'` → `"x"` rewrite in tableauFormulaToSigma).
+function _unmaskLiterals(s: string, lits: string[]): string {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
+    const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
+    return `"${inner}"`;
+  });
+}
+
+// Restores literals to their ORIGINAL raw single-quoted SQL text -- unlike
+// _unmaskLiterals above, this does NOT finalize to Sigma's double-quoted form.
+// Needed by lookConvertCase: a cond/val chunk is sliced out of text
+// already masked via _maskLiterals, and before that chunk can be handed back
+// to lookConvertExpression (or recursively to lookConvertCase, for a nested
+// CASE) it must look like raw SQL again. lookConvertExpression does its OWN
+// masking, keyed on finding a real '...' literal, and its OWN unmask at the
+// end produces the double-quoted Sigma form -- restoring via _unmaskLiterals
+// instead hands lookConvertExpression an ALREADY-double-quoted string; its
+// _maskLiterals only matches single quotes, so the literal sails through
+// unmasked and pass 3 (bare ALL-CAPS bracketing) corrupts it, e.g. 'AK'
+// finalized early to "AK" comes back "[Ak]" -- a real regression this helper
+// fixes, caught red by the existing A3/A6 and mask-ordering tests.
+function _restoreRawLiterals(s: string, lits: string[]): string {
+  // ?? _m is defensive for the same reason as _spliceNestedCases's guard:
+  // every sentinel here is one _maskLiterals just minted, so the index is
+  // always in range in practice -- this only guards a crafted input carrying
+  // the literal sentinel bytes.
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => lits[Number(i)] ?? _m);
+}
+
+// Restores a COUNT(DISTINCT ...) mask sentinel (STX/ETX) to its
+// ORIGINAL raw "COUNT(DISTINCT <arg>)" SQL text -- unlike _unmaskCountDistinct,
+// this does NOT convert the argument, it just reconstitutes literal SQL. Needed
+// because lookConvertExpression's embedded-CASE scan (below) runs AFTER
+// _maskCountDistinct, per the seam the brief specifies: a CASE span it extracts
+// can carry an OUTER-scope CD sentinel embedded inside it (e.g. `CASE WHEN
+// (COUNT(DISTINCT [Id]) = 0) ...` masks the DISTINCT call before the CASE scan
+// ever runs). Handing that sentinel straight into lookConvertCase would leak
+// it into an entirely separate, freshly-scoped recursive lookConvertExpression
+// call, whose OWN _unmaskCountDistinct indexes into ITS OWN unrelated (likely
+// shorter, or empty) args array using the OUTER call's index -- silently
+// reading undefined and crashing in stripOuterParens (caught red-handed while
+// testing this scanner: `COUNT(DISTINCT [Id])` inside a CASE embedded under
+// arithmetic threw `Cannot read properties of undefined (reading 'trim')`).
+// Restoring to raw text FIRST means the inner call
+// re-discovers "COUNT(DISTINCT ..." as ordinary SQL and masks/processes/
+// unmasks it entirely within its own call frame, with no cross-scope index
+// collision -- the same reasoning `_restoreRawLiterals` already established
+// for the literal mask, applied to the other mask that can now also appear
+// upstream of a lookConvertCase call.
+function _restoreRawCountDistinct(s: string, args: string[]): string {
+  return s.replace(/\x02(\d+)\x03/g, (_m, i) => `COUNT(DISTINCT ${args[Number(i)] ?? ''})`);
+}
+
+// COUNT(DISTINCT x) has no single-token equivalent: Sigma spells it CountDistinct(x).
+// A regex on the argument is not enough — the live Domo corpus nests a whole CASE
+// inside one. So: scan to the matching ')', mask the call out, convert the argument
+// RECURSIVELY (it is strictly shorter, so this terminates), and splice the result
+// back after the outer passes have run. Masking also keeps step 1 from title-casing
+// 'CountDistinct' into 'Countdistinct'. Uses STX/ETX so it cannot collide with the
+// literal mask, and carries no letters — see the _maskLiterals note above.
+function _maskCountDistinct(s: string): { masked: string; args: string[] } {
+  const args: string[] = [];
+  const re = /\bCOUNT\s*\(\s*DISTINCT\s+/gi;
+  let out = '', last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const argStart = m.index + m[0].length;
+    let depth = 1, quote = '', i = argStart;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === "'" || c === '"') { quote = c; continue; }
+      // Treat `[bracketed identifier]` as atomic, same as _maskLiterals: an
+      // apostrophe inside one (`[Manager's Approval]`) must not be mistaken
+      // for a quote and trap the scanner in-quote for the rest of the string
+      // (depth never returns to 0, the whole call falls through unmasked).
+      // An unterminated '[' is not a real bracketed span — fall through and
+      // scan it as an ordinary char rather than swallowing to end-of-string.
+      if (c === '[') { const cl = s.indexOf(']', i + 1); if (cl !== -1) { i = cl; continue; } }
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) break; }
+    }
+    if (depth !== 0) break;                       // unbalanced — leave the rest as-is
+    out += s.slice(last, m.index) + `${args.push(s.slice(argStart, i).trim()) - 1}`;
+    last = i + 1;
+    re.lastIndex = last;
+  }
+  return { masked: out + s.slice(last), args };
+}
+
+/**
+ * True if `s` still contains a bare CASE/WHEN/THEN/END keyword outside a
+ * `[bracketed identifier]` or a "..."/'...' literal -- the signal that a CASE
+ * argument failed to parse and fell through to `lookConvertExpression`'s
+ * mechanical passes, which leave SQL keywords sitting in the output as
+ * literal text rather than translating them. `_unmaskCountDistinct`'s
+ * `?? lookConvertExpression(raw)` fallback, and `tools.ts`'s
+ * `convert_sql_to_sigma_formula` fallback, both need this same check --
+ * `lookml.ts` has an equivalent, less precise one. Masks
+ * brackets/literals first -- same idiom `formulaHasUntranslatableFragment`
+ * uses for the Tableau path -- so a column legitimately named `[End]` or a
+ * literal 'the end' never false-positives.
+ */
+export function hasResidualCaseKeyword(s: string): boolean {
+  const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]]*\]/g, ' ');
+  return /\b(?:CASE|WHEN|THEN|END)\b/i.test(masked);
+}
+
+/**
+ * True if `s` still contains a bare, untranslated SQL infix operator that has
+ * NO Sigma equivalent -- LIKE, BETWEEN -- outside a `[bracketed identifier]`
+ * or a "..."/'...' literal. Same masking idiom as `hasResidualCaseKeyword`,
+ * for the same reason a column legitimately named `[Between]` or a literal
+ * containing the word "like" must never false-positive.
+ *
+ * Converting an embedded CASE span can silence `hasResidualCaseKeyword` (no
+ * more CASE/WHEN/THEN/END survives) while a DIFFERENT untranslated SQL
+ * construct still sits, unconverted, inside the newly-produced `If(...)`
+ * condition -- corpus[63]'s `LOWER(...) LIKE 'usa'` is the measured example:
+ * converting the embedded CASE alone makes it convert cleanly on the outside
+ * while the LIKE survives untranslated inside it, and without this check the
+ * formula would be reported as fully converted. No function anywhere in this
+ * file translates
+ * LIKE or BETWEEN to a Sigma equivalent -- LIKE in particular has no direct
+ * Sigma operator at all (Contains/RegexpMatch differ in wildcards, anchoring,
+ * and case-sensitivity, so mapping to either would silently change behavior,
+ * not just syntax) -- so this is "report honestly that no translation
+ * exists," the same posture `hasResidualCaseKeyword` already takes for an
+ * unsupported CASE shape, not "invent a translation."
+ */
+export function hasResidualInfixOperator(s: string): boolean {
+  const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]]*\]/g, ' ');
+  return /\b(?:LIKE|BETWEEN)\b/i.test(masked);
+}
+
+function _unmaskCountDistinct(s: string, args: string[]): string {
+  return s.replace(/(\d+)/g, (_m, i) => {
+    const raw = stripOuterParens(args[Number(i)]);
+    const viaRules = lookSqlToSigmaRules(raw);
+    const converted = viaRules ?? lookConvertExpression(raw);
+    // The argument failed to parse via the rule engine (almost certainly a
+    // CASE, the only construct that can reach here and still carry a bare
+    // keyword) and the mechanical fallback left WHEN/THEN/END sitting in the
+    // text -- the exact shredding this task exists to prevent, one level
+    // removed. Leave the whole call as recognizable, untranslated raw SQL
+    // rather than dressing broken text up as a converted CountDistinct(...).
+    if (viaRules === null && hasResidualCaseKeyword(converted)) {
+      return `COUNT(DISTINCT ${raw})`;
+    }
+    return `CountDistinct(${converted})`;
+  });
+}
+
+// Reserved words are syntax, not callables. `AND (`, `WHEN (`, `NOT (` all look like
+// a function call to a name-before-paren regex; rewriting them to And()/When()/Not()
+// produces Sigma that silently returns null rows. `OVER`, `GROUP` (as in
+// `WITHIN GROUP (...)`), and `EXISTS` are the same defect class: `SUM(x) OVER (...)`
+// and `LISTAGG(x) WITHIN GROUP (...)` were becoming bogus `Over(...)` / `Group(...)`
+// calls. DISTINCT is included for the `SELECT DISTINCT(col)` style (DISTINCT
+// directly before a paren) — it does NOT interfere with `COUNT(DISTINCT x)`, since
+// there DISTINCT is followed by a space then its argument, never directly by '(',
+// so this regex never matches it in that shape regardless of list membership.
+//
+// SHARED between pass 1 (name-before-paren callable check) and pass 3 (bare
+// ALL_CAPS identifier bracketing) below, AND with dbt.ts's
+// preBracketKnownNames — a second, independently-maintained keyword list is
+// exactly how AS/ON/BY/DISTINCT drifted out of pass 3 once already: pass 3
+// had its own inline list missing them, so `A AS B` bracketed AS into a bogus
+// `[As]` column and `GROUP_COL BY OTHER` did the same to BY. One constant,
+// used by all three call sites, closes that off structurally.
+export const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE|OVER|GROUP|EXISTS)$/i;
+
+// The exact naive title-case pass 1 falls back to for an unrecognised SQL function
+// name: first character upper, everything else lower — regardless of the source's own
+// casing (`AddDate`/`ADDDATE`/`adddate` all fall back to `Adddate`). Shared between
+// pass 1 itself and the passthrough-derivation below so the two can never drift
+// apart the way two independently-maintained keyword lists did above.
+function _naiveTitleCase(fn: string): string {
+  return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
+}
+
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
+  const cd = _maskCountDistinct(expr);
+  const { masked, lits } = _maskLiterals(cd.masked);
+  expr = masked;
+
+  // Convert any embedded "CASE ... END" span, not only a CASE that is the
+  // WHOLE expression (lookSqlToSigmaRules' anchored pattern 4 already owns
+  // that case). A CASE wrapped in arithmetic or an aggregate — `100 * (CASE
+  // ... END)`, `SUM((CASE ... END))`, a ratio with a CASE on either side of
+  // `/` — never matches pattern 4's `/^CASE\b/i` anchor, so without this it
+  // would fall through to this function with no CASE awareness at all,
+  // leaving raw CASE/WHEN/THEN/END text sitting in otherwise-converted
+  // output. Reuses `_convertNestedCases`/`_scanCase` verbatim in 'leave-raw'
+  // mode — wiring the existing scanner into a new position, not a new parser.
+  //
+  // SEAM, and why here specifically: after the COUNT(DISTINCT …) mask and the
+  // literal mask, before the three rewrite passes below.
+  //   - AFTER the COUNT(DISTINCT) mask: a CASE nested inside a
+  //     `COUNT(DISTINCT (CASE ...))` argument is already gone from `expr` at
+  //     this point — pulled out into `cd.args` as an opaque digit sentinel —
+  //     so this scan never sees it. It gets its own fully independent
+  //     recursive `lookConvertExpression` call later, inside
+  //     `_unmaskCountDistinct`, which runs this same seam again on that
+  //     shorter argument string. Scanning for CASE before this mask ran would
+  //     mean trying to bound a CASE that is not actually free-standing here.
+  //   - AFTER the literal mask: a string literal inside the CASE span (`THEN
+  //     'a' ELSE 'b'`) must not be mistaken for CASE-shaped keyword text, and
+  //     the extracted span needs to be restored to real (single-quoted) SQL
+  //     via `_restoreRawLiterals` before it is handed to `lookConvertCase`,
+  //     which does its own literal masking/finalizing independently.
+  //   - BEFORE the three passes: a converted `If(...)` is masked out here
+  //     too (EOT/ENQ sentinel), so passes 1-3 see only inert sentinel text in
+  //     its place, never raw CASE/WHEN/THEN/END for pass 1/3's identifier
+  //     regexes to mishandle.
+  //
+  // MODE 'leave-raw', not convertLeaf's 'abort' default: this function
+  // returns `string`, not `string | null` — it cannot refuse (requirement 4).
+  // A span that fails to parse is left EXACTLY as found and the rest of the
+  // expression still converts around it (requirement 3); `hasResidualCaseKeyword`
+  // on the final output is the honest signal that a span did not come through.
+  const ec = _convertNestedCases(expr, lits, 'leave-raw', cd.args);
+  // 'leave-raw' mode never returns null (see _convertNestedCases) — the `!`
+  // reflects that contract, not an unchecked assumption.
+  expr = ec!.text;
+
   // 1. Map SQL function names to Sigma equivalents
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\s*(?=\()/gi, (match, fn) => {
     const upper = fn.toUpperCase();
-    return LOOK_FUNC_MAP[upper] || (fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase());
+    if (_SQL_KEYWORD_RE.test(upper)) return match;              // keyword, not a call
+    const mapped = LOOK_FUNC_MAP[upper];
+    // A map value may already carry its own parens (CURRENT_DATE -> 'Today()'). Only
+    // the NAME is being substituted here; the source's own '()' follows, so keeping
+    // the mapped parens yields 'Today()()'.
+    if (mapped) return mapped.endsWith('()') ? mapped.slice(0, -2) : mapped;
+    return _naiveTitleCase(fn);
   });
 
   // 2. Convert EXPR IN (a, b, c) → In(EXPR, a, b, c)
@@ -345,12 +908,113 @@ export function lookConvertExpression(expr: string): string {
 
   // 3. Convert bare ALL_CAPS identifiers (not followed by '(') to [Display Name]
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/g, (match) => {
-    if (/^(AND|OR|NOT|NULL|IS|IN|BETWEEN|LIKE|THEN|ELSE|END|WHEN|CASE|TRUE|FALSE)$/i.test(match)) return match;
+    if (_SQL_KEYWORD_RE.test(match)) return match;              // shared with pass 1 — see comment above
     if (/^\d+$/.test(match)) return match;
     return lookColRef(match);
   });
 
-  return expr.trim();
+  // Unmask in mirror order relative to how the three masks were applied
+  // above (CD mask -> literal mask -> CASE mask): CASE splice first, since it
+  // was masked LAST / is the innermost layer, then literals, then
+  // COUNT(DISTINCT) last (masked first / outermost layer).
+  //
+  // A converted CASE block never actually carries an as-yet-unmasked
+  // COUNT(DISTINCT) sentinel into this splice: `_restoreRawCountDistinct`
+  // (see `_convertNestedCases`) restores any such sentinel to genuine raw
+  // `COUNT(DISTINCT ...)` SQL text BEFORE the span is ever handed to
+  // `lookConvertCase`, so the recursive call fully masks/converts/unmasks it
+  // within its own frame and returns a block with no control byte left in it
+  // at all — verified directly: the block produced for `100 * (CASE WHEN
+  // (COUNT(DISTINCT [Id]) = 0) THEN 'a' ELSE 'b' END)` contains zero STX/ETX
+  // bytes. This mirror ordering is kept anyway as cheap, defensive
+  // belt-and-suspenders (it costs nothing and guards against a FUTURE change
+  // to `_convertNestedCases`/`_restoreRawCountDistinct` reintroducing a
+  // leak), not because a live constraint currently depends on it.
+  expr = _spliceNestedCases(expr, ec!.blocks);
+  return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
+}
+
+// Sigma function names not derivable from LOOK_FUNC_MAP's or TABLEAU_FUNC_MAP's own
+// VALUES because neither map ever emits them under their own bare name — COUNT/RANK/
+// LAG/LEAD are handled by dedicated code (COUNT via _maskCountDistinct/
+// _unmaskCountDistinct's CountDistinct(...) wrapping, RANK/LAG/LEAD via the inline
+// fnMap objects inside tableauWindowToSigmaChart), never via a name -> name Record.
+// Run through the SAME title-case derivation below as the two maps (not hand-asserted)
+// so a typo or a future multi-word addition here fails SAFE — excluded, still warns —
+// rather than being silently trusted.
+const _SUPPLEMENTAL_SIGMA_NAMES = [
+  'Count',  // resources.ts formula-syntax reference: "Count([Col])"
+  'Rank',   // qlik.test.ts: Rank(Sum([Sales Amount]), "desc")
+  'Lag',    // qlik.test.ts: Lag(Sum([Sales Amount]), 1)
+  'Lead',   // qlik.test.ts: Lead(Sum([Sales Amount]), 1)
+];
+
+/**
+ * Sigma functions the SQL path emits directly (same spelling in source and target),
+ * on top of everything LOOK_FUNC_MAP already knows how to translate.
+ *
+ * DERIVED, not hand-maintained — a hand-written list drifts, the same failure
+ * mode two independently-maintained keyword lists hit elsewhere in this file
+ * (see `_SQL_KEYWORD_RE` above). Built from LOOK_FUNC_MAP's and
+ * TABLEAU_FUNC_MAP's own VALUES — both are
+ * independently-verified real Sigma function name strings (TABLEAU_FUNC_MAP's values
+ * are exercised by a different converter, tableauFormulaToSigma, but the NAMES it emits
+ * are real Sigma functions regardless of which converter proves them) — plus the small
+ * supplemental list above for names neither map happens to emit. Adding an entry to
+ * either map later automatically keeps this set correct with no second edit required.
+ *
+ * The predicate, applied uniformly to every candidate: does `_naiveTitleCase` of the
+ * bare name reproduce Sigma's real spelling EXACTLY? `Now` -> naive title-case of `NOW`
+ * is `Now` -> match -> safe, don't warn on a bare `NOW(`. `DateTrunc` -> naive
+ * title-case of `DATETRUNC` is `Datetrunc` -> mismatch -> a bare, underscore-less
+ * `DATETRUNC(` must still warn, because pass 1's fallback cannot reproduce the second
+ * embedded capital no matter how the source SQL cased it. This is the exact reasoning
+ * that excluded DATEPART/DATETRUNC from the original hand-written list, made explicit
+ * and applied mechanically to every candidate instead of by manual inspection — which
+ * is what independently recovers NOW/TODAY/POWER/SWITCH/the trig family (RANK/LAG/LEAD
+ * needed the supplemental list above; nothing else did) without hand-listing any of
+ * them, and would have caught ABS/COALESCE/DATEDIFF/DATEADD as redundant with
+ * LOOK_FUNC_MAP's own keys had they been hand-listed — moot here, since nothing
+ * in this derived set is hand-listed for its own sake.
+ *
+ * Lazily computed and memoized on first call rather than at module-load time, so this
+ * has no dependency on LOOK_FUNC_MAP/TABLEAU_FUNC_MAP's declaration order in the file.
+ */
+let _sigmaPassthroughCache: Set<string> | null = null;
+function _sigmaPassthrough(): Set<string> {
+  if (_sigmaPassthroughCache) return _sigmaPassthroughCache;
+  const names = new Set<string>();
+  for (const raw of [...Object.values(LOOK_FUNC_MAP), ...Object.values(TABLEAU_FUNC_MAP), ..._SUPPLEMENTAL_SIGMA_NAMES]) {
+    // A map value may carry its own parens (CURRENT_DATE -> 'Today()') — strip them
+    // before comparing, same as pass 1 does when splicing a mapped value back in.
+    const stripped = raw.endsWith('()') ? raw.slice(0, -2) : raw;
+    if (_naiveTitleCase(stripped) === stripped) names.add(stripped.toUpperCase());
+  }
+  _sigmaPassthroughCache = names;
+  return names;
+}
+
+/**
+ * Names that step 1 of lookConvertExpression would title-case WITHOUT a real mapping
+ * — i.e. names Sigma almost certainly does not have (`AddDate` → `Adddate`). The
+ * conversion still returns a formula; this is what lets the caller say so out loud
+ * instead of shipping a silently-broken column (see converter-silent-fallback.test.ts).
+ * Scans the RAW input (masked for literals only, same idiom as everywhere else in this
+ * file), not the converted output — every candidate is a name immediately followed by
+ * '(', mirroring pass 1's own name-before-paren regex exactly so this reports precisely
+ * the set pass 1 would (mis)handle.
+ */
+export function lookUnknownFunctions(sql: string): string[] {
+  const { masked } = _maskLiterals(sql);
+  const passthrough = _sigmaPassthrough();
+  const seen = new Set<string>();
+  for (const m of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g)) {
+    const upper = m[1].toUpperCase();
+    if (_SQL_KEYWORD_RE.test(upper)) continue;
+    if (LOOK_FUNC_MAP[upper] || passthrough.has(upper)) continue;
+    seen.add(upper);
+  }
+  return [...seen];
 }
 
 /**
@@ -364,6 +1028,8 @@ export function lookSqlToSigmaRules(sql: string): string | null {
     .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => n.toUpperCase())
     .replace(/[\r\n]+\s*/g, ' ')
     .trim();
+
+  expr = stripOuterParens(expr);
 
   // Pattern 1: COLUMN = 1 (yesno boolean flag)
   {

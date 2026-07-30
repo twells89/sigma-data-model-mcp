@@ -8,7 +8,7 @@ import {
   sigmaColFormula, sigmaAggFormula,
   type SigmaElement, type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction, hasResidualCaseKeyword, hasResidualInfixOperator } from './formulas.js';
 
 interface SnowColumn {
   name: string;
@@ -127,7 +127,17 @@ function snowConvertTable(
         (element as any)._skippedDims.push({ name: semantic, reason: unsupported });
       } else {
         const formula = lookSqlToSigmaRules(expr);
-        if (formula) {
+        // lookSqlToSigmaRules is not guaranteed residue-free (see the
+        // time_dimensions block below and lookml.ts's computed-measure guard
+        // for the same defect class) — drop and warn rather than emit a
+        // formula that still carries an untranslated CASE/LIKE/BETWEEN.
+        if (formula && (hasResidualCaseKeyword(formula) || hasResidualInfixOperator(formula))) {
+          (element as any)._skippedDims = (element as any)._skippedDims || [];
+          (element as any)._skippedDims.push({
+            name: semantic,
+            reason: hasResidualInfixOperator(formula) ? 'LIKE/BETWEEN' : 'CASE',
+          });
+        } else if (formula) {
           const id = sigmaShortId();
           colIdMap[semantic] = id;
           const c: any = { id, formula, name: sigmaDisplayName(semantic) };
@@ -152,7 +162,14 @@ function snowConvertTable(
         (element as any)._skippedDims.push({ name: semantic, reason: unsupported });
       } else {
         const formula = lookSqlToSigmaRules(expr);
-        if (formula) {
+        // Same residual-check gate as the dimensions block above.
+        if (formula && (hasResidualCaseKeyword(formula) || hasResidualInfixOperator(formula))) {
+          (element as any)._skippedDims = (element as any)._skippedDims || [];
+          (element as any)._skippedDims.push({
+            name: semantic,
+            reason: hasResidualInfixOperator(formula) ? 'LIKE/BETWEEN' : 'CASE',
+          });
+        } else if (formula) {
           const id = sigmaShortId();
           colIdMap[semantic] = id;
           const c: any = { id, formula, name: sigmaDisplayName(semantic) };

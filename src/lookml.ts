@@ -7,7 +7,7 @@ import {
   resetIds, sigmaShortId, sigmaInodeId, sigmaDisplayName, makeRlsSecurity,
   type SigmaElement, type ConversionResult, type ElementResult, type SecurityRule
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, lookConvertExpression, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, lookConvertExpression, lookStripSql, lookSigmaMetric, detectUnsupportedSigmaFunction, hasResidualInfixOperator } from './formulas.js';
 
 // ── LookML number-format → Sigma format ──────────────────────────────────────
 // Sigma DM columns/metrics carry a `format` object of the shape
@@ -1494,7 +1494,14 @@ function lookConvertView(
         let viaRules: string | null = null;
         if (hasCase && !hasRawFn && !hasConcatOp && !hasCast) {
           viaRules = lookSqlToSigmaRules(expr.replace(/--[^\n]*/g, ''));
-          if (viaRules && /\b(CASE|WHEN|THEN)\b|\|\||::\s*\w/i.test(viaRules)) viaRules = null;
+          // lookSqlToSigmaRules can convert a CASE embedded in ROUND/
+          // arithmetic away, so this guard alone no longer sees CASE/WHEN/THEN
+          // survive — but a DIFFERENT untranslated construct (LIKE/BETWEEN, no
+          // Sigma equivalent) can still sit inside the newly-produced
+          // condition. Same defect class as tools.ts's fallback check;
+          // consult the shared helper rather than hand-rolling a second
+          // LIKE/BETWEEN regex here.
+          if (viaRules && (/\b(CASE|WHEN|THEN)\b|\|\||::\s*\w/i.test(viaRules) || hasResidualInfixOperator(viaRules))) viaRules = null;
         }
         if (viaRules) {
           element.metrics!.push({ id: sigmaShortId(), formula: viaRules.trim(), name: msLabel, ...(msFormat ? { format: msFormat } : {}) });
