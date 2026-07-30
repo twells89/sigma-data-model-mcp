@@ -107,7 +107,11 @@ const _TEXT_FN_RE = /(?:Coalesce|Concat|Text|Left|Right|Mid|Substring|Substr|Upp
  * Strip parentheses that wrap an ENTIRE expression: `((x))` → `x`. Repeats while a
  * wrapper remains. `(a) + (b)` is left untouched — its first group closes before the
  * end, so the outer parens are two groups, not one wrapper. Quoted spans are skipped
- * so a `)` inside a string literal is treated as data, not structure.
+ * so a `)` inside a string literal is treated as data, not structure. A `[bracketed
+ * identifier]` span is likewise treated as atomic: a `'`/`"` inside brackets (e.g.
+ * `[Manager's Approval]`) is part of the identifier, not a string-literal delimiter —
+ * otherwise the scanner would enter a permanent in-quote state, swallow the real
+ * closing `)`, and silently leave the outer parens in place (review finding on jva2).
  *
  * Domo wraps every Beast Mode in outer parens, which made lookSqlToSigmaRules'
  * anchored patterns (`/^CASE\b/i`, `/^ROUND\s*\(/i`, …) unreachable — measured: 0 of
@@ -116,10 +120,12 @@ const _TEXT_FN_RE = /(?:Coalesce|Concat|Text|Left|Right|Mid|Substring|Substr|Upp
 export function stripOuterParens(s: string): string {
   s = s.trim();
   while (s.length > 1 && s.startsWith('(') && s.endsWith(')')) {
-    let depth = 0, quote = '', wraps = true;
+    let depth = 0, quote = '', inBracket = false, wraps = true;
     for (let i = 0; i < s.length; i++) {
       const c = s[i];
+      if (inBracket) { if (c === ']') inBracket = false; continue; }
       if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '[') { inBracket = true; continue; }
       if (c === "'" || c === '"') { quote = c; continue; }
       if (c === '(') depth++;
       else if (c === ')') {
