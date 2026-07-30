@@ -4,7 +4,7 @@
 // (backtick identifiers → [brackets]).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression } from './formulas.js';
+import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
   assert.equal(stripOuterParens('(x)'), 'x');
@@ -319,4 +319,106 @@ test('a valid COUNT(DISTINCT ...) followed by an unterminated one converts the f
 test('a COUNT(DISTINCT ...) nested two levels deep inside another one converts recursively without hanging (sqp1 attention item 1)', () => {
   const sql = 'COUNT(DISTINCT (CASE WHEN [Age] <= 30 THEN (COUNT(DISTINCT [Id])) ELSE 0 END))';
   assert.equal(lookConvertExpression(sql), 'CountDistinct(If([Age] <= 30, CountDistinct([Id]), 0))');
+});
+
+// ── Task 4b: nested CASE must not be shredded by the WHEN split ─────────────
+// lookConvertCase used to split the CASE body on every bare `\bWHEN\b`, blind to
+// nesting. A nested CASE (e.g. inside a COUNT(...) argument) has its own WHEN/
+// THEN/END, and the naive split cut straight across them, straddling structural
+// boundaries. This bug was pre-existing but only became reachable once Task 1
+// made outer-paren-wrapped CASE reach the CASE rule at all — see task-4b brief.
+
+// The real corpus example (bm-corpus.json item 11, live 74-formula Domo run).
+// Verified red at pre-fix HEAD 57bdd4e (direct probe against src/formulas.ts —
+// this exact string was not yet in the suite):
+//   lookSqlToSigmaRules(sql) ->
+//     'If((DateDiff(Today(),[created_on]) - 1) <= 30, [id] END )) = 0) THEN 0, ' +
+//     'If(([status] = "Closed") AND ((DateDiff(Today(),[created_on]) - 1) <= 30), ' +
+//     '[id] END )) / Count((CASE, If((DateDiff(Today(),[created_on]) - 1) <= 30, ' +
+//     '[id] END ))), Count((CASE  WHEN (([status] = "Closed") AND ' +
+//     '((DateDiff(Today(),[created_on]) - 1) <= 30)) THEN [id] END )) / ' +
+//     'Count((CASE  WHEN ((DateDiff(Today(),[created_on]) - 1) <= 30) THEN [id] END )))))'
+// paren delta -6 (matches the brief's measured -6 exactly); contains the
+// literal shredded substring "END )".
+test('the real corpus example (bm-corpus item 11) is never shredded — converts cleanly or returns null, never with unbalanced parens (task-4b)', () => {
+  const sql = "(CASE  WHEN (COUNT((CASE  WHEN ((DATEDIFF(current_date(),[created_on]) - 1) <= 30) THEN [id] END )) = 0) THEN 0 ELSE (COUNT((CASE  WHEN (([status] = 'Closed') AND ((DATEDIFF(current_date(),[created_on]) - 1) <= 30)) THEN [id] END )) / COUNT((CASE  WHEN ((DATEDIFF(current_date(),[created_on]) - 1) <= 30) THEN [id] END ))) END )";
+  const out = lookSqlToSigmaRules(sql);
+  assert.notEqual(out, undefined);
+  if (out !== null) {
+    assert.ok(!out.includes('END )'), `must not contain shredded "END )": ${out}`);
+    // no bare CASE-structure keyword may survive outside a Sigma string literal
+    assert.ok(!/\b(CASE|WHEN|THEN)\b/i.test(out.replace(/"(?:[^"\\]|\\.)*"/g, '')), `must not leave bare CASE-structure keywords in the output: ${out}`);
+    let paren = 0, bracket = 0;
+    for (const c of out) {
+      if (c === '(') paren++; else if (c === ')') paren--;
+      else if (c === '[') bracket++; else if (c === ']') bracket--;
+    }
+    assert.equal(paren, 0, `paren delta must be 0, got ${paren}: ${out}`);
+    assert.equal(bracket, 0, `bracket delta must be 0, got ${bracket}: ${out}`);
+  }
+});
+
+// A nested CASE inside an aggregate argument (COUNT((CASE ... END)) = 0), the
+// exact shape that shreds under the naive split — converted correctly end to
+// end, requirement 2's "recurse rather than split".
+// Verified red at pre-fix HEAD 57bdd4e:
+//   lookSqlToSigmaRules(sql) -> 'If([Age] <= 30, [Id] END)) = 0) THEN 0, 1)'
+//   (paren delta -3; the nested WHEN/THEN/END is cut straight across)
+test('a nested CASE inside an aggregate argument converts correctly end to end (task-4b)', () => {
+  const sql = '(CASE WHEN (COUNT((CASE WHEN ([Age] <= 30) THEN [Id] END)) = 0) THEN 0 ELSE 1 END)';
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If(Count((If([Age] <= 30, [Id], null))) = 0, 0, 1)'
+  );
+});
+
+// A nested CASE in the ELSE branch — requirement 2 again, this time with no
+// enclosing parens around the inner CASE at all (so only the CASE-nesting-depth
+// tracking, not paren depth, keeps the inner WHEN/THEN/ELSE from being mistaken
+// for the outer CASE's own structure).
+// Verified red at pre-fix HEAD 57bdd4e:
+//   lookSqlToSigmaRules(sql) ->
+//     'If([FieldA] = 1, [FieldB], If([FieldC] = 2, [FieldD], ' +
+//     'CASE WHEN [FieldC] = 2 THEN [FieldD] ELSE [FieldE] END))'
+//   (parens happen to balance here, but the inner ELSE's raw, untranslated CASE
+//   text is duplicated into the outer If()'s final branch — silently wrong,
+//   not merely unbalanced.)
+test('a nested CASE in the ELSE branch converts correctly, not duplicated as raw CASE text (task-4b)', () => {
+  const sql = "(CASE WHEN [FieldA] = 1 THEN [FieldB] ELSE (CASE WHEN [FieldC] = 2 THEN [FieldD] ELSE [FieldE] END) END)";
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If([FieldA] = 1, [FieldB], If([FieldC] = 2, [FieldD], [FieldE]))'
+  );
+});
+
+// Malformed: a WHEN with no THEN before the next WHEN. The naive split
+// silently DROPPED the first (malformed) branch instead of failing — a wrong
+// answer that looks plausible, worse than an honest null.
+// Verified red at pre-fix HEAD 57bdd4e:
+//   lookSqlToSigmaRules('CASE WHEN [X] = 1 WHEN [Y] = 2 THEN 1 END')
+//     -> 'If([[Y]] = 2, 1, null)'
+//   (the malformed "WHEN [X] = 1" branch — no THEN before the next WHEN — is
+//   silently discarded rather than failing the whole parse)
+test('a WHEN with no THEN returns null instead of silently dropping the branch (task-4b)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [X] = 1 WHEN [Y] = 2 THEN 1 END'), null);
+  assert.equal(lookSqlToSigmaRules('CASE WHEN [X] = 1 WHEN [Y] = 2 THEN 1 END'), null);
+});
+
+// Malformed: CASE with a THEN but no closing END at all. Baseline fabricated a
+// plausible-looking (WRONG) result instead of failing.
+// Verified red at pre-fix HEAD 57bdd4e:
+//   lookSqlToSigmaRules('CASE WHEN [X] = 1 THEN [Y]') -> 'If([[X]] = 1, [[Y]], null)'
+test('a CASE with a THEN but no END returns null instead of fabricating a result (task-4b)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [X] = 1 THEN [Y]'), null);
+  assert.equal(lookSqlToSigmaRules('CASE WHEN [X] = 1 THEN [Y]'), null);
+});
+
+// Malformed: the brief's own literal example — `CASE WHEN x THEN` with no
+// closing END, and not even a value for the one THEN. Baseline ALREADY
+// returns null here (the naive split's regex requires a THEN-value it doesn't
+// find), so this is a NON-REGRESSION PIN, not red/green evidence: it exists to
+// guarantee the rewrite doesn't throw or hang on this input, and stays null.
+test('a malformed CASE with no THEN-value and no END returns null, does not throw, does not hang (task-4b, non-regression pin)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [X] = 1 THEN'), null);
+  assert.equal(lookSqlToSigmaRules('CASE WHEN [X] = 1 THEN'), null);
 });
