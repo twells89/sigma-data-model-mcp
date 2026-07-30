@@ -84,7 +84,7 @@ function preBracketKnownNames(expr: string, knownNames: Set<string>): string {
   for (let i = 0; i < parts.length; i++) {
     if (i % 2 === 1) continue; // odd indices are string literals — leave alone
     parts[i] = parts[i].replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b/g, (m) => {
-      if (/^(AND|OR|NOT|NULL|IS|IN|BETWEEN|LIKE|THEN|ELSE|END|WHEN|CASE|TRUE|FALSE)$/i.test(m)) return m;
+      if (_SQL_KEYWORD_RE.test(m)) return m;
       return knownNames.has(m.toUpperCase()) ? m.toUpperCase() : m;
     });
   }

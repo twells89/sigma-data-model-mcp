@@ -824,22 +824,22 @@ function _unmaskCountDistinct(s: string, args: string[]): string {
 // calls. DISTINCT is included for the `SELECT DISTINCT(col)` style (DISTINCT
 // directly before a paren) — it does NOT interfere with `COUNT(DISTINCT x)`, since
 // there DISTINCT is followed by a space then its argument, never directly by '(',
-// so this regex never matches it in that shape regardless of list membership (see
-// task-3 report for the full trace).
+// so this regex never matches it in that shape regardless of list membership.
 //
 // SHARED between pass 1 (name-before-paren callable check) and pass 3 (bare
-// ALL_CAPS identifier bracketing) below — a second, independently-maintained
-// keyword list is exactly how AS/ON/BY/DISTINCT drifted out of pass 3 the first
-// time (round 1 review finding): pass 3 had its own inline list missing them,
-// so `A AS B` bracketed AS into a bogus `[As]` column and `GROUP_COL BY OTHER`
-// did the same to BY. One constant, used by both, closes that off structurally.
-const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE|OVER|GROUP|EXISTS)$/i;
+// ALL_CAPS identifier bracketing) below, AND with dbt.ts's
+// preBracketKnownNames — a second, independently-maintained keyword list is
+// exactly how AS/ON/BY/DISTINCT drifted out of pass 3 once already: pass 3
+// had its own inline list missing them, so `A AS B` bracketed AS into a bogus
+// `[As]` column and `GROUP_COL BY OTHER` did the same to BY. One constant,
+// used by all three call sites, closes that off structurally.
+export const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE|OVER|GROUP|EXISTS)$/i;
 
 // The exact naive title-case pass 1 falls back to for an unrecognised SQL function
 // name: first character upper, everything else lower — regardless of the source's own
 // casing (`AddDate`/`ADDDATE`/`adddate` all fall back to `Adddate`). Shared between
-// pass 1 itself and the passthrough-derivation below (round-1 review) so the two can
-// never drift apart the way two independently-maintained keyword lists did in Task 3.
+// pass 1 itself and the passthrough-derivation below so the two can never drift
+// apart the way two independently-maintained keyword lists did above.
 function _naiveTitleCase(fn: string): string {
   return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
 }
