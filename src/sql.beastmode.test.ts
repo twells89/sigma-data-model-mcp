@@ -142,10 +142,63 @@ test('DISTINCT directly before a paren is left as literal text, not mapped to a 
   assert.equal(lookConvertExpression('DISTINCT(ORDER_ID)'), 'DISTINCT([Order Id])');
 });
 
-// Attention item 2 (task-3 review): confirm excluding IN from pass 1's callable
-// mapping does not break pass 2's separate `EXPR IN (a,b,c)` -> `In(...)` rewrite.
-// Pass 2 matches "IN" case-insensitively regardless of what pass 1 did to its
-// casing, so this must still produce Sigma's real In() call.
-test('IN is excluded from pass 1 callable mapping but pass 2 still rewrites it to In(...) (A4 keyword list)', () => {
-  assert.equal(lookConvertExpression('ORDER_ID IN (1, 2, 3)'), 'In([Order Id], 1, 2, 3)');
+// Attention item 2 (task-3 review), REVISED after round-1 review finding 1: a
+// test asserting `ORDER_ID IN (1, 2, 3)` -> `In([Order Id], 1, 2, 3)` was a
+// tautology — verified (by re-running against pre-round-1 commit 2c94be4) that
+// it produces the IDENTICAL output with or without the IN-keyword-exclusion fix,
+// because whenever pass 2's `EXPR IN (a,b,c)` regex actually fires, it REPLACES
+// the whole matched span (LHS + IN + list) outright, discarding whatever pass 1
+// already did to "IN"'s casing/spacing. So the normal-usage case can never prove
+// this exclusion does anything; it was passing on both sides.
+//
+// The exclusion is only externally observable when pass 2's regex does NOT fire
+// — i.e. there is no left-hand-side token for it to capture, e.g. a bare
+// `IN (1, 2, 3)` with nothing before it. Verified by executing pre-round-1 commit
+// 2c94be4 directly:
+//   pre-fix (2c94be4):  lookConvertExpression('IN (1, 2, 3)') -> 'In(1, 2, 3)'
+//     (pass 1's fallback default-capitalizes "IN" to "In" AND consumes the
+//      trailing whitespace as part of its match, collapsing "In (" to "In(" —
+//      a fabricated, argument-short call that looks deceptively like valid
+//      Sigma output for a keyword pass 2 never touched.)
+//   post-fix (this branch onward): lookConvertExpression('IN (1, 2, 3)') -> 'IN (1, 2, 3)'
+//     (keyword branch returns the match — name + its original trailing
+//      whitespace — unchanged, so nothing invents a call out of it.)
+// This is the actual, provable guarantee the IN keyword exclusion gives: pass 1
+// will not itself fabricate an `In(...)`-shaped call out of a bare IN that pass 2
+// doesn't have an operand for.
+test('a bare IN with no left-hand side is left as literal keyword text, not fabricated into a bogus In() call (A4 keyword list, round-1 review finding 1)', () => {
+  assert.equal(lookConvertExpression('IN (1, 2, 3)'), 'IN (1, 2, 3)');
+});
+
+// Round-1 review finding 2: pass 3 (bare ALL_CAPS identifier bracketing) had its
+// OWN separate inline keyword list that had already drifted from pass 1's —
+// missing AS, ON, BY, DISTINCT. `A AS B` bracketed AS into a bogus `[As]` column;
+// `GROUP_COL BY OTHER` did the same to BY. Confirmed red at pre-round-2 HEAD
+// (commit 4b4b5a0, the round-1 fix):
+//   lookConvertExpression('A AS B')             -> '[A] [As] [B]'
+//   lookConvertExpression('GROUP_COL BY OTHER') -> '[Group Col] [By] [Other]'
+// Fixed by unifying pass 1 and pass 3 onto the single shared _SQL_KEYWORD_RE
+// constant, so the two lists can no longer independently drift.
+test('pass 3 uses the same keyword list as pass 1 — AS/ON/BY/DISTINCT stay literal, not bracketed into bogus columns (round-1 review finding 2)', () => {
+  assert.equal(lookConvertExpression('A AS B'), '[A] AS [B]');
+  assert.equal(lookConvertExpression('GROUP_COL BY OTHER'), '[Group Col] BY [Other]');
+  assert.equal(lookConvertExpression('A ON B'), '[A] ON [B]');
+  assert.equal(lookConvertExpression('DISTINCT X'), 'DISTINCT [X]');
+});
+
+// Round-1 review finding 3: OVER, GROUP (as in WITHIN GROUP (...)), and EXISTS
+// are the same "keyword before a paren looks like a call" defect class as A4,
+// and are reachable in production — dbt/snowflake/lookml window-function column
+// definitions flow through this converter, and `detectUnsupportedSigmaFunction`
+// does not gate on OVER either. Confirmed red at pre-round-2 HEAD (4b4b5a0):
+//   lookConvertExpression('SUM(X) OVER (Y)')                  -> 'Sum([X]) Over([Y])'
+//   lookConvertExpression('EXISTS (Y)')                        -> 'Exists([Y])'
+//   lookConvertExpression('LISTAGG(X) WITHIN GROUP (Y)')       -> 'Listagg([X]) [Within] Group([Y])'
+// (WITHIN itself is a separate, pre-existing, out-of-scope gap — not in
+// _SQL_KEYWORD_RE, so it still gets bracketed as a bare identifier; only the
+// OVER/GROUP/EXISTS callable-mapping defect is in scope for this fix.)
+test('OVER, GROUP, and EXISTS before a paren stay infix, not fabricated into bogus calls (round-1 review finding 3)', () => {
+  assert.equal(lookConvertExpression('SUM(X) OVER (Y)'), 'Sum([X]) OVER ([Y])');
+  assert.equal(lookConvertExpression('EXISTS (Y)'), 'EXISTS ([Y])');
+  assert.equal(lookConvertExpression('LISTAGG(X) WITHIN GROUP (Y)'), 'Listagg([X]) [Within] GROUP ([Y])');
 });

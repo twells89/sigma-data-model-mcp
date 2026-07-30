@@ -424,12 +424,22 @@ function _unmaskLiterals(s: string, lits: string[]): string {
 
 // Reserved words are syntax, not callables. `AND (`, `WHEN (`, `NOT (` all look like
 // a function call to a name-before-paren regex; rewriting them to And()/When()/Not()
-// produces Sigma that silently returns null rows. DISTINCT is included for the
-// `SELECT DISTINCT(col)` style (DISTINCT directly before a paren) — it does NOT
-// interfere with `COUNT(DISTINCT x)`, since there DISTINCT is followed by a space
-// then its argument, never directly by '(', so this regex never matches it in that
-// shape regardless of list membership (see task-3 report for the full trace).
-const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE)$/i;
+// produces Sigma that silently returns null rows. `OVER`, `GROUP` (as in
+// `WITHIN GROUP (...)`), and `EXISTS` are the same defect class: `SUM(x) OVER (...)`
+// and `LISTAGG(x) WITHIN GROUP (...)` were becoming bogus `Over(...)` / `Group(...)`
+// calls. DISTINCT is included for the `SELECT DISTINCT(col)` style (DISTINCT
+// directly before a paren) — it does NOT interfere with `COUNT(DISTINCT x)`, since
+// there DISTINCT is followed by a space then its argument, never directly by '(',
+// so this regex never matches it in that shape regardless of list membership (see
+// task-3 report for the full trace).
+//
+// SHARED between pass 1 (name-before-paren callable check) and pass 3 (bare
+// ALL_CAPS identifier bracketing) below — a second, independently-maintained
+// keyword list is exactly how AS/ON/BY/DISTINCT drifted out of pass 3 the first
+// time (round 1 review finding): pass 3 had its own inline list missing them,
+// so `A AS B` bracketed AS into a bogus `[As]` column and `GROUP_COL BY OTHER`
+// did the same to BY. One constant, used by both, closes that off structurally.
+const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE|OVER|GROUP|EXISTS)$/i;
 
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
@@ -456,7 +466,7 @@ export function lookConvertExpression(expr: string): string {
 
   // 3. Convert bare ALL_CAPS identifiers (not followed by '(') to [Display Name]
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/g, (match) => {
-    if (/^(AND|OR|NOT|NULL|IS|IN|BETWEEN|LIKE|THEN|ELSE|END|WHEN|CASE|TRUE|FALSE)$/i.test(match)) return match;
+    if (_SQL_KEYWORD_RE.test(match)) return match;              // shared with pass 1 — see comment above
     if (/^\d+$/.test(match)) return match;
     return lookColRef(match);
   });
