@@ -537,6 +537,36 @@ test('the tools.ts fallback-converted logic honestly reports false when only a r
   assert.equal(fallbackConverted, false, 'a residual LIKE must still be reported as not-fully-converted');
 });
 
+// Final review Important finding 1: tools.ts applied the two residual checks
+// to ONLY the lookConvertExpression fallback path, not to lookSqlToSigmaRules'
+// own non-null `result` path — even though patterns 2 (ROUND), 4 (CASE), and 5
+// (arith/NULLIF) can all splice a converted sub-expression into a template
+// that still carries residue. Reproduces the tools.ts handler's (pre-fix)
+// unconditional `converted: true` on the `result` branch — no test file
+// imports src/tools.ts directly (same gap noted by task-4b/4c's reports), so
+// this replicates the handler's branch logic exactly, the same approach those
+// tasks used to verify their own tools.ts fixes.
+// Verified red at 36e5e08 (pre-fix tools.ts unconditionally used `converted:
+// true` for any non-null `result`):
+//   lookSqlToSigmaRules("CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END")
+//     -> 'If(Lower([Country]) LIKE "usa", 1, 0)'   (residual LIKE, would have said converted:true)
+//   lookSqlToSigmaRules("NULLIF(CASE REGION WHEN 1 THEN 2 ELSE 3 END, 0)")
+//     -> 'Nullif(CASE [Region] WHEN 1 THEN 2 ELSE 3 END, 0)'   (unsupported "simple CASE" form
+//        survives raw — residual CASE keyword — would have said converted:true)
+test("the tools.ts result-path must apply the same residual checks the fallback path already gets (final review, Important 1)", () => {
+  const likeSql = "CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END";
+  const likeResult = lookSqlToSigmaRules(likeSql);
+  assert.equal(likeResult, 'If(Lower([Country]) LIKE "usa", 1, 0)');
+  const likeResultConverted = !hasResidualCaseKeyword(likeResult!) && !hasResidualInfixOperator(likeResult!);
+  assert.equal(likeResultConverted, false, 'a residual LIKE inside a non-null result must still be reported as not-fully-converted');
+
+  const nullifSql = 'NULLIF(CASE REGION WHEN 1 THEN 2 ELSE 3 END, 0)';
+  const nullifResult = lookSqlToSigmaRules(nullifSql);
+  assert.equal(nullifResult, 'Nullif(CASE [Region] WHEN 1 THEN 2 ELSE 3 END, 0)');
+  const nullifResultConverted = !hasResidualCaseKeyword(nullifResult!) && !hasResidualInfixOperator(nullifResult!);
+  assert.equal(nullifResultConverted, false, 'a residual CASE keyword inside a non-null result must still be reported as not-fully-converted');
+});
+
 // BUNDLED MINOR: the `_isBalanced` backstop (requirement 4) is load-bearing
 // but was untested on its own — every other test that reaches null does so via
 // an earlier structural check. `[Revenue (USD]` is a well-formed bracket span
