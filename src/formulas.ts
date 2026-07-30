@@ -339,12 +339,27 @@ export function lookConvertCase(expr: string): string | null {
     // literal short-circuit here would silently re-introduce single-quoted
     // SQL-style output for every CASE-THEN/ELSE string value (A6).
     if (/^-?\d+(\.\d+)?$/.test(v)) return v;  // number literal
-    return lookConvertExpression(v);
+    // Strip a whole-value paren wrapper HERE, at the point val/elseVal is
+    // handed to lookConvertExpression — not inside lookConvertExpression
+    // itself. A THEN/ELSE branch value can carry its own local wrap (e.g.
+    // `ELSE (SUM(x) / COUNT(DISTINCT y))`), and without stripping it that wrap
+    // leaks into the converted output (`(Sum([X]) / CountDistinct([Y]))`
+    // instead of `Sum([X]) / CountDistinct([Y])`) — sqp1 round-2 review:
+    // lookConvertExpression is a SHARED contract (lookml.ts, tools.ts, plus
+    // lookConvertMathExpr/_unmaskCountDistinct in this file); an operator-level
+    // caller that splices its result into a larger expression could
+    // re-associate wrongly if lookConvertExpression silently stripped a wrap
+    // it didn't put there. Confining the strip to this CASE-specific call site
+    // gets the identical behavior for the bug being fixed without touching
+    // that shared contract at all.
+    return lookConvertExpression(stripOuterParens(v));
   };
 
   let result = elseVal ? convertVal(elseVal) : 'null';
   for (let i = branches.length - 1; i >= 0; i--) {
-    const sigmaCond = lookConvertExpression(branches[i].cond);
+    // Same reasoning as convertVal above — cond can carry its own local wrap
+    // (e.g. `WHEN (COUNT(DISTINCT [Id]) = 0)`) that must not leak through.
+    const sigmaCond = lookConvertExpression(stripOuterParens(branches[i].cond));
     const sigmaVal  = convertVal(branches[i].val);
     result = `If(${sigmaCond}, ${sigmaVal}, ${result})`;
   }
@@ -479,15 +494,6 @@ const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWE
 
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
-  // Strip a whole-expression paren wrapper first (same normalisation
-  // lookSqlToSigmaRules already applies at its own top level, bead jva2). Needed
-  // so a CASE branch value that carries its OWN local wrap — e.g. the `ELSE
-  // (SUM(x) / COUNT(DISTINCT y))` shape lookConvertCase hands this function one
-  // branch at a time — doesn't leak that wrap into the converted output
-  // (`(Sum([X]) / CountDistinct([Y]))` instead of `Sum([X]) / CountDistinct([Y])`).
-  // Safe for every other caller: stripOuterParens is a no-op unless the ENTIRE
-  // string is one balanced `(...)` span, which none of the other passing fixtures are.
-  expr = stripOuterParens(expr);
   const cd = _maskCountDistinct(expr);
   const { masked, lits } = _maskLiterals(cd.masked);
   expr = masked;

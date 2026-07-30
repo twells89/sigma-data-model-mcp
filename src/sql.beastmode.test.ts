@@ -222,16 +222,23 @@ test('a whole Domo ratio Beast Mode over COUNT(DISTINCT) converts end to end (jv
   );
 });
 
-// NOTE: the brief's Step 1 also specified a fourth test here —
+// The brief's Step 1 also specified a fourth test here —
 // `lookConvertExpression('COUNT(ORDER_ID)') === 'Count([Order Id])'` (plain
-// COUNT must not over-reach). Verified it is a TAUTOLOGY: identical on both
-// sides of this fix (pre-fix HEAD 0c6e8e3 already produces 'Count([Order Id])'
-// because _maskCountDistinct's regex requires the literal keyword DISTINCT,
-// so a plain COUNT never engages the new masking path at all — nothing this
-// task changes touches that code path). Dropped per the no-tautology rule
-// (two prior tasks already had one caught in review). Replaced below with
-// tests that DO observably differ pre/post-fix and cover the same
-// "don't over-reach" intent via multi-arg and mixed valid/malformed input.
+// COUNT must not over-reach). Verified it is a TAUTOLOGY as a proof the FIX
+// works: identical on both sides of this task (pre-fix HEAD 0c6e8e3 already
+// produces 'Count([Order Id])' because _maskCountDistinct's regex requires the
+// literal keyword DISTINCT, so a plain COUNT never engages the new masking
+// path at all). It is NOT dropped, though — round-2 review (rightly)
+// distinguished "tautology pretending to validate the fix" from "pin against
+// regression of an adjacent path": if _maskCountDistinct's regex ever became
+// over-eager and started engaging on a plain COUNT(x), NOTHING would catch it
+// without this assertion existing somewhere. Kept as an explicit
+// non-regression guard, not claimed as red-pre-fix evidence for this task —
+// see the multi-arg/mixed-unbalanced tests below for the actual red→green
+// proof of the "don't over-reach" behavior this task added.
+test('plain COUNT(x) is unaffected by the DISTINCT masking — non-regression pin for the adjacent path, expected to pass on both sides of this fix (sqp1)', () => {
+  assert.equal(lookConvertExpression('COUNT(ORDER_ID)'), 'Count([Order Id])');
+});
 
 // Attention item 2 (ordering): the count-distinct mask MUST run before the
 // literal mask, or a string literal inside a COUNT(DISTINCT ...) argument gets
