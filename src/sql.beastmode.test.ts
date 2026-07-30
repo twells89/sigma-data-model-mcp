@@ -94,3 +94,27 @@ test("lookConvertExpression does not mis-mask a literal when an apostrophe sits 
     '[Manager\'s Approval] = "AK"'
   );
 });
+
+// Round 1 finding: an unterminated '[' (no matching ']' anywhere in the rest of
+// the string) was treated as opening one giant atomic bracket span running to
+// end-of-string. Every literal after that point was therefore never masked and
+// got bracket-corrupted by passes 1-3 when it hit an ALL-CAPS token inside it —
+// the exact defect class this task exists to eliminate, reintroduced by the
+// bracket-awareness itself. A '[' with no matching ']' must degrade to an
+// ordinary character (never swallow the remainder of the string), same as the
+// brief's original plain-regex behaviour for this input.
+test('an unterminated [ does not swallow the rest of the string, reintroducing A3 corruption (round 1 review)', () => {
+  // reviewer's exact reproduction input
+  assert.equal(lookConvertExpression("[Foo = 'AK'"), '[Foo = "AK"');
+});
+
+test('a trailing unterminated [ with no literal after it is left alone (round 1 review)', () => {
+  assert.equal(
+    lookConvertExpression("[Region] = 'West' AND [Foo"),
+    '[Region] = "West" AND [Foo'
+  );
+});
+
+test('an unterminated [ followed by two literals still masks both (round 1 review)', () => {
+  assert.equal(lookConvertExpression("[Foo = 'A' OR 'B'"), '[Foo = "A" OR "B"');
+});

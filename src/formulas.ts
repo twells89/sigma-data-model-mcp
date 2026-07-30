@@ -386,10 +386,16 @@ function _maskLiterals(s: string): { masked: string; lits: string[] } {
   while (i < s.length) {
     if (s[i] === '[') {
       const close = s.indexOf(']', i + 1);
-      const end = close === -1 ? s.length : close + 1;
-      out += s.slice(i, end);
-      i = end;
-      continue;
+      // An unterminated '[' (no matching ']' anywhere in the rest of the
+      // string) is not a real bracketed span — treat it as an ordinary
+      // character and keep scanning. Swallowing to end-of-string here would
+      // skip masking every literal after it, reintroducing exactly the A3
+      // corruption this function exists to prevent (round 1 review finding).
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
     }
     if (s[i] === "'") {
       _LIT_RE.lastIndex = i;
