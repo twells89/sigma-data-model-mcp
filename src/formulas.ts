@@ -764,6 +764,48 @@ export function lookConvertExpression(expr: string): string {
   return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
 }
 
+// Sigma functions the SQL path emits directly (same spelling in source and target),
+// on top of everything LOOK_FUNC_MAP already knows how to translate. This is
+// deliberately NOT a copy of LOOK_FUNC_MAP's keys — it exists only for names pass 1's
+// naive fallback (`fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase()`) HAPPENS to
+// render correctly: a bare, single-"word" SQL name whose real Sigma spelling is exactly
+// that same title-case with no additional embedded capital (Sum, Count, If, Text …).
+//
+// A name is NOT safe to list here just because Sigma has a same-named function — it is
+// only safe if title-casing the bare SQL token reproduces Sigma's exact spelling.
+// DATEPART and DATETRUNC (bare, no underscore — as opposed to the already-mapped
+// DATE_TRUNC) are deliberately ABSENT for this reason: Sigma's real functions are
+// `DatePart`/`DateTrunc` (capital P/T on the second word), but the naive fallback can only
+// produce `Datepart`/`Datetrunc` (single leading capital) — exactly the AddDate → Adddate
+// defect class this task exists to catch, just for a different pair of names. Listing them
+// here would silently suppress the one warning that would flag that real bug.
+const _SIGMA_PASSTHROUGH = new Set([
+  'SUM', 'COUNT', 'AVG', 'MIN', 'MAX', 'MEDIAN', 'ABS', 'COALESCE', 'IF',
+  'DATEDIFF', 'DATEADD', 'TEXT', 'NUMBER', 'DATE',
+]);
+
+/**
+ * Names that step 1 of lookConvertExpression would title-case WITHOUT a real mapping
+ * — i.e. names Sigma almost certainly does not have (`AddDate` → `Adddate`). The
+ * conversion still returns a formula; this is what lets the caller say so out loud
+ * instead of shipping a silently-broken column (see converter-silent-fallback.test.ts).
+ * Scans the RAW input (masked for literals only, same idiom as everywhere else in this
+ * file), not the converted output — every candidate is a name immediately followed by
+ * '(', mirroring pass 1's own name-before-paren regex exactly so this reports precisely
+ * the set pass 1 would (mis)handle.
+ */
+export function lookUnknownFunctions(sql: string): string[] {
+  const { masked } = _maskLiterals(sql);
+  const seen = new Set<string>();
+  for (const m of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g)) {
+    const upper = m[1].toUpperCase();
+    if (_SQL_KEYWORD_RE.test(upper)) continue;
+    if (LOOK_FUNC_MAP[upper] || _SIGMA_PASSTHROUGH.has(upper)) continue;
+    seen.add(upper);
+  }
+  return [...seen];
+}
+
 /**
  * Rule-based SQL → Sigma formula converter for common patterns.
  * Returns a Sigma formula string, or null if the pattern isn't recognised.

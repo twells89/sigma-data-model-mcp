@@ -24,7 +24,7 @@ import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
-import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword } from './formulas.js';
+import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword, lookUnknownFunctions } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
 
@@ -454,9 +454,18 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
     },
     async ({ sql }) => {
       try {
+        // Names pass 1 of lookConvertExpression would title-case without a real
+        // Sigma mapping (e.g. AddDate -> Adddate — not a Sigma function). Computed
+        // from the ORIGINAL input so it also catches an unmapped name embedded
+        // inside a branch of a CASE that lookSqlToSigmaRules otherwise converts
+        // successfully (lookConvertCase runs lookConvertExpression per-branch
+        // internally, so `converted: true` alone would not surface it).
+        const warnings = lookUnknownFunctions(sql).map(
+          fn => `${fn}() has no Sigma mapping — emitted as-is; verify it exists in Sigma.`
+        );
         const result = lookSqlToSigmaRules(sql);
         if (result) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaFormula: result, converted: true }, null, 2) }] };
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaFormula: result, converted: true, warnings }, null, 2) }] };
         }
         const fallback = lookConvertExpression(sql);
         // lookConvertExpression cannot itself fail (its contract is string ->
@@ -464,9 +473,7 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
         // its mechanical passes, which leave raw WHEN/THEN/END sitting in the
         // output as literal text rather than translating them. Report that
         // honestly instead of claiming `converted: true` on residual raw SQL
-        // (task-4b round-1 review finding 2). Task 5 adds a proper
-        // warnings[] array to this response — not building that here, just
-        // not mislabeling broken output as converted.
+        // (task-4b round-1 review finding 2).
         const fallbackConverted = !hasResidualCaseKeyword(fallback);
         return {
           content: [{
@@ -474,6 +481,7 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
             text: JSON.stringify({
               sigmaFormula: fallback,
               converted: fallbackConverted,
+              warnings,
               note: fallbackConverted
                 ? 'Used general expression converter — review for accuracy'
                 : 'Could not fully translate — output still contains raw CASE/WHEN/THEN SQL syntax, do not use as-is',

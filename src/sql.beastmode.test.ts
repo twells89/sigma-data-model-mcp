@@ -4,7 +4,7 @@
 // (backtick identifiers → [brackets]).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword } from './formulas.js';
+import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword, lookUnknownFunctions } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
   assert.equal(stripOuterParens('(x)'), 'x');
@@ -496,4 +496,63 @@ test('hasResidualCaseKeyword does not false-positive on a legitimate [End] colum
 // balance backstop saves it. Pinning so it cannot silently regress.
 test('_isBalanced backstop alone catches a bracket ref containing a literal unmatched paren (task-4b round-1 bundled minor)', () => {
   assert.equal(lookConvertCase('CASE WHEN [Revenue (USD] > 1 THEN 1 ELSE 2 END'), null);
+});
+
+// ── task-5: A7 — warn instead of inventing a Sigma function name ────────────
+// The step-1 fallback in lookConvertExpression title-cases any unrecognised name
+// (`fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase()`), so `AddDate(` silently
+// becomes `Adddate(` — a function Sigma does not have. lookUnknownFunctions reports
+// exactly the names that fallback would touch, without changing what gets emitted
+// (converter-silent-fallback.test.ts / lanq.1/.3 defect class).
+
+test('unmapped functions are reported, not silently invented (A7)', () => {
+  // 'Adddate' is not a Sigma function; emitting it silently ships a broken column.
+  assert.deepEqual(lookUnknownFunctions('AddDate(CURRENT_DATE(), -1)'), ['ADDDATE']);
+});
+
+test('mapped functions and keywords are not reported as unknown (A7)', () => {
+  assert.deepEqual(lookUnknownFunctions('SUM([x]) / COUNT([y])'), []);
+  assert.deepEqual(lookUnknownFunctions('CURRENT_DATE()'), []);
+  assert.deepEqual(lookUnknownFunctions('(A > 1) AND (B < 2)'), []);
+  assert.deepEqual(lookUnknownFunctions('COUNT(DISTINCT [Id])'), []);
+});
+
+// The allowlist itself is the real risk here (task brief): a name wrongly present
+// silently suppresses a warning for genuinely broken output — the exact AddDate
+// defect, just for a different function. DATEPART/DATETRUNC (bare, no underscore)
+// are a real example: Sigma's actual functions are `DatePart`/`DateTrunc` (a SECOND
+// embedded capital), which the naive title-case fallback cannot reproduce — it can
+// only ever produce a single leading capital (`Datepart`/`Datetrunc`). Confirmed via
+// grep across src/*.ts (DateTrunc/DatePart appear dozens of times, always with the
+// second capital — resources.ts's own formula-syntax reference documents
+// `DateTrunc("month", [Date])`). These two names are therefore deliberately EXCLUDED
+// from _SIGMA_PASSTHROUGH so a bare (underscore-less) use still warns.
+test('bare DATEPART/DATETRUNC (no underscore, not in LOOK_FUNC_MAP) are reported as unknown — naive title-case cannot produce the real DatePart/DateTrunc spelling (A7 allowlist correctness)', () => {
+  assert.deepEqual(lookUnknownFunctions('DATEPART(CreatedDate)'), ['DATEPART']);
+  assert.deepEqual(lookUnknownFunctions('DATETRUNC(CreatedDate)'), ['DATETRUNC']);
+});
+
+test('DATE_TRUNC (with underscore — LOOK_FUNC_MAP maps it to the real DateTrunc) is not reported (A7 allowlist correctness)', () => {
+  assert.deepEqual(lookUnknownFunctions('DATE_TRUNC(CreatedDate)'), []);
+});
+
+// Passthrough names whose naive title-case DOES happen to equal Sigma's real
+// (single-leading-capital) spelling — must not false-positive, or the warning
+// becomes noise that gets ignored (task brief: "false positives = failed
+// implementation").
+test('passthrough names whose title-case matches Sigma exactly (Number/Date/Text/If/Median) do not false-positive (A7 allowlist correctness)', () => {
+  assert.deepEqual(lookUnknownFunctions('NUMBER([Amount])'), []);
+  assert.deepEqual(lookUnknownFunctions('DATE([Ts])'), []);
+  assert.deepEqual(lookUnknownFunctions('TEXT([Year])'), []);
+  assert.deepEqual(lookUnknownFunctions('IF([X] > 1, 1, 0)'), []);
+  assert.deepEqual(lookUnknownFunctions('MEDIAN([Amount])'), []);
+});
+
+// Real corpus example (74-formula live Domo bm-corpus.json — the only distinct
+// warned name across the whole corpus is ADDDATE, found in 6 formulas): a
+// "days ago" bucketing CASE using AddDate(Current_Date(), -1). Confirms the
+// warning fires on real production input, not just a synthetic example.
+test('a real corpus formula using AddDate(Current_Date(), -1) is flagged (A7 corpus pin)', () => {
+  const sql = "DateDiff(AddDate(Current_Date(),-1),[Date])";
+  assert.deepEqual(lookUnknownFunctions(sql), ['ADDDATE']);
 });
