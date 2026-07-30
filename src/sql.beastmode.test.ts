@@ -626,19 +626,16 @@ test('_isBalanced backstop alone catches a bracket ref containing a literal unma
 test('an aggregate wrapping a CASE converts the embedded span (task-4c)', () => {
   const out = lookConvertExpression('SUM((CASE WHEN [Age] = 1 THEN 1 ELSE 0 END))');
   assert.equal(out, 'Sum((If([Age] = 1, 1, 0)))');
-  assert.equal(hasResidualCaseKeyword(out), false);
 });
 
 test('arithmetic wrapping a CASE on the LEFT of an operator converts the embedded span (task-4c)', () => {
   const out = lookConvertExpression('100 * (CASE WHEN [Age] = 1 THEN 1 ELSE 0 END)');
   assert.equal(out, '100 * (If([Age] = 1, 1, 0))');
-  assert.equal(hasResidualCaseKeyword(out), false);
 });
 
 test('arithmetic wrapping a CASE on the RIGHT of an operator converts the embedded span (task-4c)', () => {
   const out = lookConvertExpression('(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) / COUNT([Name])');
   assert.equal(out, '(If([Age] = 1, 1, 0)) / Count([Name])');
-  assert.equal(hasResidualCaseKeyword(out), false);
 });
 
 // Requirement 3 ("fail honestly, span by span"), made discriminating: TWO
@@ -685,7 +682,6 @@ test('a CASE span that cannot parse is left raw while a sibling CASE in the same
 test('a CASE span containing both a string literal and COUNT(DISTINCT ...) converts without cross-scope sentinel collision (task-4c attention item 1)', () => {
   const out = lookConvertExpression("100 * (CASE WHEN (COUNT(DISTINCT [Id]) = 0) THEN 'a' ELSE 'b' END)");
   assert.equal(out, '100 * (If(CountDistinct([Id]) = 0, "a", "b"))');
-  assert.equal(hasResidualCaseKeyword(out), false);
 });
 
 // The real two-level corpus example quoted in task-4c-brief.md (bm-corpus.json
@@ -710,7 +706,6 @@ test('the real two-level corpus example (bm-corpus item 3, task-4c-brief.md) con
     out,
     '((If(Count([Name]) = 0, 0, Sum((If([IsClosed] = "true", 1, 0) ))) ) / Count([Name]))'
   );
-  assert.equal(hasResidualCaseKeyword(out), false);
 });
 
 // Requirement 2 (recursion must terminate): 300 levels of arithmetic each
