@@ -1933,6 +1933,98 @@ export function extractUseRelationships(dax: string): { dax: string; pairs: PBIU
   return { dax: f, pairs };
 }
 
+// Strip DAX comments — /* block */ and // line — while preserving STRING LITERALS.
+//
+// Nothing stripped comments before, and it dropped real measures. Found while chasing why
+// two measures still failed after the CROSSFILTER fix: their DAX carried
+//   /*use relationship for submission dim ... filtering with crossfilter ...*/
+// and the CALCULATE filter-predicate detector matched the words INSIDE the comment
+// ("relationship", "filtering", "crossfilter"), rejecting the measure as having a
+// filter-context predicate. A measure was being dropped because of a COMMENT. 19 measures
+// across 4 real models carry comments, so this is a general hazard for every downstream
+// regex that inspects DAX text.
+//
+// String-literal awareness is required: a "//" inside "https://host/path" is DATA. DAX
+// strings are double-quoted with "" as the escape, which this honors.
+export function stripDaxComments(dax: string): string {
+  const src = String(dax ?? '');
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"') {                       // string literal — copy verbatim
+      out += c; i++;
+      while (i < src.length) {
+        if (src[i] === '"') {
+          if (src[i + 1] === '"') { out += '""'; i += 2; continue; }  // escaped quote
+          out += '"'; i++; break;
+        }
+        out += src[i]; i++;
+      }
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {  // block comment -> a single space
+      const end = src.indexOf('*/', i + 2);
+      i = end === -1 ? src.length : end + 2;
+      out += ' ';
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') {  // line comment -> newline preserved
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
+export interface PBICrossFilter { a: { table: string; column: string }; b: { table: string; column: string }; direction: string }
+
+// Strip every CROSSFILTER(col1, col2, direction) MODIFIER out of a DAX expression,
+// returning the cleaned DAX plus the endpoint pairs and the requested direction.
+//
+// CROSSFILTER is the sibling of USERELATIONSHIP: both are CALCULATE *modifiers* that
+// change how a RELATIONSHIP behaves, not filters the aggregate reads. Its two column
+// arguments are relationship ENDPOINTS. USERELATIONSHIP was already stripped here;
+// CROSSFILTER was not, so its endpoint columns survived into the emitted metric formula,
+// the cross-table guard saw a column that is not on this element, and the whole measure
+// was DROPPED. Measured on real models: 2 measures lost to a
+// `CROSSFILTER(FACT[AGENt_KEY], DIM[CHILD_ID], None)` argument unrelated to the SUM.
+//
+// Sigma has no cross-filter-direction concept, so stripping is the correct translation —
+// but it changes filter semantics, so the caller WARNS rather than dropping it silently.
+export function extractCrossFilters(dax: string): { dax: string; pairs: PBICrossFilter[] } {
+  let f = dax;
+  const pairs: PBICrossFilter[] = [];
+  const re = /\bCROSSFILTER\s*\(/gi;
+  for (let guard = 0; guard < 20; guard++) {
+    re.lastIndex = 0;
+    const m = re.exec(f);
+    if (!m) break;
+    const { args, endPos } = splitCallArgs(f, m.index + m[0].length);
+    if (args.length >= 2) {
+      const a = _pbiParseQualifiedRef(args[0]);
+      const b = _pbiParseQualifiedRef(args[1]);
+      const dir = (args[2] || '').trim().replace(/^["']|["']$/g, '') || 'Both';
+      if (a && b) pairs.push({ a, b, direction: dir });
+    }
+    // Splice out the call plus ONE adjacent comma (leading if present, else trailing) —
+    // same shape as extractUseRelationships so a CALCULATE left with no filter args is
+    // unwrapped to its bare aggregate downstream.
+    let start = m.index, end = endPos;
+    let i = start - 1;
+    while (i >= 0 && /\s/.test(f[i])) i--;
+    if (f[i] === ',') start = i;
+    else {
+      let j = end;
+      while (j < f.length && /\s/.test(f[j])) j++;
+      if (f[j] === ',') end = j + 1;
+    }
+    f = f.slice(0, start) + f.slice(end);
+  }
+  return { dax: f, pairs };
+}
+
 // Find the model relationship matching a USERELATIONSHIP column pair (either
 // argument order).
 function findModelRelationship(model: any, p: PBIUseRelPair): any | null {
@@ -2119,6 +2211,21 @@ export function convertPowerBIToSigma(
   // through ('' = the active path). Used to refuse metrics that COMBINE measures
   // resolving through different join paths (they'd conflate paths in one element).
   const measureAltPath: Record<string, string> = {};
+  // CROSSFILTER is the sibling modifier of USERELATIONSHIP — it changes a relationship's
+  // cross-filter DIRECTION, so its two column args are relationship ENDPOINTS, not values
+  // the aggregate reads. Left in place they leaked into the metric formula and the
+  // cross-table guard dropped the whole measure (measured: 2 real measures lost).
+  // Sigma has no cross-filter-direction concept, so strip it — and WARN, because the
+  // filter semantics DO change; silence here is what made the drop hard to explain.
+  const processCrossFilters = (measureName: string, expr: string): string => {
+    if (!/\bCROSSFILTER\s*\(/i.test(expr)) return expr;
+    const cf = extractCrossFilters(expr);
+    for (const pair of cf.pairs) {
+      warnings.push(`⚠ "${measureName}": CROSSFILTER(${pair.a.table}[${pair.a.column}], ${pair.b.table}[${pair.b.column}], ${pair.direction}) — Sigma has no cross-filter-direction control, so the modifier is dropped and the relationship keeps its model direction. The aggregate itself is unchanged; if the source measure relied on that direction change to widen or narrow its filter context, verify the number.`);
+    }
+    return cf.dax;
+  };
+
   const processUseRelationships = (measureName: string, expr: string): string => {
     if (!/\bUSERELATIONSHIP\s*\(/i.test(expr)) return expr;
     const ur = extractUseRelationships(expr);
@@ -2432,10 +2539,10 @@ export function convertPowerBIToSigma(
       // error on Rank()). Parse the ORIGINAL DAX before pbiDaxToSigma drops it to
       // a warning; resolve the order-measure ref via the model measure-agg map.
       // DEGRADE → fall through to the existing drop-and-warn path.
-      const mExprRaw = Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || '');
+      const mExprRaw = stripDaxComments(Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || ''));
       // Family 1 (beads-sigma-fah8): strip USERELATIONSHIP filter args and
       // activate the inactive relationship as a distinctly-named alternate path.
-      const mExpr = processUseRelationships(m.name, mExprRaw);
+      const mExpr = processUseRelationships(m.name, processCrossFilters(m.name, mExprRaw));
       const mWin = pbiParseRankx(mExpr, measureAggMap);
       if (mWin && lowerPBIWindowCalc(mWin, m.name, srcElProxy, winCtx, warnings)) {
         continue; // lowered to helper element; no metric on this element
@@ -2479,10 +2586,34 @@ export function convertPowerBIToSigma(
         ...Object.values(pbiToSigmaName),
         ...Object.keys(pbiToSigmaName),
       ]);
+      // DAX column references are case-INSENSITIVE: [AGENt_KEY] IS [AGENT_KEY], and real
+      // models contain exactly that typo. Comparing against exact-match Sets made a
+      // mis-cased ref look like a FOREIGN column, so the cross-table guard dropped an
+      // otherwise-valid measure (measured: AGENt_KEY vs AGENT_KEY in 2 measures,
+      // SUBMISSION_key vs SUBMISSION_KEY in a third). Resolve case-insensitively AND
+      // rewrite the ref to the canonical spelling — leaving the mis-cased name in the
+      // formula would just move the failure into Sigma, which cannot resolve it either.
+      const canonicalCol = new Map<string, string>();
+      for (const d of colDisplays) {
+        const k = d.toLowerCase();
+        if (!canonicalCol.has(k)) canonicalCol.set(k, d);
+      }
       for (let pass = 0; pass < 5; pass++) {
         const metricNames = new Set(metrics.map((mm: any) => mm.name));
+        const canonicalMetric = new Map<string, string>();
+        for (const n of metricNames) {
+          const k = String(n).toLowerCase();
+          if (!canonicalMetric.has(k)) canonicalMetric.set(k, String(n));
+        }
         const before = metrics.length;
         for (let i = metrics.length - 1; i >= 0; i--) {
+          // normalize any mis-cased ref to its canonical column/metric name first, so the
+          // guard below judges the ref on identity rather than on spelling
+          metrics[i].formula = String(metrics[i].formula).replace(/\[([^\]\/]+)\]/g, (whole: string, ref: string) => {
+            if (colDisplays.has(ref) || metricNames.has(ref)) return whole;   // already exact
+            const c = canonicalCol.get(ref.toLowerCase()) || canonicalMetric.get(ref.toLowerCase());
+            return c ? `[${c}]` : whole;
+          });
           const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
@@ -2555,8 +2686,8 @@ export function convertPowerBIToSigma(
         const t = model.tables.find((tb: any) => tb.name === tName);
         if (!t) continue;
         for (const m of (t.measures || [])) {
-          const moExpr = processUseRelationships(m.name,
-            Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || ''));
+          const moExpr = processUseRelationships(m.name, processCrossFilters(m.name,
+            stripDaxComments(Array.isArray(m.expression) ? m.expression.join('\n') : String(m.expression || ''))));
           const homeEl = homeElFor(moExpr);
           if (m.name) measureToElementId[m.name] = homeEl.id; // m1a cross-table detection
           let sigmaFormula = pbiDaxToSigma(moExpr, warnings, m.name, measureDaxMap);
