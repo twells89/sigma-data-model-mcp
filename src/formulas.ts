@@ -102,18 +102,39 @@ export function tableauInToSigma(formula: string): string {
  * whole chain (`"a" + [x] + "b"`) converts in one call.
  */
 const _TEXT_FN_RE = /(?:Coalesce|Concat|Text|Left|Right|Mid|Substring|Substr|Upper|Lower|Trim|Replace|MonthName|WeekdayName|DateName|Proper)$/i;
-function _isTextOperand(op: string, isTextRef?: (name: string) => boolean): boolean {
-  let s = op.trim();
-  // Unwrap balanced outer parens: `([CW_COUNTRY])` → `[CW_COUNTRY]`.
-  while (/^\(.*\)$/s.test(s)) {
-    let depth = 0, ok = true;
+
+/**
+ * Strip parentheses that wrap an ENTIRE expression: `((x))` → `x`. Repeats while a
+ * wrapper remains. `(a) + (b)` is left untouched — its first group closes before the
+ * end, so the outer parens are two groups, not one wrapper. Quoted spans are skipped
+ * so a `)` inside a string literal is treated as data, not structure.
+ *
+ * Domo wraps every Beast Mode in outer parens, which made lookSqlToSigmaRules'
+ * anchored patterns (`/^CASE\b/i`, `/^ROUND\s*\(/i`, …) unreachable — measured: 0 of
+ * 74 live Beast Modes matched any rule before this (bead jva2).
+ */
+export function stripOuterParens(s: string): string {
+  s = s.trim();
+  while (s.length > 1 && s.startsWith('(') && s.endsWith(')')) {
+    let depth = 0, quote = '', wraps = true;
     for (let i = 0; i < s.length; i++) {
-      if (s[i] === '(') depth++;
-      else if (s[i] === ')') { depth--; if (depth === 0 && i < s.length - 1) { ok = false; break; } }
+      const c = s[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === "'" || c === '"') { quote = c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        if (depth === 0 && i < s.length - 1) { wraps = false; break; }
+      }
     }
-    if (!ok || depth !== 0) break;
+    if (!wraps || depth !== 0) break;
     s = s.slice(1, -1).trim();
   }
+  return s;
+}
+
+function _isTextOperand(op: string, isTextRef?: (name: string) => boolean): boolean {
+  let s = stripOuterParens(op.trim());
   if (!s) return false;
   if (/^"(?:[^"\\]|\\.)*"$/.test(s) || /^'(?:[^'\\]|\\.)*'$/.test(s)) return true;   // string literal
   const ref = s.match(/^\[([^\]\/]+)\]$/);
@@ -364,6 +385,8 @@ export function lookSqlToSigmaRules(sql: string): string | null {
     .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => n.toUpperCase())
     .replace(/[\r\n]+\s*/g, ' ')
     .trim();
+
+  expr = stripOuterParens(expr);
 
   // Pattern 1: COLUMN = 1 (yesno boolean flag)
   {
