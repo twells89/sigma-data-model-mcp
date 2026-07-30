@@ -733,6 +733,13 @@ function _maskCountDistinct(s: string): { masked: string; args: string[] } {
       const c = s[i];
       if (quote) { if (c === quote) quote = ''; continue; }
       if (c === "'" || c === '"') { quote = c; continue; }
+      // Treat `[bracketed identifier]` as atomic, same as _maskLiterals: an
+      // apostrophe inside one (`[Manager's Approval]`) must not be mistaken
+      // for a quote and trap the scanner in-quote for the rest of the string
+      // (depth never returns to 0, the whole call falls through unmasked).
+      // An unterminated '[' is not a real bracketed span — fall through and
+      // scan it as an ordinary char rather than swallowing to end-of-string.
+      if (c === '[') { const cl = s.indexOf(']', i + 1); if (cl !== -1) { i = cl; continue; } }
       if (c === '(') depth++;
       else if (c === ')') { depth--; if (depth === 0) break; }
     }

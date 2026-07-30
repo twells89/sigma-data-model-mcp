@@ -210,6 +210,20 @@ test('COUNT(DISTINCT x) becomes CountDistinct, bare and bracketed (sqp1)', () =>
   assert.equal(lookConvertExpression('COUNT(DISTINCT [Id])'), 'CountDistinct([Id])');
 });
 
+// _maskCountDistinct's inner scanner tracked '/" quote state but not [...]
+// spans (unlike _maskLiterals and stripOuterParens, both fixed for this same
+// defect class earlier on this branch). An apostrophe inside a bracketed
+// identifier — the branch's canonical realistic case, [Manager's Approval] —
+// was mistaken for a quote delimiter, trapping the scanner in-quote so depth
+// never returns to 0 and the whole call falls through unconverted (final
+// review, Critical finding).
+test("COUNT(DISTINCT [Bracketed Id With An Apostrophe]) does not trap the scanner in-quote (final review)", () => {
+  assert.equal(
+    lookConvertExpression("COUNT(DISTINCT [Manager's Approval])"),
+    "CountDistinct([Manager's Approval])"
+  );
+});
+
 test('COUNT(DISTINCT ...) with a nested CASE argument converts recursively (sqp1)', () => {
   const sql = 'COUNT(DISTINCT (CASE WHEN [Age] <= 30 THEN [Id] END))';
   assert.equal(lookConvertExpression(sql), 'CountDistinct(If([Age] <= 30, [Id], null))');
