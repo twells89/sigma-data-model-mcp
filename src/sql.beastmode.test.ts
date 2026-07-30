@@ -4,6 +4,7 @@
 // (backtick identifiers → [brackets]).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword, lookUnknownFunctions } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
@@ -593,4 +594,49 @@ test('the title-case predicate still warns for every multi-word-mismatch case, n
   assert.deepEqual(lookUnknownFunctions('STARTSWITH([X], "a")'), ['STARTSWITH']);
   assert.deepEqual(lookUnknownFunctions('MAKEDATE(2024, 1)'), ['MAKEDATE']);
   assert.deepEqual(lookUnknownFunctions('STDEV([X])'), ['STDEV']);
+});
+
+// ── Task 6: corpus regression — lock the Track-A gain in ────────────────────
+// 74 distinct Beast Modes from a live 48-card Domo page (anonymised — see
+// src/sql.beastmode.corpus.json). Before Track A, 0 of these reached a rule at
+// all. This is a MEASUREMENT, not a tautology dressed up as one: it is written
+// to pass at HEAD-of-this-branch by construction (that's the point — it pins
+// the number Track A actually achieved), but it goes RED against pre-Track-A
+// commit 0be8116 (see task-6-report.md for the pasted failure) and RED again
+// the moment a future refactor re-breaks the paren gate, the And()/Or() call
+// form, the Today()() double-paren, or COUNT(DISTINCT) leaking [Distinct] as
+// a column. The >= 37 floor may only rise as the converter improves further;
+// the four defect-class assertions are exact zeros and must never move.
+const normalizeDomo = (s: string) => s.replace(/`([^`]+)`/g, (_m, c) => `[${c}]`).trim();
+
+test('live Domo Beast Mode corpus: rules are reached and output is not corrupt', () => {
+  const corpus: string[] = JSON.parse(
+    readFileSync(new URL('./sql.beastmode.corpus.json', import.meta.url), 'utf8')
+  );
+  assert.equal(corpus.length, 74, 'corpus size is pinned — update deliberately');
+
+  let matched = 0;
+  const distinctLeak: string[] = [];
+  const callForm: string[] = [];
+  const doubleParen: string[] = [];
+  const unbalanced: string[] = [];
+
+  for (const sql of corpus) {
+    const n = normalizeDomo(sql);
+    const ruled = lookSqlToSigmaRules(n);
+    const out = ruled ?? lookConvertExpression(n);
+    if (ruled !== null) matched++;
+    if (/\[Distinct\]/.test(out)) distinctLeak.push(out);
+    if (/\b(?:And|Or|When)\s*\(/.test(out)) callForm.push(out);
+    if (/\)\s*\(\)/.test(out)) doubleParen.push(out);
+    if ((out.match(/\(/g) || []).length !== (out.match(/\)/g) || []).length) unbalanced.push(out);
+  }
+
+  // Baseline before Track A was 0. Every paren-wrapped CASE (37) plus the other
+  // rule-matching shapes must now be reached.
+  assert.ok(matched >= 37, `only ${matched}/74 matched a rule (baseline 0, expected >= 37)`);
+  assert.deepEqual(distinctLeak, [], 'no formula may leak [Distinct] as a column (sqp1)');
+  assert.deepEqual(callForm, [], 'And()/Or()/When() call form silently nulls rows (A4)');
+  assert.deepEqual(doubleParen, [], 'no Today()() style doubled parens (A5)');
+  assert.deepEqual(unbalanced, [], 'no unbalanced parentheses');
 });
