@@ -556,3 +556,41 @@ test('a real corpus formula using AddDate(Current_Date(), -1) is flagged (A7 cor
   const sql = "DateDiff(AddDate(Current_Date(),-1),[Date])";
   assert.deepEqual(lookUnknownFunctions(sql), ['ADDDATE']);
 });
+
+// ── task-5 round-1 review finding 1: hand-written allowlist false-positived on
+// real Sigma functions (NOW/TODAY/SWITCH/POWER/trig/RANK/LAG/LEAD) that simply
+// didn't appear in the 74-formula corpus. The allowlist is now DERIVED from
+// LOOK_FUNC_MAP's and TABLEAU_FUNC_MAP's own VALUES (both proven-real Sigma
+// function name strings) via one explicit predicate — does _naiveTitleCase of
+// the bare name reproduce Sigma's real spelling exactly? — plus a tiny
+// supplemental list (COUNT/RANK/LAG/LEAD) for names neither map emits, run
+// through that SAME predicate rather than hand-trusted.
+
+test('real Sigma functions not in the 74-formula corpus (NOW/TODAY/SWITCH/POWER/RANK/LAG/LEAD/a trig fn) do not false-positive (A7 round-1 finding 1)', () => {
+  assert.deepEqual(lookUnknownFunctions('NOW()'), []);
+  assert.deepEqual(lookUnknownFunctions('TODAY()'), []);
+  assert.deepEqual(lookUnknownFunctions('SWITCH([X], 1, "a", 2, "b")'), []);
+  assert.deepEqual(lookUnknownFunctions('POWER([X], 2)'), []);
+  assert.deepEqual(lookUnknownFunctions('SIN([X])'), []);
+  assert.deepEqual(lookUnknownFunctions('RANK([X])'), []);
+  assert.deepEqual(lookUnknownFunctions('LAG([X], 1)'), []);
+  assert.deepEqual(lookUnknownFunctions('LEAD([X], 1)'), []);
+});
+
+// The predicate must still catch genuine multi-word mismatches — not just the
+// two DATEPART/DATETRUNC cases found in round 1, but ANY name where Sigma's real
+// spelling carries a second embedded capital the naive fallback cannot reproduce.
+// STARTSWITH/ENDSWITH/MAKEDATE/REGEXP_EXTRACT/STDEV/PERCENTILE/SPLIT are real
+// Sigma-adjacent names (StartsWith/EndsWith/MakeDate/RegexpExtract/StdDev/
+// PercentileCont/SplitPart) that the OLD hand-written list also left un-allowlisted
+// (so this is not a behavior change for them) — pinned here as evidence the
+// derivation catches this whole class uniformly, not just the two cases found by
+// hand.
+test('the title-case predicate still warns for every multi-word-mismatch case, not just DATEPART/DATETRUNC/ADDDATE (A7 round-1 finding 1)', () => {
+  assert.deepEqual(lookUnknownFunctions('DATEPART(CreatedDate)'), ['DATEPART']);
+  assert.deepEqual(lookUnknownFunctions('DATETRUNC(CreatedDate)'), ['DATETRUNC']);
+  assert.deepEqual(lookUnknownFunctions('AddDate(CURRENT_DATE(), -1)'), ['ADDDATE']);
+  assert.deepEqual(lookUnknownFunctions('STARTSWITH([X], "a")'), ['STARTSWITH']);
+  assert.deepEqual(lookUnknownFunctions('MAKEDATE(2024, 1)'), ['MAKEDATE']);
+  assert.deepEqual(lookUnknownFunctions('STDEV([X])'), ['STDEV']);
+});

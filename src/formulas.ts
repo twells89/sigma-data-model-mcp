@@ -730,6 +730,15 @@ function _unmaskCountDistinct(s: string, args: string[]): string {
 // did the same to BY. One constant, used by both, closes that off structurally.
 const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE|OVER|GROUP|EXISTS)$/i;
 
+// The exact naive title-case pass 1 falls back to for an unrecognised SQL function
+// name: first character upper, everything else lower — regardless of the source's own
+// casing (`AddDate`/`ADDDATE`/`adddate` all fall back to `Adddate`). Shared between
+// pass 1 itself and the passthrough-derivation below (round-1 review) so the two can
+// never drift apart the way two independently-maintained keyword lists did in Task 3.
+function _naiveTitleCase(fn: string): string {
+  return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
+}
+
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
   const cd = _maskCountDistinct(expr);
@@ -745,7 +754,7 @@ export function lookConvertExpression(expr: string): string {
     // the NAME is being substituted here; the source's own '()' follows, so keeping
     // the mapped parens yields 'Today()()'.
     if (mapped) return mapped.endsWith('()') ? mapped.slice(0, -2) : mapped;
-    return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
+    return _naiveTitleCase(fn);
   });
 
   // 2. Convert EXPR IN (a, b, c) → In(EXPR, a, b, c)
@@ -764,25 +773,64 @@ export function lookConvertExpression(expr: string): string {
   return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
 }
 
-// Sigma functions the SQL path emits directly (same spelling in source and target),
-// on top of everything LOOK_FUNC_MAP already knows how to translate. This is
-// deliberately NOT a copy of LOOK_FUNC_MAP's keys — it exists only for names pass 1's
-// naive fallback (`fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase()`) HAPPENS to
-// render correctly: a bare, single-"word" SQL name whose real Sigma spelling is exactly
-// that same title-case with no additional embedded capital (Sum, Count, If, Text …).
-//
-// A name is NOT safe to list here just because Sigma has a same-named function — it is
-// only safe if title-casing the bare SQL token reproduces Sigma's exact spelling.
-// DATEPART and DATETRUNC (bare, no underscore — as opposed to the already-mapped
-// DATE_TRUNC) are deliberately ABSENT for this reason: Sigma's real functions are
-// `DatePart`/`DateTrunc` (capital P/T on the second word), but the naive fallback can only
-// produce `Datepart`/`Datetrunc` (single leading capital) — exactly the AddDate → Adddate
-// defect class this task exists to catch, just for a different pair of names. Listing them
-// here would silently suppress the one warning that would flag that real bug.
-const _SIGMA_PASSTHROUGH = new Set([
-  'SUM', 'COUNT', 'AVG', 'MIN', 'MAX', 'MEDIAN', 'ABS', 'COALESCE', 'IF',
-  'DATEDIFF', 'DATEADD', 'TEXT', 'NUMBER', 'DATE',
-]);
+// Sigma function names not derivable from LOOK_FUNC_MAP's or TABLEAU_FUNC_MAP's own
+// VALUES because neither map ever emits them under their own bare name — COUNT/RANK/
+// LAG/LEAD are handled by dedicated code (COUNT via _maskCountDistinct/
+// _unmaskCountDistinct's CountDistinct(...) wrapping, RANK/LAG/LEAD via the inline
+// fnMap objects inside tableauWindowToSigmaChart), never via a name -> name Record.
+// Run through the SAME title-case derivation below as the two maps (not hand-asserted)
+// so a typo or a future multi-word addition here fails SAFE — excluded, still warns —
+// rather than being silently trusted.
+const _SUPPLEMENTAL_SIGMA_NAMES = [
+  'Count',  // resources.ts formula-syntax reference: "Count([Col])"
+  'Rank',   // qlik.test.ts: Rank(Sum([Sales Amount]), "desc")
+  'Lag',    // qlik.test.ts: Lag(Sum([Sales Amount]), 1)
+  'Lead',   // qlik.test.ts: Lead(Sum([Sales Amount]), 1)
+];
+
+/**
+ * Sigma functions the SQL path emits directly (same spelling in source and target),
+ * on top of everything LOOK_FUNC_MAP already knows how to translate.
+ *
+ * DERIVED, not hand-maintained (round-1 review: a hand-written list drifts — the same
+ * failure mode Task 3 was fixed for, two independently-maintained lists going out of
+ * sync). Built from LOOK_FUNC_MAP's and TABLEAU_FUNC_MAP's own VALUES — both are
+ * independently-verified real Sigma function name strings (TABLEAU_FUNC_MAP's values
+ * are exercised by a different converter, tableauFormulaToSigma, but the NAMES it emits
+ * are real Sigma functions regardless of which converter proves them) — plus the small
+ * supplemental list above for names neither map happens to emit. Adding an entry to
+ * either map later automatically keeps this set correct with no second edit required.
+ *
+ * The predicate, applied uniformly to every candidate: does `_naiveTitleCase` of the
+ * bare name reproduce Sigma's real spelling EXACTLY? `Now` -> naive title-case of `NOW`
+ * is `Now` -> match -> safe, don't warn on a bare `NOW(`. `DateTrunc` -> naive
+ * title-case of `DATETRUNC` is `Datetrunc` -> mismatch -> a bare, underscore-less
+ * `DATETRUNC(` must still warn, because pass 1's fallback cannot reproduce the second
+ * embedded capital no matter how the source SQL cased it. This is the exact reasoning
+ * that excluded DATEPART/DATETRUNC from the original hand-written list, made explicit
+ * and applied mechanically to every candidate instead of by manual inspection — which
+ * is what independently recovers NOW/TODAY/POWER/SWITCH/the trig family (RANK/LAG/LEAD
+ * needed the supplemental list above; nothing else did) without hand-listing any of
+ * them, and would have caught ABS/COALESCE/DATEDIFF/DATEADD as redundant with
+ * LOOK_FUNC_MAP's own keys (harmless dead weight in the original hand list — round-1
+ * review finding 2 — now moot, since nothing here is hand-listed for its own sake).
+ *
+ * Lazily computed and memoized on first call rather than at module-load time, so this
+ * has no dependency on LOOK_FUNC_MAP/TABLEAU_FUNC_MAP's declaration order in the file.
+ */
+let _sigmaPassthroughCache: Set<string> | null = null;
+function _sigmaPassthrough(): Set<string> {
+  if (_sigmaPassthroughCache) return _sigmaPassthroughCache;
+  const names = new Set<string>();
+  for (const raw of [...Object.values(LOOK_FUNC_MAP), ...Object.values(TABLEAU_FUNC_MAP), ..._SUPPLEMENTAL_SIGMA_NAMES]) {
+    // A map value may carry its own parens (CURRENT_DATE -> 'Today()') — strip them
+    // before comparing, same as pass 1 does when splicing a mapped value back in.
+    const stripped = raw.endsWith('()') ? raw.slice(0, -2) : raw;
+    if (_naiveTitleCase(stripped) === stripped) names.add(stripped.toUpperCase());
+  }
+  _sigmaPassthroughCache = names;
+  return names;
+}
 
 /**
  * Names that step 1 of lookConvertExpression would title-case WITHOUT a real mapping
@@ -796,11 +844,12 @@ const _SIGMA_PASSTHROUGH = new Set([
  */
 export function lookUnknownFunctions(sql: string): string[] {
   const { masked } = _maskLiterals(sql);
+  const passthrough = _sigmaPassthrough();
   const seen = new Set<string>();
   for (const m of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g)) {
     const upper = m[1].toUpperCase();
     if (_SQL_KEYWORD_RE.test(upper)) continue;
-    if (LOOK_FUNC_MAP[upper] || _SIGMA_PASSTHROUGH.has(upper)) continue;
+    if (LOOK_FUNC_MAP[upper] || passthrough.has(upper)) continue;
     seen.add(upper);
   }
   return [...seen];
