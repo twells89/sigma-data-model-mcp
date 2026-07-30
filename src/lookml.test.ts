@@ -785,3 +785,41 @@ describe('layered: measure translation guards', () => {
     assert.ok(/TO_CHAR/.test(w!));
   });
 });
+
+// Final review Important finding 2: the computed-measure CASE guard at
+// lookml.ts (`viaRules && /\b(CASE|WHEN|THEN)\b|\|\||::\s*\w/i.test(viaRules)`)
+// only re-nulled `viaRules` on a residual CASE/WHEN/THEN, concat, or cast.
+// task-4c taught lookSqlToSigmaRules to convert a CASE embedded in ROUND/
+// arithmetic away, so a measure whose ONLY remaining defect is an untranslated
+// infix LIKE (no Sigma equivalent) stopped tripping the guard and was emitted
+// as a successful "✅ (computed CASE)" metric with LIKE sitting raw inside it.
+// Verified red at 36e5e08 (direct probe, isolated worktree via `git stash` on
+// just src/lookml.ts): the fixture below produced
+//   metrics: [{ name: 'Usa Flag', formula: 'Round(If(Lower([Country]) LIKE "usa", 1, 0), 2)' }]
+//   warnings: ['✅ "usa_flag" (computed CASE) → Round(If(Lower([Country]) LIKE "usa", 1, 0), 2)']
+// — a metric with a bare LIKE Sigma cannot evaluate, reported as a success.
+const usaFlagViewLkml = `view: usa_flag_view {
+  sql_table_name: CSA.TJ.ORDER_FACT ;;
+  dimension: country {
+    type: string
+    sql: \${TABLE}.country ;;
+  }
+  measure: usa_flag {
+    type: number
+    sql: ROUND(CASE WHEN LOWER(\${country}) LIKE 'usa' THEN 1 ELSE 0 END, 2) ;;
+  }
+}
+`;
+
+describe('layered: measure translation guards — residual infix operator survives CASE conversion', () => {
+  const { model, warnings } = convertLookMLToSigma(
+    [{ name: 'usa_flag_view.view.lkml', content: usaFlagViewLkml }], { connectionId: 'test-conn' });
+  const view: any = model.pages[0].elements[0];
+  const metricByName = (n: string) => (view.metrics || []).find((m: any) => m.name === n);
+
+  test('a residual LIKE inside an otherwise-converted CASE warns instead of emitting a broken metric (final review, Important 2)', () => {
+    assert.ok(!metricByName('Usa Flag'), `broken LIKE metric was emitted: ${JSON.stringify(view.metrics)}`);
+    const w = warnings.find((w: string) => /"usa_flag".*untranslatable fragment/is.test(w));
+    assert.ok(w, warnings.join('\n'));
+  });
+});
