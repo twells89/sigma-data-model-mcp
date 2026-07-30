@@ -441,6 +441,21 @@ test('a malformed CASE with no THEN-value and no END returns null, does not thro
   assert.equal(lookSqlToSigmaRules('CASE WHEN [X] = 1 THEN'), null);
 });
 
+// The "trailing content after the matching END" check (requirement 3: fail
+// honestly rather than silently discard part of the input) is load-bearing
+// but had no test pinning it directly: every other test that reaches this
+// check does so via an earlier structural failure. Without it,
+// `lookConvertCase` finds the FIRST END that closes the outer CASE and simply
+// ignores everything after it — here, the trailing `+ 5` — returning a
+// plausible-looking but silently-wrong result instead of failing (final
+// review, bundled minor). Non-regression pin: this check already exists and
+// passes at 36e5e08; the point is to guarantee it cannot be deleted/weakened
+// without a test going red (confirmed by removing the check locally: this
+// input then returns 'If([X] = 1, 1, null)', dropping the `+ 5` entirely).
+test('trailing content after the matching END is rejected, not silently dropped (final review, bundled minor)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [X] = 1 THEN 1 END + 5'), null);
+});
+
 // ── task-4b round-1 review findings ─────────────────────────────────────────
 
 // FINDING 1 (Important, real regression): convertLeaf never rejected an empty
