@@ -9,7 +9,7 @@ import {
   type SigmaElement, type SigmaColumn, type SigmaMetric,
   type ConversionResult, type ElementResult
 } from './sigma-ids.js';
-import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction, hasResidualCaseKeyword, hasResidualInfixOperator } from './formulas.js';
+import { lookIsComplexSql, lookSqlToSigmaRules, detectUnsupportedSigmaFunction, hasResidualCaseKeyword, hasResidualInfixOperator, _SQL_KEYWORD_RE } from './formulas.js';
 
 interface DbtEntity {
   name: string;
