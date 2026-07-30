@@ -202,3 +202,114 @@ test('OVER, GROUP, and EXISTS before a paren stay infix, not fabricated into bog
   assert.equal(lookConvertExpression('EXISTS (Y)'), 'EXISTS ([Y])');
   assert.equal(lookConvertExpression('LISTAGG(X) WITHIN GROUP (Y)'), 'Listagg([X]) [Within] GROUP ([Y])');
 });
+
+test('COUNT(DISTINCT x) becomes CountDistinct, bare and bracketed (sqp1)', () => {
+  // Before: Count([Distinct] [Order Id]) — DISTINCT bracketed as if it were a column.
+  assert.equal(lookConvertExpression('COUNT(DISTINCT ORDER_ID)'), 'CountDistinct([Order Id])');
+  assert.equal(lookConvertExpression('COUNT(DISTINCT [Id])'), 'CountDistinct([Id])');
+});
+
+test('COUNT(DISTINCT ...) with a nested CASE argument converts recursively (sqp1)', () => {
+  const sql = 'COUNT(DISTINCT (CASE WHEN [Age] <= 30 THEN [Id] END))';
+  assert.equal(lookConvertExpression(sql), 'CountDistinct(If([Age] <= 30, [Id], null))');
+});
+
+test('a whole Domo ratio Beast Mode over COUNT(DISTINCT) converts end to end (jva2+sqp1)', () => {
+  const sql = '(CASE WHEN (COUNT(DISTINCT [Id]) = 0) THEN 0 ELSE (SUM([Retweet Count]) / COUNT(DISTINCT [Id])) END )';
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If(CountDistinct([Id]) = 0, 0, Sum([Retweet Count]) / CountDistinct([Id]))'
+  );
+});
+
+// NOTE: the brief's Step 1 also specified a fourth test here —
+// `lookConvertExpression('COUNT(ORDER_ID)') === 'Count([Order Id])'` (plain
+// COUNT must not over-reach). Verified it is a TAUTOLOGY: identical on both
+// sides of this fix (pre-fix HEAD 0c6e8e3 already produces 'Count([Order Id])'
+// because _maskCountDistinct's regex requires the literal keyword DISTINCT,
+// so a plain COUNT never engages the new masking path at all — nothing this
+// task changes touches that code path). Dropped per the no-tautology rule
+// (two prior tasks already had one caught in review). Replaced below with
+// tests that DO observably differ pre/post-fix and cover the same
+// "don't over-reach" intent via multi-arg and mixed valid/malformed input.
+
+// Attention item 2 (ordering): the count-distinct mask MUST run before the
+// literal mask, or a string literal inside a COUNT(DISTINCT ...) argument gets
+// captured already-raw into `args[]` and is masked/unmasked correctly by the
+// nested recursive call. Uses [State] rather than the brief's own [S] example —
+// [S] trips an unrelated, pre-existing pass-3 defect (a single ALL-CAPS-letter
+// bracketed ref like [S] gets double-bracketed to [[S]] because pass 3's bare
+// bare-identifier regex does not skip content already inside [...]; confirmed
+// this reproduces identically with NO COUNT(DISTINCT) involved at all —
+// `lookConvertExpression("[S] = 'AK'")` → `'[[S]] = "AK"'` on pre-fix HEAD
+// 0c6e8e3 too. Out of scope for this task (a pass-3 bug, not a COUNT(DISTINCT)
+// bug) — flagged in the task-4 report, not fixed here. [State] (multi-letter,
+// mixed-case display form) sidesteps that unrelated defect and isolates the
+// ordering behavior this test exists to prove.
+// Verified red at pre-fix HEAD 0c6e8e3:
+//   lookConvertExpression("COUNT(DISTINCT (CASE WHEN [State] = 'AK' THEN [Id] END))")
+//     -> 'Count(DISTINCT (CASE WHEN [State] = "AK" THEN [Id] END))'
+test('a string literal inside a COUNT(DISTINCT ...) argument survives correctly — mask ordering (sqp1 attention item 2)', () => {
+  const sql = "COUNT(DISTINCT (CASE WHEN [State] = 'AK' THEN [Id] END))";
+  assert.equal(lookConvertExpression(sql), 'CountDistinct(If([State] = "AK", [Id], null))');
+});
+
+// Attention item 3 (must not over-reach / must not produce garbage): the
+// balanced-scan mask does not special-case a multi-argument COUNT(DISTINCT a, b)
+// — the argument scan simply captures everything up to the matching ')',
+// commas included, and hands the whole "a, b" span to the SAME recursive
+// converter. That happens to produce a syntactically well-formed
+// CountDistinct([A], [B]) rather than corrupting the input — a deliberate
+// choice not to special-case multi-arg (see task-4 report for the semantic
+// caveat: SQL's multi-column COUNT(DISTINCT a,b) counts distinct (a,b) PAIRS,
+// which is not the same operation as Sigma's CountDistinct given multiple
+// arguments — this has NOT been verified against a live Sigma formula
+// evaluation). This test pins the current, non-corrupting behavior.
+// Verified red at pre-fix HEAD 0c6e8e3:
+//   lookConvertExpression('COUNT(DISTINCT ORDER_ID, CUSTOMER_ID)')
+//     -> 'Count(DISTINCT [Order Id], [Customer Id])'
+test('COUNT(DISTINCT a, b) multi-arg converts without corrupting the input (sqp1 attention item 3)', () => {
+  assert.equal(
+    lookConvertExpression('COUNT(DISTINCT ORDER_ID, CUSTOMER_ID)'),
+    'CountDistinct([Order Id], [Customer Id])'
+  );
+});
+
+// Attention item 4 (unbalanced input must not corrupt or hang): a malformed,
+// unterminated COUNT(DISTINCT ... with no closing ')' is detected by the
+// depth-tracking scan (depth never returns to 0) and the balanced-scan mask
+// bails out, leaving that entire call untouched rather than guessing at where
+// it ends. A solo `COUNT(DISTINCT [Id]` (nothing before it) is therefore a
+// TAUTOLOGY — identical pre/post-fix, because bailing on the very first match
+// leaves the whole string unmasked, so passes 1-3 do exactly what they always
+// did to it. This test instead pairs one VALID, balanced COUNT(DISTINCT ...)
+// with a second, unterminated one later in the same expression — proving (a)
+// the first one still converts correctly, (b) the scanner does not hang or
+// throw on the malformed second one, and (c) it leaves the malformed tail as
+// literal text rather than corrupting it or swallowing the valid part before it.
+// Verified red at pre-fix HEAD 0c6e8e3:
+//   lookConvertExpression('COUNT(DISTINCT ORDER_ID) + COUNT(DISTINCT CUSTOMER_ID')
+//     -> 'Count(DISTINCT [Order Id]) + Count(DISTINCT [Customer Id]'
+test('a valid COUNT(DISTINCT ...) followed by an unterminated one converts the first and leaves the second untouched (sqp1 attention item 4)', () => {
+  assert.equal(
+    lookConvertExpression('COUNT(DISTINCT ORDER_ID) + COUNT(DISTINCT CUSTOMER_ID'),
+    'CountDistinct([Order Id]) + Count(DISTINCT [Customer Id]'
+  );
+});
+
+// Attention item 1 (recursion terminates): a COUNT(DISTINCT ...) nested inside
+// a CASE that is itself nested inside another COUNT(DISTINCT ...)'s argument —
+// two levels of the _unmaskCountDistinct -> lookSqlToSigmaRules/lookConvertCase
+// -> lookConvertExpression -> _maskCountDistinct recursion. Each recursive call
+// runs on a strictly shorter substring (the captured argument always excludes
+// at minimum the "COUNT(DISTINCT " prefix and the closing ")" of its own call),
+// so the recursion is well-founded on string length and must terminate; this
+// runs in ~1ms with no stack overflow, confirming it in practice as well as in
+// principle (see task-4 report for the full termination argument).
+// Verified red at pre-fix HEAD 0c6e8e3:
+//   lookConvertExpression('COUNT(DISTINCT (CASE WHEN [Age] <= 30 THEN (COUNT(DISTINCT [Id])) ELSE 0 END))')
+//     -> 'Count(DISTINCT (CASE WHEN [Age] <= 30 THEN (Count(DISTINCT [Id])) ELSE 0 END))'
+test('a COUNT(DISTINCT ...) nested two levels deep inside another one converts recursively without hanging (sqp1 attention item 1)', () => {
+  const sql = 'COUNT(DISTINCT (CASE WHEN [Age] <= 30 THEN (COUNT(DISTINCT [Id])) ELSE 0 END))';
+  assert.equal(lookConvertExpression(sql), 'CountDistinct(If([Age] <= 30, CountDistinct([Id]), 0))');
+});

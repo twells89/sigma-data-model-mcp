@@ -422,6 +422,42 @@ function _unmaskLiterals(s: string, lits: string[]): string {
   });
 }
 
+// COUNT(DISTINCT x) has no single-token equivalent: Sigma spells it CountDistinct(x).
+// A regex on the argument is not enough — the live Domo corpus nests a whole CASE
+// inside one. So: scan to the matching ')', mask the call out, convert the argument
+// RECURSIVELY (it is strictly shorter, so this terminates), and splice the result
+// back after the outer passes have run. Masking also keeps step 1 from title-casing
+// 'CountDistinct' into 'Countdistinct'. Uses STX/ETX so it cannot collide with the
+// literal mask, and carries no letters — see the _maskLiterals note above.
+function _maskCountDistinct(s: string): { masked: string; args: string[] } {
+  const args: string[] = [];
+  const re = /\bCOUNT\s*\(\s*DISTINCT\s+/gi;
+  let out = '', last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const argStart = m.index + m[0].length;
+    let depth = 1, quote = '', i = argStart;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === "'" || c === '"') { quote = c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) break; }
+    }
+    if (depth !== 0) break;                       // unbalanced — leave the rest as-is
+    out += s.slice(last, m.index) + `${args.push(s.slice(argStart, i).trim()) - 1}`;
+    last = i + 1;
+    re.lastIndex = last;
+  }
+  return { masked: out + s.slice(last), args };
+}
+
+function _unmaskCountDistinct(s: string, args: string[]): string {
+  return s.replace(/(\d+)/g, (_m, i) => {
+    const raw = stripOuterParens(args[Number(i)]);
+    return `CountDistinct(${lookSqlToSigmaRules(raw) ?? lookConvertExpression(raw)})`;
+  });
+}
+
 // Reserved words are syntax, not callables. `AND (`, `WHEN (`, `NOT (` all look like
 // a function call to a name-before-paren regex; rewriting them to And()/When()/Not()
 // produces Sigma that silently returns null rows. `OVER`, `GROUP` (as in
@@ -443,7 +479,17 @@ const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWE
 
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
-  const { masked, lits } = _maskLiterals(expr);
+  // Strip a whole-expression paren wrapper first (same normalisation
+  // lookSqlToSigmaRules already applies at its own top level, bead jva2). Needed
+  // so a CASE branch value that carries its OWN local wrap — e.g. the `ELSE
+  // (SUM(x) / COUNT(DISTINCT y))` shape lookConvertCase hands this function one
+  // branch at a time — doesn't leak that wrap into the converted output
+  // (`(Sum([X]) / CountDistinct([Y]))` instead of `Sum([X]) / CountDistinct([Y])`).
+  // Safe for every other caller: stripOuterParens is a no-op unless the ENTIRE
+  // string is one balanced `(...)` span, which none of the other passing fixtures are.
+  expr = stripOuterParens(expr);
+  const cd = _maskCountDistinct(expr);
+  const { masked, lits } = _maskLiterals(cd.masked);
   expr = masked;
 
   // 1. Map SQL function names to Sigma equivalents
@@ -471,7 +517,7 @@ export function lookConvertExpression(expr: string): string {
     return lookColRef(match);
   });
 
-  return _unmaskLiterals(expr, lits).trim();
+  return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
 }
 
 /**
