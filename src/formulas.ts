@@ -558,10 +558,11 @@ export function lookConvertCase(expr: string): string | null {
     const v = maskedChunk.trim();
     // An empty chunk — `WHEN THEN`, `THEN ELSE`, `ELSE END` with nothing
     // between them — is not a value or condition, it's a hole. Splicing it in
-    // anyway produces exactly the shredded-but-balanced output this whole
-    // task exists to prevent: `If(, 1, 2)`. Fail honestly instead (round-1
-    // review finding 1, task-4b).
-    if (!v) return null;
+    // anyway would produce exactly the shredded-but-balanced output this whole
+    // task exists to prevent: `If(, 1, 2)`. Caught below by the
+    // `!spliced.trim()` check (an empty `v` strips/converts/splices down to
+    // '' too, so one check covers both an empty chunk and a non-empty chunk
+    // that collapses to nothing, e.g. `()`).
     // NOTE: string literals are deliberately NOT special-cased here —
     // lookConvertExpression masks/unmasks literals itself, emitting Sigma's
     // required double-quoted form ("West", not 'West'). A literal
@@ -579,9 +580,9 @@ export function lookConvertCase(expr: string): string | null {
     const raw = _restoreRawLiterals(nc.text, lits);
     const converted = lookConvertExpression(raw);
     const spliced = _spliceNestedCases(converted, nc.blocks);
-    // A non-empty chunk that strips/converts down to nothing — `()` is the
-    // live case — is the same hole by another route; catch it here too
-    // (round-1 review finding 1).
+    // Catches BOTH an originally-empty chunk (`v` was '') and a non-empty
+    // chunk that strips/converts down to nothing — `()` is the live case —
+    // since either way `spliced` ends up empty.
     if (!spliced.trim()) return null;
     return spliced;
   };
