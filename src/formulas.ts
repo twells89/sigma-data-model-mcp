@@ -392,20 +392,58 @@ function _isBalanced(s: string): boolean {
 const _NESTED_CASE_UNMASK_RE = /(\d+)/g;
 
 /**
- * Find every top-level nested "CASE ... END" occurring anywhere inside `s` (a
+ * Find every top-level "CASE ... END" span occurring anywhere inside `s` (a
  * literal-masked chunk — bracket-aware only, same reasoning as `_scanCase`),
  * recursively convert each via `lookConvertCase` (a full CASE always routes
  * there via `lookSqlToSigmaRules`'s pattern 4 — this IS the
  * `lookSqlToSigmaRules(inner) ?? lookConvertExpression(inner)` shape, just
  * inlined since `inner` is already known to start with CASE), and replace it
- * with the inert sentinel above so the surrounding mechanical passes never see
- * raw CASE/WHEN/END text. Returns null — propagating failure to the whole
- * containing formula — the instant any nested CASE cannot be parsed
- * confidently: falling back to running raw "CASE WHEN ... END" text through
- * lookConvertExpression's regex passes would leave keywords sitting in the
- * output as literal text, exactly the shredding requirement 3 forbids.
+ * with the inert EOT/ENQ sentinel above so the surrounding mechanical passes
+ * never see raw CASE/WHEN/END text.
+ *
+ * Used from two seams with two different failure contracts, selected by
+ * `onUnparseable` (task-4c — same scanner, not a fourth one; only the
+ * failure-handling branch differs between the two call sites):
+ *
+ *  - `'abort'` (default) — `lookConvertCase`'s own `convertLeaf`, for a CASE
+ *    nested inside a cond/val chunk (task-4b). `lookConvertCase` returns
+ *    `string | null` and CAN refuse, so the instant any nested CASE cannot be
+ *    parsed confidently (or is unterminated), this returns `null` and
+ *    propagates failure to the WHOLE containing formula: falling back to
+ *    running raw "CASE WHEN ... END" text through `lookConvertExpression`'s
+ *    regex passes would leave keywords sitting in the output as literal text,
+ *    exactly the shredding task-4b's requirement 3 forbids.
+ *
+ *  - `'leave-raw'` — `lookConvertExpression` itself (task-4c), for a CASE
+ *    embedded in an arithmetic/aggregate expression that never reaches
+ *    `lookConvertCase` via `lookSqlToSigmaRules`'s anchored pattern 4 (e.g.
+ *    `100 * (CASE ... END)`, `SUM((CASE ... END))`). `lookConvertExpression`
+ *    returns plain `string` — it CANNOT refuse (task-4c requirement 4). Here
+ *    a span that fails to parse (or an unterminated CASE with no matching
+ *    END at all) is left EXACTLY as found — still masked, still carrying its
+ *    raw CASE/WHEN/END text — and, for a parse failure, the scan resumes
+ *    right after that span so the REST of the expression still converts.
+ *    Never partially converts a failed span (task-4c requirement 3): on
+ *    failure nothing is written for that span at all, so its ORIGINAL masked
+ *    text survives untouched into the final output, where
+ *    `hasResidualCaseKeyword` is the honest signal to the caller that this
+ *    particular span didn't come through. An unterminated CASE has no
+ *    reliable span boundary at all, so the scan simply stops — the entire
+ *    remainder of the string from that point on is left untouched rather
+ *    than guessed at.
  */
-function _convertNestedCases(s: string, lits: string[]): { text: string; blocks: string[] } | null {
+function _convertNestedCases(
+  s: string,
+  lits: string[],
+  onUnparseable: 'abort' | 'leave-raw' = 'abort',
+  // task-4c: only ever non-empty from lookConvertExpression's embedded-CASE
+  // seam, which runs AFTER _maskCountDistinct — see _restoreRawCountDistinct.
+  // The 'abort' call site (convertLeaf) never needs this: its input always
+  // traces back to genuinely raw SQL (lookSqlToSigmaRules' pattern 4, or a
+  // span already restored here), so a CD sentinel never reaches it in the
+  // first place and this stays a harmless no-op default there.
+  cdArgs: string[] = [],
+): { text: string; blocks: string[] } | null {
   const blocks: string[] = [];
   let out = '', last = 0, i = 0;
   while (i < s.length) {
@@ -418,11 +456,18 @@ function _convertNestedCases(s: string, lits: string[]): { text: string; blocks:
     if (/[A-Za-z]/.test(c) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1])) && /^CASE\b/i.test(s.slice(i))) {
       const caseStart = i;
       const scan = _scanCase(s, i + 4);
-      if (scan.endIndex === -1) return null;                       // unterminated nested CASE
-      const rawSpan = _restoreRawLiterals(s.slice(caseStart, scan.endIndex), lits);
+      if (scan.endIndex === -1) {
+        if (onUnparseable === 'abort') return null;                // unterminated nested CASE
+        break;                                                     // leave-raw: no reliable end — stop, rest stays as-is
+      }
+      const rawSpan = _restoreRawCountDistinct(_restoreRawLiterals(s.slice(caseStart, scan.endIndex), lits), cdArgs);
       const converted = lookConvertCase(rawSpan);
-      if (converted === null) return null;                         // nested CASE failed to parse — fail the whole formula
-      out += s.slice(last, caseStart) + `${blocks.push(converted) - 1}`;
+      if (converted === null) {
+        if (onUnparseable === 'abort') return null;                // nested CASE failed to parse — fail the whole formula
+        i = scan.endIndex;                                          // leave-raw: skip past it, leave this span raw
+        continue;
+      }
+      out += s.slice(last, caseStart) + `\x04${blocks.push(converted) - 1}\x05`;
       last = scan.endIndex;
       i = scan.endIndex;
       continue;
@@ -646,6 +691,30 @@ function _restoreRawLiterals(s: string, lits: string[]): string {
   return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => lits[Number(i)] ?? _m);
 }
 
+// task-4c: restores a COUNT(DISTINCT ...) mask sentinel (STX/ETX) to its
+// ORIGINAL raw "COUNT(DISTINCT <arg>)" SQL text -- unlike _unmaskCountDistinct,
+// this does NOT convert the argument, it just reconstitutes literal SQL. Needed
+// because lookConvertExpression's embedded-CASE scan (below) runs AFTER
+// _maskCountDistinct, per the seam the brief specifies: a CASE span it extracts
+// can carry an OUTER-scope CD sentinel embedded inside it (e.g. `CASE WHEN
+// (COUNT(DISTINCT [Id]) = 0) ...` masks the DISTINCT call before the CASE scan
+// ever runs). Handing that sentinel straight into lookConvertCase would leak
+// it into an entirely separate, freshly-scoped recursive lookConvertExpression
+// call, whose OWN _unmaskCountDistinct indexes into ITS OWN unrelated (likely
+// shorter, or empty) args array using the OUTER call's index -- silently
+// reading undefined and crashing in stripOuterParens (caught red-handed while
+// hand-verifying a test for this exact task: `COUNT(DISTINCT [Id])` inside a
+// CASE embedded under arithmetic threw `Cannot read properties of undefined
+// (reading 'trim')`). Restoring to raw text FIRST means the inner call
+// re-discovers "COUNT(DISTINCT ..." as ordinary SQL and masks/processes/
+// unmasks it entirely within its own call frame, with no cross-scope index
+// collision -- the same reasoning `_restoreRawLiterals` already established
+// for the literal mask, applied to the other mask that can now also appear
+// upstream of a lookConvertCase call.
+function _restoreRawCountDistinct(s: string, args: string[]): string {
+  return s.replace(/\x02(\d+)\x03/g, (_m, i) => `COUNT(DISTINCT ${args[Number(i)] ?? ''})`);
+}
+
 // COUNT(DISTINCT x) has no single-token equivalent: Sigma spells it CountDistinct(x).
 // A regex on the argument is not enough — the live Domo corpus nests a whole CASE
 // inside one. So: scan to the matching ')', mask the call out, convert the argument
@@ -745,6 +814,47 @@ export function lookConvertExpression(expr: string): string {
   const { masked, lits } = _maskLiterals(cd.masked);
   expr = masked;
 
+  // task-4c: convert any embedded "CASE ... END" span, not only a CASE that
+  // is the WHOLE expression (lookSqlToSigmaRules' anchored pattern 4 already
+  // owns that case). A CASE wrapped in arithmetic or an aggregate — `100 *
+  // (CASE ... END)`, `SUM((CASE ... END))`, a ratio with a CASE on either
+  // side of `/` — never matches pattern 4's `/^CASE\b/i` anchor and used to
+  // fall through to this function with no CASE awareness at all, leaving raw
+  // CASE/WHEN/THEN/END text sitting in otherwise-converted output. Reuses
+  // task-4b's `_convertNestedCases`/`_scanCase` machinery verbatim in
+  // 'leave-raw' mode — wiring the existing scanner into a new position, not a
+  // new parser.
+  //
+  // SEAM, and why here specifically: after the COUNT(DISTINCT …) mask and the
+  // literal mask, before the three rewrite passes below.
+  //   - AFTER the COUNT(DISTINCT) mask: a CASE nested inside a
+  //     `COUNT(DISTINCT (CASE ...))` argument is already gone from `expr` at
+  //     this point — pulled out into `cd.args` as an opaque digit sentinel —
+  //     so this scan never sees it. It gets its own fully independent
+  //     recursive `lookConvertExpression` call later, inside
+  //     `_unmaskCountDistinct`, which runs this same seam again on that
+  //     shorter argument string. Scanning for CASE before this mask ran would
+  //     mean trying to bound a CASE that is not actually free-standing here.
+  //   - AFTER the literal mask: a string literal inside the CASE span (`THEN
+  //     'a' ELSE 'b'`) must not be mistaken for CASE-shaped keyword text, and
+  //     the extracted span needs to be restored to real (single-quoted) SQL
+  //     via `_restoreRawLiterals` before it is handed to `lookConvertCase`,
+  //     which does its own literal masking/finalizing independently.
+  //   - BEFORE the three passes: a converted `If(...)` is masked out here
+  //     too (EOT/ENQ sentinel), so passes 1-3 see only inert sentinel text in
+  //     its place, never raw CASE/WHEN/THEN/END for pass 1/3's identifier
+  //     regexes to mishandle.
+  //
+  // MODE 'leave-raw', not convertLeaf's 'abort' default: this function
+  // returns `string`, not `string | null` — it cannot refuse (requirement 4).
+  // A span that fails to parse is left EXACTLY as found and the rest of the
+  // expression still converts around it (requirement 3); `hasResidualCaseKeyword`
+  // on the final output is the honest signal that a span did not come through.
+  const ec = _convertNestedCases(expr, lits, 'leave-raw', cd.args);
+  // 'leave-raw' mode never returns null (see _convertNestedCases) — the `!`
+  // reflects that contract, not an unchecked assumption.
+  expr = ec!.text;
+
   // 1. Map SQL function names to Sigma equivalents
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\s*(?=\()/gi, (match, fn) => {
     const upper = fn.toUpperCase();
@@ -770,6 +880,17 @@ export function lookConvertExpression(expr: string): string {
     return lookColRef(match);
   });
 
+  // Unmask in mirror order relative to how the three masks were applied
+  // above (CD mask -> literal mask -> CASE mask): CASE splice first, since it
+  // was masked LAST / is the innermost layer. This is more than cosmetic
+  // symmetry — a converted CASE branch can itself contain an as-yet-unmasked
+  // COUNT(DISTINCT) sentinel (e.g. `CASE WHEN (COUNT(DISTINCT [Id]) = 0) ...`
+  // masks the DISTINCT call before the CASE scan ever runs, so the sentinel
+  // rides along inertly inside `lookConvertCase`'s recursive output). Splicing
+  // the CASE result back in FIRST is what surfaces that inner sentinel so the
+  // `_unmaskCountDistinct` call below — which must run last, since it was
+  // masked first / is the outermost layer — can find and convert it.
+  expr = _spliceNestedCases(expr, ec!.blocks);
   return _unmaskCountDistinct(_unmaskLiterals(expr, lits), cd.args).trim();
 }
 

@@ -499,6 +499,160 @@ test('_isBalanced backstop alone catches a bracket ref containing a literal unma
   assert.equal(lookConvertCase('CASE WHEN [Revenue (USD] > 1 THEN 1 ELSE 2 END'), null);
 });
 
+// ── Task 4c: convert CASE spans EMBEDDED in a larger expression ────────────
+// lookSqlToSigmaRules anchors its CASE pattern at start-of-string
+// (`/^CASE\b/i`). A formula whose OUTER construct is arithmetic or an
+// aggregate — with the CASE *inside* it — never matches that pattern, falls
+// through to lookConvertExpression, which (pre-task-4c) had no CASE
+// awareness at all: raw CASE/WHEN/THEN/END text survived embedded in
+// otherwise-converted output. Measured at 16/74 (22%) of the live corpus —
+// see task-4c-brief.md. lookConvertExpression now runs task-4b's
+// `_convertNestedCases`/`_scanCase` machinery itself, in a 'leave-raw' mode:
+// a span that parses converts to `If(...)` and the rest of the (already
+// mechanically-converted) expression proceeds through passes 1-3 normally; a
+// span that does NOT parse is left exactly as found, and
+// `hasResidualCaseKeyword` on the final output is the honest signal.
+//
+// All five inputs below verified RED at 1a47959 (direct probe against the
+// unmodified src/formulas.ts, via a one-off tsx script — this exact test
+// block did not exist yet):
+//   lookConvertExpression('SUM((CASE WHEN [Age] = 1 THEN 1 ELSE 0 END))')
+//     -> 'Sum((CASE WHEN [Age] = 1 THEN 1 ELSE 0 END))'
+//   lookConvertExpression('100 * (CASE WHEN [Age] = 1 THEN 1 ELSE 0 END)')
+//     -> '100 * (CASE WHEN [Age] = 1 THEN 1 ELSE 0 END)'
+//   lookConvertExpression('(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) / COUNT([Name])')
+//     -> '(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) / Count([Name])'
+//   lookConvertExpression('(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)')
+//     -> '(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)'
+//   lookConvertExpression("100 * (CASE WHEN (COUNT(DISTINCT [Id]) = 0) THEN 'a' ELSE 'b' END)")
+//     -> '100 * (CASE WHEN (CountDistinct([Id]) = 0) THEN "a" ELSE "b" END)'
+// (all five: hasResidualCaseKeyword(out) === true at 1a47959)
+
+test('an aggregate wrapping a CASE converts the embedded span (task-4c)', () => {
+  const out = lookConvertExpression('SUM((CASE WHEN [Age] = 1 THEN 1 ELSE 0 END))');
+  assert.equal(out, 'Sum((If([Age] = 1, 1, 0)))');
+  assert.equal(hasResidualCaseKeyword(out), false);
+});
+
+test('arithmetic wrapping a CASE on the LEFT of an operator converts the embedded span (task-4c)', () => {
+  const out = lookConvertExpression('100 * (CASE WHEN [Age] = 1 THEN 1 ELSE 0 END)');
+  assert.equal(out, '100 * (If([Age] = 1, 1, 0))');
+  assert.equal(hasResidualCaseKeyword(out), false);
+});
+
+test('arithmetic wrapping a CASE on the RIGHT of an operator converts the embedded span (task-4c)', () => {
+  const out = lookConvertExpression('(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) / COUNT([Name])');
+  assert.equal(out, '(If([Age] = 1, 1, 0)) / Count([Name])');
+  assert.equal(hasResidualCaseKeyword(out), false);
+});
+
+// Requirement 3 ("fail honestly, span by span"), made discriminating: TWO
+// embedded CASE spans in one expression, one well-formed and one the
+// unsupported "simple CASE" form (`CASE expr WHEN val THEN ...` —
+// lookConvertCase deliberately rejects this shape, task-4b). A test with only
+// the unparseable span would be a tautology (baseline ALSO leaves an
+// unparseable span untouched, since baseline does nothing to ANY CASE) — this
+// version proves the discriminating behavior requirement 3 actually asks for:
+// the GOOD span converts, the BAD span stays raw, in the SAME output.
+// Verified red at 1a47959 (baseline converts NEITHER span):
+//   lookConvertExpression('(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)')
+//     -> '(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)'
+test('a CASE span that cannot parse is left raw while a sibling CASE in the same expression still converts (task-4c requirement 3)', () => {
+  const sql = '(CASE WHEN [Age] = 1 THEN 1 ELSE 0 END) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)';
+  const out = lookConvertExpression(sql);
+  assert.equal(out, '(If([Age] = 1, 1, 0)) + (CASE [Region] WHEN 1 THEN 2 ELSE 3 END)');
+  assert.ok(hasResidualCaseKeyword(out), 'the unparseable sibling span must still be visible to hasResidualCaseKeyword');
+});
+
+// Attention item 1 (ordering / mutual-recursion proof): a CASE span containing
+// BOTH a string literal AND a COUNT(DISTINCT ...) call, embedded under
+// arithmetic so it must go through lookConvertExpression's NEW seam (not
+// lookSqlToSigmaRules' anchored pattern 4). This is the combination that
+// exposed a real bug while implementing this task: lookConvertExpression
+// masks COUNT(DISTINCT ...) BEFORE the embedded-CASE scan runs (per the
+// brief's specified ordering), so the extracted CASE span can carry an
+// OUTER-scope CD sentinel (STX/ETX) embedded inside it. The first
+// implementation restored only the literal mask before handing the span to
+// lookConvertCase (mirroring task-4b's existing _restoreRawLiterals use) and
+// left the CD sentinel in place — which leaked into a freshly-scoped
+// recursive lookConvertExpression call whose OWN _unmaskCountDistinct indexed
+// into its OWN (unrelated, empty) args array with the outer call's index,
+// throwing `Cannot read properties of undefined (reading 'trim')` in
+// stripOuterParens. Caught by hand-tracing this exact input before it ever
+// reached a committed test (see task-4c-report.md) — fixed by adding
+// `_restoreRawCountDistinct`, which restores a CD sentinel to genuine raw
+// `COUNT(DISTINCT <arg>)` SQL text (mirroring `_restoreRawLiterals`) before
+// the span is handed to lookConvertCase, so the inner recursive call
+// re-discovers it as ordinary SQL and masks/unmasks it entirely within its
+// own call frame. This test pins the fix and is the requirement-1 "verify
+// with a CASE span that contains BOTH a string literal AND a COUNT(DISTINCT
+// ...)" evidence.
+test('a CASE span containing both a string literal and COUNT(DISTINCT ...) converts without cross-scope sentinel collision (task-4c attention item 1)', () => {
+  const out = lookConvertExpression("100 * (CASE WHEN (COUNT(DISTINCT [Id]) = 0) THEN 'a' ELSE 'b' END)");
+  assert.equal(out, '100 * (If(CountDistinct([Id]) = 0, "a", "b"))');
+  assert.equal(hasResidualCaseKeyword(out), false);
+});
+
+// The real two-level corpus example quoted in task-4c-brief.md (bm-corpus.json
+// item 3 — normalizeDomo's backtick->bracket transform applied, matching how
+// the corpus test itself feeds formulas through). A CASE (dividing the whole
+// expression) whose ELSE branch itself aggregates a SECOND, nested CASE via
+// SUM(...) — the exact "aggregate wrapping a CASE, nested inside an outer
+// CASE that itself never reaches lookSqlToSigmaRules's anchor" shape the brief
+// opens with. Verified red at 1a47959:
+//   lookSqlToSigmaRules(n) -> null (starts with "(", not "CASE" or a bare
+//     arithmetic identifier — pattern 4 and pattern 5 both miss it, exactly
+//     as task-4c-brief.md describes)
+//   lookConvertExpression(n) ->
+//     '((CASE  WHEN (Count([Name]) = 0) THEN 0 ELSE Sum((CASE  WHEN ' +
+//     '([IsClosed] = "true") THEN 1 ELSE 0 END )) END ) / Count([Name]))'
+//   (raw CASE/WHEN/THEN/END survives twice; function names title-cased around it)
+test('the real two-level corpus example (bm-corpus item 3, task-4c-brief.md) converts end to end, pinned to its exact expected output (task-4c)', () => {
+  const n = "((CASE  WHEN (COUNT([Name]) = 0) THEN 0 ELSE SUM((CASE  WHEN ([IsClosed] = 'true') THEN 1 ELSE 0 END )) END ) / COUNT([Name]))";
+  assert.equal(lookSqlToSigmaRules(n), null, 'must still fall through to lookConvertExpression — this pins WHY the fix belongs there');
+  const out = lookConvertExpression(n);
+  assert.equal(
+    out,
+    '((If(Count([Name]) = 0, 0, Sum((If([IsClosed] = "true", 1, 0) ))) ) / Count([Name]))'
+  );
+  assert.equal(hasResidualCaseKeyword(out), false);
+});
+
+// Requirement 2 (recursion must terminate): 300 levels of arithmetic each
+// wrapping a CASE around the previous level (`100 * (CASE WHEN (<inner>) = 1
+// THEN 1 ELSE 2 END)`, 300 deep). Every level requires ONE hop of the mutual
+// recursion lookConvertExpression -> _convertNestedCases -> lookConvertCase
+// -> convertLeaf -> lookConvertExpression on the (strictly shorter) inner
+// condition. If the termination argument in task-4c-report.md were wrong —
+// e.g. if a span's `rawSpan` were not actually shorter than its container, or
+// if the two functions' recursive calls formed a cycle rather than a
+// well-founded descent — this either hangs or throws
+// "Maximum call stack size exceeded" (confirmed experimentally: an otherwise
+// -identical 2000-level version DOES throw that exact error against Node's
+// default stack, well beyond any real Domo Beast Mode's nesting depth — the
+// live corpus never exceeds 2-3 levels). 300 levels completes in well under a
+// second, is fully converted (no residual CASE keyword), and is
+// paren/bracket-balanced.
+test('300 levels of CASE-inside-arithmetic-inside-CASE terminates without stack exhaustion (task-4c requirement 2)', () => {
+  const DEPTH = 300;
+  let expr = '[Amount] = 1';
+  for (let i = 0; i < DEPTH; i++) {
+    expr = `100 * (CASE WHEN (${expr}) THEN 1 ELSE 2 END)`;
+  }
+  const start = Date.now();
+  const out = lookConvertExpression(expr);
+  assert.ok(Date.now() - start < 5000, 'must not hang');
+  assert.ok(out.startsWith('100 * (If(100 * (If('), `unexpected shape at depth ${DEPTH}: ${out.slice(0, 60)}`);
+  assert.equal(hasResidualCaseKeyword(out), false, 'every level must have converted, not just the outermost');
+  let paren = 0, bracket = 0;
+  for (const c of out) {
+    if (c === '(') paren++; else if (c === ')') paren--;
+    else if (c === '[') bracket++; else if (c === ']') bracket--;
+  }
+  assert.equal(paren, 0, 'parens must balance at full depth');
+  assert.equal(bracket, 0, 'brackets must balance at full depth');
+});
+
 // ── task-5: A7 — warn instead of inventing a Sigma function name ────────────
 // The step-1 fallback in lookConvertExpression title-cases any unrecognised name
 // (`fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase()`), so `AddDate(` silently
