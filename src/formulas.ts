@@ -433,7 +433,11 @@ function _convertNestedCases(s: string, lits: string[]): { text: string; blocks:
 }
 
 function _spliceNestedCases(s: string, blocks: string[]): string {
-  return s.replace(_NESTED_CASE_UNMASK_RE, (_m, i) => blocks[Number(i)]);
+  // `?? _m` is defensive, not reachable from real SQL: every sentinel this
+  // masks is one we just minted from `blocks.push(...)`, so the index is
+  // always in range. Guards only a crafted/adversarial input containing the
+  // literal sentinel bytes (round-1 review, bundled minor).
+  return s.replace(_NESTED_CASE_UNMASK_RE, (_m, i) => blocks[Number(i)] ?? _m);
 }
 
 /**
@@ -507,6 +511,12 @@ export function lookConvertCase(expr: string): string | null {
 
   const convertLeaf = (maskedChunk: string, allowNumber: boolean): string | null => {
     const v = maskedChunk.trim();
+    // An empty chunk — `WHEN THEN`, `THEN ELSE`, `ELSE END` with nothing
+    // between them — is not a value or condition, it's a hole. Splicing it in
+    // anyway produces exactly the shredded-but-balanced output this whole
+    // task exists to prevent: `If(, 1, 2)`. Fail honestly instead (round-1
+    // review finding 1, task-4b).
+    if (!v) return null;
     // NOTE: string literals are deliberately NOT special-cased here —
     // lookConvertExpression masks/unmasks literals itself, emitting Sigma's
     // required double-quoted form ("West", not 'West'). A literal
@@ -523,7 +533,12 @@ export function lookConvertCase(expr: string): string | null {
     if (nc === null) return null;
     const raw = _restoreRawLiterals(nc.text, lits);
     const converted = lookConvertExpression(raw);
-    return _spliceNestedCases(converted, nc.blocks);
+    const spliced = _spliceNestedCases(converted, nc.blocks);
+    // A non-empty chunk that strips/converts down to nothing — `()` is the
+    // live case — is the same hole by another route; catch it here too
+    // (round-1 review finding 1).
+    if (!spliced.trim()) return null;
+    return spliced;
   };
 
   let result: string | null = elseVal !== null ? convertLeaf(elseVal, true) : 'null';
@@ -624,7 +639,11 @@ function _unmaskLiterals(s: string, lits: string[]): string {
 // finalized early to "AK" comes back "[Ak]" -- a real regression this helper
 // fixes, caught red by the existing A3/A6 and sqp1 mask-ordering tests.
 function _restoreRawLiterals(s: string, lits: string[]): string {
-  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => lits[Number(i)]);
+  // ?? _m is defensive for the same reason as _spliceNestedCases's guard:
+  // every sentinel here is one _maskLiterals just minted, so the index is
+  // always in range in practice -- this only guards a crafted input carrying
+  // the literal sentinel bytes (round-1 review, bundled minor).
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => lits[Number(i)] ?? _m);
 }
 
 // COUNT(DISTINCT x) has no single-token equivalent: Sigma spells it CountDistinct(x).
@@ -656,10 +675,39 @@ function _maskCountDistinct(s: string): { masked: string; args: string[] } {
   return { masked: out + s.slice(last), args };
 }
 
+/**
+ * True if `s` still contains a bare CASE/WHEN/THEN/END keyword outside a
+ * `[bracketed identifier]` or a "..."/'...' literal -- the signal that a CASE
+ * argument failed to parse and fell through to `lookConvertExpression`'s
+ * mechanical passes, which leave SQL keywords sitting in the output as
+ * literal text rather than translating them (task-4b round-1 review finding
+ * 2: `_unmaskCountDistinct`'s `?? lookConvertExpression(raw)` fallback, and
+ * `tools.ts`'s `convert_sql_to_sigma_formula` fallback, both need this same
+ * check -- `lookml.ts` already has an equivalent, less precise one). Masks
+ * brackets/literals first -- same idiom `formulaHasUntranslatableFragment`
+ * uses for the Tableau path -- so a column legitimately named `[End]` or a
+ * literal 'the end' never false-positives.
+ */
+export function hasResidualCaseKeyword(s: string): boolean {
+  const masked = s.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]]*\]/g, ' ');
+  return /\b(?:CASE|WHEN|THEN|END)\b/i.test(masked);
+}
+
 function _unmaskCountDistinct(s: string, args: string[]): string {
   return s.replace(/(\d+)/g, (_m, i) => {
     const raw = stripOuterParens(args[Number(i)]);
-    return `CountDistinct(${lookSqlToSigmaRules(raw) ?? lookConvertExpression(raw)})`;
+    const viaRules = lookSqlToSigmaRules(raw);
+    const converted = viaRules ?? lookConvertExpression(raw);
+    // The argument failed to parse via the rule engine (almost certainly a
+    // CASE, the only construct that can reach here and still carry a bare
+    // keyword) and the mechanical fallback left WHEN/THEN/END sitting in the
+    // text -- the exact shredding this task exists to prevent, one level
+    // removed. Leave the whole call as recognizable, untranslated raw SQL
+    // rather than dressing broken text up as a converted CountDistinct(...).
+    if (viaRules === null && hasResidualCaseKeyword(converted)) {
+      return `COUNT(DISTINCT ${raw})`;
+    }
+    return `CountDistinct(${converted})`;
   });
 }
 

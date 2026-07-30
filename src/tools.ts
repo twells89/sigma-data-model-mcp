@@ -24,7 +24,7 @@ import { convertCognosReportToSigma } from './cognos-report.js';
 import { convertCubeToSigma } from './cube.js';
 import { convertTableauPrepToSigma } from './tableau-prep.js';
 import { convertQuickSightToSigma } from './quicksight.js';
-import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression } from './formulas.js';
+import { lookSqlToSigmaRules, tableauFormulaToSigma, lookConvertExpression, hasResidualCaseKeyword } from './formulas.js';
 import { DATA_MODEL_SCHEMA_SUMMARY, sigmaDisplayName } from './sigma-ids.js';
 import { registerResources } from './resources.js';
 
@@ -459,10 +459,25 @@ column refs (SNAKE_CASE → [Title Case]), IN lists, and more.`,
           return { content: [{ type: 'text' as const, text: JSON.stringify({ sigmaFormula: result, converted: true }, null, 2) }] };
         }
         const fallback = lookConvertExpression(sql);
+        // lookConvertExpression cannot itself fail (its contract is string ->
+        // string), so a CASE the rule engine couldn't parse falls through to
+        // its mechanical passes, which leave raw WHEN/THEN/END sitting in the
+        // output as literal text rather than translating them. Report that
+        // honestly instead of claiming `converted: true` on residual raw SQL
+        // (task-4b round-1 review finding 2). Task 5 adds a proper
+        // warnings[] array to this response — not building that here, just
+        // not mislabeling broken output as converted.
+        const fallbackConverted = !hasResidualCaseKeyword(fallback);
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ sigmaFormula: fallback, converted: true, note: 'Used general expression converter — review for accuracy' }, null, 2),
+            text: JSON.stringify({
+              sigmaFormula: fallback,
+              converted: fallbackConverted,
+              note: fallbackConverted
+                ? 'Used general expression converter — review for accuracy'
+                : 'Could not fully translate — output still contains raw CASE/WHEN/THEN SQL syntax, do not use as-is',
+            }, null, 2),
           }],
         };
       } catch (e: any) {

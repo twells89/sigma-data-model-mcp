@@ -4,7 +4,7 @@
 // (backtick identifiers → [brackets]).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase } from './formulas.js';
+import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression, lookConvertCase, hasResidualCaseKeyword } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
   assert.equal(stripOuterParens('(x)'), 'x');
@@ -343,19 +343,22 @@ test('a COUNT(DISTINCT ...) nested two levels deep inside another one converts r
 test('the real corpus example (bm-corpus item 11) is never shredded — converts cleanly or returns null, never with unbalanced parens (task-4b)', () => {
   const sql = "(CASE  WHEN (COUNT((CASE  WHEN ((DATEDIFF(current_date(),[created_on]) - 1) <= 30) THEN [id] END )) = 0) THEN 0 ELSE (COUNT((CASE  WHEN (([status] = 'Closed') AND ((DATEDIFF(current_date(),[created_on]) - 1) <= 30)) THEN [id] END )) / COUNT((CASE  WHEN ((DATEDIFF(current_date(),[created_on]) - 1) <= 30) THEN [id] END ))) END )";
   const out = lookSqlToSigmaRules(sql);
-  assert.notEqual(out, undefined);
-  if (out !== null) {
-    assert.ok(!out.includes('END )'), `must not contain shredded "END )": ${out}`);
-    // no bare CASE-structure keyword may survive outside a Sigma string literal
-    assert.ok(!/\b(CASE|WHEN|THEN)\b/i.test(out.replace(/"(?:[^"\\]|\\.)*"/g, '')), `must not leave bare CASE-structure keywords in the output: ${out}`);
-    let paren = 0, bracket = 0;
-    for (const c of out) {
-      if (c === '(') paren++; else if (c === ')') paren--;
-      else if (c === '[') bracket++; else if (c === ']') bracket--;
-    }
-    assert.equal(paren, 0, `paren delta must be 0, got ${paren}: ${out}`);
-    assert.equal(bracket, 0, `bracket delta must be 0, got ${bracket}: ${out}`);
+  // A regression back to `null` would previously slip through green here,
+  // since every check below was wrapped in `if (out !== null)` — this corpus
+  // formula is fully parseable and must convert, not merely "convert or
+  // null" (round-1 review, bundled minor). It DOES convert cleanly (verified
+  // below), so this is a hard, unconditional assertion, not a loosened one.
+  assert.notEqual(out, null, 'this formula is parseable and must not regress to null');
+  assert.ok(!out!.includes('END )'), `must not contain shredded "END )": ${out}`);
+  // no bare CASE-structure keyword may survive outside a Sigma string literal
+  assert.ok(!/\b(CASE|WHEN|THEN)\b/i.test(out!.replace(/"(?:[^"\\]|\\.)*"/g, '')), `must not leave bare CASE-structure keywords in the output: ${out}`);
+  let paren = 0, bracket = 0;
+  for (const c of out!) {
+    if (c === '(') paren++; else if (c === ')') paren--;
+    else if (c === '[') bracket++; else if (c === ']') bracket--;
   }
+  assert.equal(paren, 0, `paren delta must be 0, got ${paren}: ${out}`);
+  assert.equal(bracket, 0, `bracket delta must be 0, got ${bracket}: ${out}`);
 });
 
 // A nested CASE inside an aggregate argument (COUNT((CASE ... END)) = 0), the
@@ -421,4 +424,76 @@ test('a CASE with a THEN but no END returns null instead of fabricating a result
 test('a malformed CASE with no THEN-value and no END returns null, does not throw, does not hang (task-4b, non-regression pin)', () => {
   assert.equal(lookConvertCase('CASE WHEN [X] = 1 THEN'), null);
   assert.equal(lookSqlToSigmaRules('CASE WHEN [X] = 1 THEN'), null);
+});
+
+// ── task-4b round-1 review findings ─────────────────────────────────────────
+
+// FINDING 1 (Important, real regression): convertLeaf never rejected an empty
+// cond/val chunk — `WHEN THEN`, `THEN ELSE`, `ELSE END` with nothing between
+// them, or a value that strips down to nothing (`()`) — so `_isBalanced` (which
+// only counts parens/brackets) happily passed a hole spliced straight into the
+// output. This is precisely the shredded-but-plausible failure mode task-4b
+// exists to prevent, and a real regression: at 57bdd4e this specific input
+// returned null (honest); at ccbafe6 it returned a balanced, wrong string.
+// Verified red at ccbafe6:
+//   lookConvertCase('CASE WHEN THEN 1 ELSE 2 END') -> 'If(, 1, 2)'
+test('an empty WHEN-condition returns null instead of splicing a hole into the output (task-4b round-1 finding 1)', () => {
+  assert.equal(lookConvertCase('CASE WHEN THEN 1 ELSE 2 END'), null);
+});
+
+// Three siblings in the same class. NOT regressions — 57bdd4e already produced
+// different (and equally wrong) garbage for each of these — but they share the
+// exact defect this finding's fix closes, so they're pinned here too.
+// Verified red at ccbafe6:
+//   lookConvertCase("CASE WHEN [A]=1 THEN ELSE 2 END") -> 'If([[A]]=1, , 2)'
+//   lookConvertCase("CASE WHEN [A]=1 THEN 1 ELSE END") -> 'If([[A]]=1, 1, )'
+//   lookConvertCase("CASE WHEN () THEN 1 ELSE 2 END")  -> 'If(, 1, 2)'
+// (57bdd4e produced 'If([[A]]=1, ELSE 2, 2)', 'If([[A]]=1, 1 ELSE, null)', and
+// 'If(, 1, 2)' respectively for these three — garbage on both sides, just
+// different garbage, confirming these are not new regressions.)
+test('an empty THEN-value, empty ELSE-value, and a paren-only cond that strips to nothing all return null (task-4b round-1 finding 1)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [A]=1 THEN ELSE 2 END'), null);
+  assert.equal(lookConvertCase('CASE WHEN [A]=1 THEN 1 ELSE END'), null);
+  assert.equal(lookConvertCase('CASE WHEN () THEN 1 ELSE 2 END'), null);
+});
+
+// FINDING 2 (Important): _unmaskCountDistinct's `lookSqlToSigmaRules(raw) ??
+// lookConvertExpression(raw)` fallback — the very recursion pattern task-4b's
+// own nested-CASE handling cited as precedent — did not check whether the
+// fallback left raw CASE/WHEN/THEN/END text behind. Task-4b routes MORE CASE
+// shapes to null (e.g. the "simple CASE" form `CASE [Region] WHEN 1 THEN ...`,
+// which this parser deliberately does not support), so a COUNT(DISTINCT ...)
+// wrapping one of those now got dressed up as a plausible-looking
+// `CountDistinct(CASE ...)` — a converted-looking call around raw,
+// untranslated SQL.
+// Verified red at ccbafe6:
+//   lookConvertExpression('COUNT(DISTINCT (CASE [Region] WHEN 1 THEN 2 ELSE 3 END))')
+//     -> 'CountDistinct(CASE [Region] WHEN 1 THEN 2 ELSE 3 END)'
+test('a CASE argument to COUNT(DISTINCT ...) that fails to parse is left as raw SQL, not dressed up as a converted CountDistinct(...) call (task-4b round-1 finding 2)', () => {
+  const out = lookConvertExpression('COUNT(DISTINCT (CASE [Region] WHEN 1 THEN 2 ELSE 3 END))');
+  assert.ok(!/CountDistinct\s*\(/.test(out), `must not wrap unparsed CASE text as if converted: ${out}`);
+  assert.ok(/\bCASE\b/i.test(out), `raw CASE text should still be visibly present, not silently dropped: ${out}`);
+});
+
+// hasResidualCaseKeyword itself: must mask brackets/literals first so a
+// legitimately-named [End] column or an 'the end' literal never false-positives
+// — the same masking idiom formulaHasUntranslatableFragment already uses for
+// the Tableau path. Non-regression pin (this is a brand new helper — nothing
+// to be red against).
+test('hasResidualCaseKeyword does not false-positive on a legitimate [End] column ref or a literal containing "end" (task-4b round-1 finding 2)', () => {
+  assert.equal(hasResidualCaseKeyword('If([End] = 1, 1, 0)'), false);
+  assert.equal(hasResidualCaseKeyword('[X] = "the end"'), false);
+  assert.equal(hasResidualCaseKeyword('CASE [Region] WHEN 1 THEN 2 ELSE 3 END'), true);
+});
+
+// BUNDLED MINOR: the `_isBalanced` backstop (requirement 4) is load-bearing
+// but was untested on its own — every other test that reaches null does so via
+// an earlier structural check. `[Revenue (USD]` is a well-formed bracket span
+// (atomic, per _scanCase/_maskLiterals), so the CASE structure parses cleanly;
+// the stray `(` is DATA inside the identifier, but `_isBalanced` counts every
+// paren in the final string globally (it does not skip bracket interiors), so
+// this is the one input where every structural check passes and only the
+// balance backstop saves it. Pinning so it cannot silently regress.
+test('_isBalanced backstop alone catches a bracket ref containing a literal unmatched paren (task-4b round-1 bundled minor)', () => {
+  assert.equal(lookConvertCase('CASE WHEN [Revenue (USD] > 1 THEN 1 ELSE 2 END'), null);
 });
