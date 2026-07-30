@@ -333,7 +333,11 @@ export function lookConvertCase(expr: string): string | null {
 
   const convertVal = (v: string): string => {
     v = v.trim();
-    if (/^'[^']*'$/.test(v)) return v;        // string literal
+    // NOTE: string literals are deliberately NOT special-cased here (no longer
+    // `return v` raw) — lookConvertExpression now masks/unmasks literals itself,
+    // emitting Sigma's required double-quoted form ("West", not 'West'). A
+    // literal short-circuit here would silently re-introduce single-quoted
+    // SQL-style output for every CASE-THEN/ELSE string value (A6).
     if (/^-?\d+(\.\d+)?$/.test(v)) return v;  // number literal
     return lookConvertExpression(v);
   };
@@ -356,8 +360,67 @@ export function lookConvertMathExpr(expr: string): string {
   return lookConvertExpression(expr);
 }
 
+// Rewriting passes below (function mapping, IN-lists, bare-identifier bracketing) are
+// regex-driven and cannot tell code from data. Masking string literals out before
+// they run — and restoring them after — is what stops `'AK'` becoming `'[Ak]'`.
+//
+// The sentinel is NUL + digits + SOH, and deliberately contains NO letters: a
+// letter-bearing placeholder is itself a bare ALL-CAPS identifier, so pass 3 brackets
+// it — verified, a ` L0 ` sentinel comes back as `[L 0]`. Bare digits are skipped by
+// pass 3's own `/^\d+$/` guard, and control characters cannot occur in SQL.
+const _LIT_RE = /'(?:[^']|'')*'/g;
+
+// A `[bracketed identifier]` span is atomic: an apostrophe inside it
+// (`[Manager's Approval]`) is part of the identifier, not a string-literal
+// delimiter. Running `_LIT_RE` naively over the whole string would treat that
+// apostrophe as an opening quote and swallow everything up to the NEXT real
+// quote — corrupting both the identifier and the literal that followed it
+// (e.g. `[Manager's Approval] = 'AK'` masked the *wrong* span, then unmasked
+// to `[Manager"s Approval] = "[Ak]'` — same class of bug Task 1's review
+// caught in stripOuterParens). Bracketed spans are skipped whole below;
+// `_LIT_RE` only ever runs against text that is outside of `[...]`.
+function _maskLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      const end = close === -1 ? s.length : close + 1;
+      out += s.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (s[i] === "'") {
+      _LIT_RE.lastIndex = i;
+      const m = _LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed to a
+// single apostrophe, and any embedded double quote backslash-escaped. Matches the
+// live-verified Tableau path (see the `'x'` → `"x"` rewrite in tableauFormulaToSigma).
+function _unmaskLiterals(s: string, lits: string[]): string {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
+    const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
+    return `"${inner}"`;
+  });
+}
+
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
+  const { masked, lits } = _maskLiterals(expr);
+  expr = masked;
+
   // 1. Map SQL function names to Sigma equivalents
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\s*(?=\()/gi, (match, fn) => {
     const upper = fn.toUpperCase();
@@ -377,7 +440,7 @@ export function lookConvertExpression(expr: string): string {
     return lookColRef(match);
   });
 
-  return expr.trim();
+  return _unmaskLiterals(expr, lits).trim();
 }
 
 /**

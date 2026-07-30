@@ -4,7 +4,7 @@
 // (backtick identifiers → [brackets]).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma } from './formulas.js';
+import { stripOuterParens, lookSqlToSigmaRules, tableauTextConcatToSigma, lookConvertExpression } from './formulas.js';
 
 test('stripOuterParens unwraps a whole-expression wrapper, repeatedly (jva2)', () => {
   assert.equal(stripOuterParens('(x)'), 'x');
@@ -56,4 +56,41 @@ test('tableauTextConcatToSigma resolves a paren-wrapped bracket ref with an apos
   const isTextRef = (name: string) => name === "Manager's Approval";
   const out = tableauTextConcatToSigma("([Manager's Approval]) + [OtherNum]", isTextRef);
   assert.equal(out, "([Manager's Approval]) & [OtherNum]");
+});
+
+test('ALL-CAPS text inside a string literal is NOT rewritten as a column ref (A3)', () => {
+  // Before the fix this produced [State] = '[Ak]' — silent data corruption.
+  assert.equal(lookConvertExpression("[State] = 'AK'"), '[State] = "AK"');
+});
+
+test('string literals are emitted double-quoted, Sigma style (A6)', () => {
+  assert.equal(lookConvertExpression("'West'"), '"West"');
+  // an embedded double quote must be escaped, not emitted raw
+  assert.equal(lookConvertExpression(`'say "hi"'`), '"say \\"hi\\""');
+  // SQL's doubled-single-quote escape unescapes to one apostrophe
+  assert.equal(lookConvertExpression("'it''s'"), '"it\'s"');
+});
+
+test('a CASE over string literals converts without corrupting them (A3+A6)', () => {
+  const sql = "(CASE WHEN [Billing State] = 'AK' THEN 'West' ELSE 'Other' END)";
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If([Billing State] = "AK", "West", "Other")'
+  );
+});
+
+// Review finding (A3/A6 masking): an apostrophe inside a [bracketed identifier]
+// (e.g. [Manager's Approval]) is part of the identifier, not a string-literal
+// delimiter — the same hazard Task 1's review caught in stripOuterParens. A
+// naive _maskLiterals regex run over the whole string treats that apostrophe as
+// an opening quote and swallows everything up to the NEXT real quote, which
+// corrupts BOTH the identifier and the literal that followed it: before the
+// fix, `[Manager's Approval] = 'AK'` masked/unmasked into
+// `[Manager"s Approval] = "[Ak]'` instead of leaving the identifier alone and
+// converting the literal to Sigma double-quoted form.
+test("lookConvertExpression does not mis-mask a literal when an apostrophe sits inside a [bracketed identifier] (A3+A6 review)", () => {
+  assert.equal(
+    lookConvertExpression("[Manager's Approval] = 'AK'"),
+    '[Manager\'s Approval] = "AK"'
+  );
 });
