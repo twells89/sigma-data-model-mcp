@@ -118,3 +118,34 @@ test('a trailing unterminated [ with no literal after it is left alone (round 1 
 test('an unterminated [ followed by two literals still masks both (round 1 review)', () => {
   assert.equal(lookConvertExpression("[Foo = 'A' OR 'B'"), '[Foo = "A" OR "B"');
 });
+
+test('SQL keywords before a paren stay infix, not function calls (A4)', () => {
+  // Before: ([A] > 1) And([B] < 2) — and And()/Or() as CALLS silently null rows in Sigma.
+  assert.equal(lookConvertExpression('(A > 1) AND (B < 2)'), '([A] > 1) AND ([B] < 2)');
+  assert.equal(lookConvertExpression('(A > 1) OR (B < 2)'), '([A] > 1) OR ([B] < 2)');
+  assert.equal(lookConvertExpression('NOT (A > 1)'), 'NOT ([A] > 1)');
+});
+
+test('zero-arg function maps do not double their parens (A5)', () => {
+  assert.equal(lookConvertExpression('CURRENT_DATE()'), 'Today()');   // was Today()()
+  assert.equal(lookConvertExpression('GETDATE()'), 'Now()');          // was Now()()
+});
+
+// Attention item 1 (task-3 review): DISTINCT is in the keyword list, so it must
+// never be treated as a callable when it happens to sit directly before a paren
+// (the classic `SELECT DISTINCT(col)` style). This must NOT interfere with
+// Task 4's separate `COUNT(DISTINCT x)` handling: in that shape DISTINCT is
+// followed by a space then the argument, never directly by '(', so pass 1 (the
+// name-before-paren regex) never matches DISTINCT there regardless of whether
+// it's in the keyword list.
+test('DISTINCT directly before a paren is left as literal text, not mapped to a bogus Distinct() call (A4 keyword list)', () => {
+  assert.equal(lookConvertExpression('DISTINCT(ORDER_ID)'), 'DISTINCT([Order Id])');
+});
+
+// Attention item 2 (task-3 review): confirm excluding IN from pass 1's callable
+// mapping does not break pass 2's separate `EXPR IN (a,b,c)` -> `In(...)` rewrite.
+// Pass 2 matches "IN" case-insensitively regardless of what pass 1 did to its
+// casing, so this must still produce Sigma's real In() call.
+test('IN is excluded from pass 1 callable mapping but pass 2 still rewrites it to In(...) (A4 keyword list)', () => {
+  assert.equal(lookConvertExpression('ORDER_ID IN (1, 2, 3)'), 'In([Order Id], 1, 2, 3)');
+});

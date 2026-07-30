@@ -422,6 +422,15 @@ function _unmaskLiterals(s: string, lits: string[]): string {
   });
 }
 
+// Reserved words are syntax, not callables. `AND (`, `WHEN (`, `NOT (` all look like
+// a function call to a name-before-paren regex; rewriting them to And()/When()/Not()
+// produces Sigma that silently returns null rows. DISTINCT is included for the
+// `SELECT DISTINCT(col)` style (DISTINCT directly before a paren) — it does NOT
+// interfere with `COUNT(DISTINCT x)`, since there DISTINCT is followed by a space
+// then its argument, never directly by '(', so this regex never matches it in that
+// shape regardless of list membership (see task-3 report for the full trace).
+const _SQL_KEYWORD_RE = /^(?:AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|BETWEEN|LIKE|AS|ON|BY|DISTINCT|TRUE|FALSE)$/i;
+
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
   const { masked, lits } = _maskLiterals(expr);
@@ -430,7 +439,13 @@ export function lookConvertExpression(expr: string): string {
   // 1. Map SQL function names to Sigma equivalents
   expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\s*(?=\()/gi, (match, fn) => {
     const upper = fn.toUpperCase();
-    return LOOK_FUNC_MAP[upper] || (fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase());
+    if (_SQL_KEYWORD_RE.test(upper)) return match;              // keyword, not a call
+    const mapped = LOOK_FUNC_MAP[upper];
+    // A map value may already carry its own parens (CURRENT_DATE -> 'Today()'). Only
+    // the NAME is being substituted here; the source's own '()' follows, so keeping
+    // the mapped parens yields 'Today()()'.
+    if (mapped) return mapped.endsWith('()') ? mapped.slice(0, -2) : mapped;
+    return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
   });
 
   // 2. Convert EXPR IN (a, b, c) → In(EXPR, a, b, c)
