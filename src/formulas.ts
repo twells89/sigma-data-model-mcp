@@ -1504,6 +1504,94 @@ function tableauCaseToSigma(f: string): string {
   });
 }
 
+// ── Tableau-specific literal masking ────────────────────────────────────────
+// tableauFormulaToSigma's function-name mapping (COUNT→CountIf, ZN→Coalesce,
+// TABLEAU_FUNC_MAP, …) and its keyword-casing passes (TRUE/FALSE/NULL/AND/
+// OR/NOT) scan the raw formula text with no idea that string literals exist —
+// live-reproduced: tableauFormulaToSigma("'See Count(Open Items) report'")
+// returned `"See CountIf(IsNotNull(Open Items)) report"`, rewriting the
+// LITERAL'S CONTENT — a value that reaches the customer's dashboard.
+//
+// This mirrors _maskLiterals/_unmaskLiterals (SQL/LookML half, above) but is
+// a separate, Tableau-specific variant, NOT a widened `_maskLiterals`:
+// `_LIT_RE` is single-quote-only ON PURPOSE — in SQL, `"foo"` is a quoted
+// IDENTIFIER, not a string, so widening it to double quotes would make the
+// SQL/LookML path treat quoted identifiers as data and corrupt THAT path
+// instead (it has extensive tests). Tableau accepts BOTH `'...'` and `"..."`
+// as string delimiters, so this variant has to handle both.
+//
+// Escaping: Tableau calculation syntax escapes an embedded quote with a
+// BACKSLASH (`'It\'s a test'`, `"She said \"hi\""`) — NOT SQL's doubled-quote
+// (`''`) convention. This isn't guesswork: two independent call sites already
+// in this file parse Tableau string literals this way — _isTextOperand's
+// literal check (`/^'(?:[^'\\]|\\.)*'$/`) just above, and
+// tableauParamSwitchToSigma's `when`-value unescape (`.replace(/\\(.)/g,
+// '$1')`). The masker below uses the same `(?:[^'\\]|\\.)*` shape.
+//
+// Same two properties as the SQL masker, preserved for the same reasons (see
+// _maskLiterals above): a `[bracketed identifier]` span is atomic — an
+// apostrophe inside `[Manager's Approval]` is part of the identifier, not a
+// quote — and an unterminated `[` (or unterminated quote) is treated as an
+// ordinary character, not swallowed to end-of-string.
+const _TABLEAU_LIT_SQ_RE = /'(?:[^'\\]|\\.)*'/g;
+const _TABLEAU_LIT_DQ_RE = /"(?:[^"\\]|\\.)*"/g;
+
+function _maskTableauLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === "'" || s[i] === '"') {
+      const re = s[i] === "'" ? _TABLEAU_LIT_SQ_RE : _TABLEAU_LIT_DQ_RE;
+      re.lastIndex = i;
+      const m = re.exec(s);
+      if (m && m.index === i) {
+        out += ` ${lits.push(m[0]) - 1}`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals to their ORIGINAL raw Tableau text (quotes, backslash
+// escapes and all) — used between the two masked passes in
+// tableauFormulaToSigma so that IN-list/IF/CASE lowering (which recurse into
+// a FRESH tableauFormulaToSigma call per branch — handing a masked sentinel
+// into that call would leak this call's private `lits` index into an
+// unrelated call frame, the same cross-scope hazard _restoreRawLiterals
+// documents above) and the date/user-context functions (DATEPART/DATENAME/
+// DATETRUNC/DATEADD/DATEDIFF/DATEPARSE/ISMEMBEROF/USERATTRIBUTE/ISUSERNAME,
+// which need to read their OWN quoted argument) see genuine quotes again.
+function _restoreRawTableauLiterals(s: string, lits: string[]): string {
+  return s.replace(/ (\d+)/g, (_m, i) => lits[Number(i)] ?? _m);
+}
+
+// Finalizes a masked Tableau literal to Sigma's double-quoted form: unescape
+// Tableau's backslash escapes to recover the TRUE content, then re-escape for
+// Sigma's own double-quoted output (backslash first, then embedded double
+// quotes — the same escaping _unmaskLiterals applies for SQL's convention,
+// applied here to Tableau's).
+function _unmaskTableauLiterals(s: string, lits: string[]): string {
+  return s.replace(/ (\d+)/g, (_m, i) => {
+    const raw = lits[Number(i)];
+    const inner = raw.slice(1, -1).replace(/\\(.)/g, '$1');
+    const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  });
+}
+
 /** Convert a Tableau calculated field formula to Sigma formula syntax */
 export function tableauFormulaToSigma(formula: string, warnings?: string[]): string {
   if (!formula || !formula.trim()) return '';
@@ -1555,15 +1643,27 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
     return '/* no Sigma equivalent: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
 
-  // ZN([x]) → Coalesce([x], 0)
-  f = f.replace(/\bZN\s*\(([^)]+)\)/gi, 'Coalesce($1, 0)');
-  f = f.replace(/\bIFNULL\s*\(/gi, 'Coalesce(').replace(/\bIFERROR\s*\(/gi, 'Coalesce(');
-  f = f.replace(/\bISNULL\s*\(/gi, 'IsNull(');
-  // COUNT([x]) → CountIf(IsNotNull([x]))
-  f = f.replace(/\bCOUNT\s*\(([^)]+)\)/gi, (m, arg) => 'CountIf(IsNotNull(' + arg.trim() + '))');
-  f = f.replace(/\bCOUNTD\s*\(/gi, 'CountDistinct(');
-  // ATTR([x]) → just [x]
-  f = f.replace(/\bATTR\s*\(([^)]+)\)/gi, '$1');
+  // Mask string literals before this naive function-name scan touches them —
+  // see _maskTableauLiterals above (the demonstrated bug: COUNT([x])'s regex
+  // has no idea "COUNT(" can appear inside a customer-facing string, e.g.
+  // 'See Count(Open Items) report'). Restored to RAW text immediately after,
+  // before IN-list/IF/CASE lowering (which recurse into a fresh
+  // tableauFormulaToSigma call) and the date/user-context functions below
+  // (which need genuine quotes to read their own literal argument).
+  {
+    const { masked, lits } = _maskTableauLiterals(f);
+    f = masked;
+    // ZN([x]) → Coalesce([x], 0)
+    f = f.replace(/\bZN\s*\(([^)]+)\)/gi, 'Coalesce($1, 0)');
+    f = f.replace(/\bIFNULL\s*\(/gi, 'Coalesce(').replace(/\bIFERROR\s*\(/gi, 'Coalesce(');
+    f = f.replace(/\bISNULL\s*\(/gi, 'IsNull(');
+    // COUNT([x]) → CountIf(IsNotNull([x]))
+    f = f.replace(/\bCOUNT\s*\(([^)]+)\)/gi, (m, arg) => 'CountIf(IsNotNull(' + arg.trim() + '))');
+    f = f.replace(/\bCOUNTD\s*\(/gi, 'CountDistinct(');
+    // ATTR([x]) → just [x]
+    f = f.replace(/\bATTR\s*\(([^)]+)\)/gi, '$1');
+    f = _restoreRawTableauLiterals(f, lits);
+  }
 
   // [Field] IN (…) → or-chain (Sigma has no IN operator). Run before If/CASE
   // lowering so an `If([X] in (…), …)` condition is already a boolean chain.
@@ -1638,29 +1738,44 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   f = f.replace(/\bUSERATTRIBUTE\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserAttributeText("$1")');
   f = f.replace(/\bISUSERNAME\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, '(CurrentUserEmail() = "$1")');
 
-  // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
-  // resolves live (bead tt3z.3, verified 2026-07-10):
-  //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
-  //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
-  // One level of nested parens in the arg is handled.
-  f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
-  f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
+  // Second masked pass: the func-map loop and the NOT/AND/OR/TRUE/FALSE/NULL
+  // keyword-casing below are exactly as naive as COUNT/ZN above — protect
+  // them the same way, then finalize (unmask) straight to Sigma's
+  // double-quoted form. This REPLACES the old `f.replace(/'([^']*)'/g,
+  // '"$1"')` single-quote collapse: that line never touched double-quoted
+  // Tableau literals at all (silently vulnerable to the identical corruption
+  // via Tableau's other legal quote style — see the double-quoted-literal
+  // test), and ran unmasked, so it — and the bracket-casing pass right after
+  // it — saw literal content as plain scannable text (a literal containing
+  // `[SALES]` was being read as a bare field ref and display-cased).
+  {
+    const { masked, lits } = _maskTableauLiterals(f);
+    f = masked;
 
-  // Map remaining functions
-  for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
-    f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
+    // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
+    // resolves live (bead tt3z.3, verified 2026-07-10):
+    //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
+    //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
+    // One level of nested parens in the arg is handled.
+    f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
+    f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
+
+    // Map remaining functions
+    for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
+      f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
+    }
+
+    f = f.replace(/\bNOT\b/g, 'Not').replace(/\bAND\b/g, 'and').replace(/\bOR\b/g, 'or');
+    f = f.replace(/\bTRUE\b/gi, 'True').replace(/\bFALSE\b/gi, 'False').replace(/\bNULL\b/gi, 'null');
+
+    // Convert physical column name references to display names
+    f = f.replace(/\[([A-Z][A-Z0-9_]{2,})\]/g, (match, colName) => {
+      if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
+      return '[' + sigmaDisplayName(colName) + ']';
+    });
+
+    f = _unmaskTableauLiterals(f, lits);
   }
-
-  // Single-quote strings → double-quote
-  f = f.replace(/'([^']*)'/g, '"$1"');
-  f = f.replace(/\bNOT\b/g, 'Not').replace(/\bAND\b/g, 'and').replace(/\bOR\b/g, 'or');
-  f = f.replace(/\bTRUE\b/gi, 'True').replace(/\bFALSE\b/gi, 'False').replace(/\bNULL\b/gi, 'null');
-
-  // Convert physical column name references to display names
-  f = f.replace(/\[([A-Z][A-Z0-9_]{2,})\]/g, (match, colName) => {
-    if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
-    return '[' + sigmaDisplayName(colName) + ']';
-  });
 
   // Tableau text concat `+` → Sigma `&` (literal / text-function operands only;
   // the converter re-runs this with column-type info for ref-only chains).
