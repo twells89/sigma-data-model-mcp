@@ -107,3 +107,41 @@ describe('bobj literal masking: negative control — a real column ref still res
     assert.equal(namedColFormula(r, 'Real Case'), 'If(1 = 1, "yes", "no")');
   });
 });
+
+// Regression (round 2): widening bobjMask to also mask `"…"` spans (the
+// Critical 4 fix, above) left innerIsSimpleColumn/isBareColumn out of sync
+// with parseTableColTokens — they kept regex-matching the RAW select text,
+// which still recognized `"TABLE"."COL"` as a bare column shape, while
+// parseTableColTokens (now scanning MASKED text with the old raw-identifier-
+// only regex) found zero tokens for the exact same input. That mismatch was
+// live-reproduced as an unhandled crash (`tokens[0]` read as undefined) for
+// a bare quoted-identifier SELECT, and as a silent table+metric drop for
+// `sum("T"."C")` (isBareColumn said yes but the token list was empty, so it
+// fell through to a warn-and-continue skip). All three — parseTableColTokens,
+// innerIsSimpleColumn/isBareColumn, and translateBobjExpr's Table.Col →
+// [Display] rewrite — now share one mask-aware regex + resolver
+// (BOBJ_TABLECOL_SRC / bobjResolveToken), so they can't drift apart again.
+describe('bobj literal masking: a genuine double-quoted identifier Table.Col ref', () => {
+  test('a bare "TABLE"."COL" SELECT does not crash and creates no phantom table', () => {
+    const r = convertOneObject('QuotedIdentRef', '"ORDER_FACT"."CUSTOMER_KEY"');
+    assert.ok(!tableNames(r).some(n => /QuotedIdentRef/i.test(n)),
+      'must resolve as a straight column mapping onto the real table, not a phantom element');
+  });
+
+  test('sum("T"."C") — a double-quoted identifier inside an aggregate still emits a metric on the real table', () => {
+    const r = convertOneObject('QuotedIdentAgg', 'sum("ORDER_FACT"."NET_REVENUE")');
+    assert.equal(namedColFormula(r, 'Quoted Ident Agg'), undefined,
+      'this is a MEASURE, not a column — it must not appear in namedColFormula\'s column search');
+    const metrics = r.model.pages[0].elements.flatMap((e: any) => e.metrics || []);
+    const m = metrics.find((mm: any) => mm.name === 'Quoted Ident Agg');
+    assert.ok(m, 'must still emit a metric — must not silently drop it');
+    assert.equal(m!.formula, 'Sum([Net Revenue])');
+  });
+
+  test('mixed quoting — "TABLE".COL and TABLE."COL" both still resolve', () => {
+    const r1 = convertOneObject('MixedA', '"ORDER_FACT".CUSTOMER_KEY');
+    assert.ok(!tableNames(r1).some(n => /MixedA/i.test(n)));
+    const r2 = convertOneObject('MixedB', 'ORDER_FACT."CUSTOMER_KEY"');
+    assert.ok(!tableNames(r2).some(n => /MixedB/i.test(n)));
+  });
+});

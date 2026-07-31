@@ -423,6 +423,13 @@ export function convertBobjIR(uni: BobjUniverse, options: BobjConvertOptions = {
     } else if (innerIsSimpleColumn(obj.select)) {
       // dimension / detail mapping straight to a physical column
       const tok = tokens[0];
+      // Defensive: innerIsSimpleColumn and parseTableColTokens now share one
+      // mask-and-match pipeline (see the block comment above
+      // parseTableColTokens) so this can no longer actually be empty — but
+      // an unhandled crash here is a far worse failure mode than a warned
+      // skip if the two ever drift again, so guard it explicitly rather than
+      // trust that invariant silently.
+      if (!tok) { warnings.push(`"${qual(obj)}": SELECT looked like a bare Table.Col reference but no token was extracted — skipped.`); continue; }
       const physDisp = sigmaDisplayName(tok.col);
       const existing = ctx.physColIds.get(physDisp);
       const colId = existing ?? sigmaShortId();
@@ -907,24 +914,79 @@ function bobjUnmask(s: string, lits: BobjMaskedLit[]): string {
   });
 }
 
+// A `Table.Col` reference, on MASKED text, is either:
+//   - a plain, never-quoted identifier (masking never touches it), or
+//   - a masked sentinel sitting immediately dot-adjacent to another
+//     identifier-or-sentinel — that dot-adjacency IS the structural signal
+//     that this masked span is a QUOTED IDENTIFIER (`"TABLE"."COL"`,
+//     `"My Table".COL`, `TABLE."My Col"`), not string-literal DATA. bobjMask
+//     can't tell the two apart by delimiter alone (see the block comment
+//     above it), but a genuine string literal never sits glued to a real
+//     column ref by a bare `.` the way an identifier does — a `.` right next
+//     to a masked span's sentinel only ever arises from a quoted identifier.
+//
+// THREE functions need to agree on this exact shape post-masking:
+// parseTableColTokens (table discovery + column extraction), innerIsSimple-
+// Column/isBareColumn (the "is this whole SELECT just one bare ref" gate
+// used both directly and via isBareColumn(inner) for `sum(Table.Col)`), and
+// translateBobjExpr's own Table.Col → [Display] rewrite. All three now share
+// this one regex-source + resolver so they can't independently drift again —
+// that drift (widening bobjMask to cover `"…"` without updating these two
+// siblings) was live-reproduced as BOTH a crash (innerIsSimpleColumn said
+// "yes, one bare Table.Col" for `"TABLE"."COL"` while parseTableColTokens,
+// now scanning masked text with the OLD raw-identifier-only regex, returned
+// zero tokens — `tokens[0]` read as undefined, TypeError) AND a silent
+// table+metric drop (`sum("PROMO_DIM"."PROMO_COST")` matched neither
+// isBareColumn's inner check NOR translateBobjExpr's rewrite, so the whole
+// object fell through to a warn-and-continue skip: same defect class
+// Critical 4 was fixing, retriggered on the quoted-identifier form instead
+// of the quoted-string-literal form).
+const BOBJ_SENT_TOKEN = `${BOBJ_LIT_SENT}\\d+${BOBJ_LIT_SENT}`;
+const BOBJ_TABLE_TOKEN = `(?:${BOBJ_SENT_TOKEN}|[A-Za-z_][\\w ]*)`;
+const BOBJ_COL_TOKEN = `(?:${BOBJ_SENT_TOKEN}|[A-Za-z_]\\w*)`;
+const BOBJ_TABLECOL_SRC = `(${BOBJ_TABLE_TOKEN})\\s*\\.\\s*(${BOBJ_COL_TOKEN})`;
+const BOBJ_SENT_FULL_RE = new RegExp(`^${BOBJ_LIT_SENT}(\\d+)${BOBJ_LIT_SENT}$`);
+
+/** Resolve one captured table/col token from a BOBJ_TABLECOL_SRC match: a
+ *  masked sentinel resolves to its raw inner text (delimiters stripped); a
+ *  plain identifier is returned trimmed, as-is. */
+function bobjResolveToken(tok: string, lits: BobjMaskedLit[]): string {
+  const sm = tok.match(BOBJ_SENT_FULL_RE);
+  if (sm) {
+    const lit = lits[Number(sm[1])];
+    return lit ? lit.raw.slice(1, -1).trim() : '';
+  }
+  return tok.trim();
+}
+
 /** All `Table.Column` tokens in a SELECT (quotes stripped). Scans a literal-
- *  masked copy — see the block comment above — so a `'…'` literal that merely
- *  CONTAINS dotted-reference-shaped text can't be mistaken for a real column
- *  reference (and, upstream, can't make the caller invent a phantom table). */
+ *  masked copy — see the block comment above — so a `'…'` or `"…"` literal
+ *  that merely CONTAINS dotted-reference-shaped text can't be mistaken for a
+ *  real column reference (and, upstream, can't make the caller invent a
+ *  phantom table) — while a genuine QUOTED IDENTIFIER (`"TABLE"."COL"`)
+ *  still resolves via the dot-adjacent-sentinel signal. */
 function parseTableColTokens(sql: string): Array<{ table: string; col: string }> {
   if (!sql) return [];
-  const scan = bobjMask(sql).masked;
+  const { masked, lits } = bobjMask(sql);
   const out: Array<{ table: string; col: string }> = [];
-  const re = /"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?/g;
+  const re = new RegExp(BOBJ_TABLECOL_SRC, 'g');
   let m: RegExpExecArray | null;
-  while ((m = re.exec(scan))) out.push({ table: m[1].trim(), col: m[2].trim() });
+  while ((m = re.exec(masked))) {
+    const table = bobjResolveToken(m[1], lits);
+    const col = bobjResolveToken(m[2], lits);
+    if (table && col) out.push({ table, col });
+  }
   return out;
 }
 
-/** True when the whole SELECT is a single bare `Table.Col` (no functions/ops). */
+/** True when the whole SELECT is a single bare `Table.Col` (no functions/ops)
+ *  — including a fully-quoted-identifier form (`"TABLE"."COL"`). Mask-aware,
+ *  in lockstep with parseTableColTokens (see the block comment above). */
 function innerIsSimpleColumn(sql: string): boolean {
   const s = (sql || '').trim();
-  return /^"?[A-Za-z_][\w ]*?"?\s*\.\s*"?[A-Za-z_]\w*"?$/.test(s);
+  if (!s) return false;
+  const { masked } = bobjMask(s);
+  return new RegExp(`^${BOBJ_TABLECOL_SRC}$`).test(masked);
 }
 function isBareColumn(sql: string): boolean { return innerIsSimpleColumn(sql); }
 
@@ -1046,13 +1108,20 @@ function translateBobjExpr(
   }
 
   // Table.Col → bare [Display] (only the column part survives in a Sigma
-  // element). Safe on masked text: a literal's own dotted-reference-shaped
-  // CONTENT is already hidden behind its sentinel by this point, so it can no
-  // longer be independently rewritten by this pass (live-reproduced pre-fix:
-  // a literal 'See ORDER_FACT.NET_REVENUE note' came back as "[Net Revenue]
-  // note", losing "See ... note" outright).
-  f = f.replace(/"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?/g,
-    (_full, _tbl, col) => `[${sigmaDisplayName(col)}]`);
+  // element). Uses the SAME BOBJ_TABLECOL_SRC shape + bobjResolveToken as
+  // parseTableColTokens/innerIsSimpleColumn (see the block comment above
+  // parseTableColTokens) — this used to be its own independent regex, out of
+  // sync with those two: a literal's own dotted-reference-shaped CONTENT is
+  // hidden behind its sentinel by this point (live-reproduced pre-fix: a
+  // literal 'See ORDER_FACT.NET_REVENUE note' came back as "[Net Revenue]
+  // note", losing "See ... note" outright) — but so, previously, was a
+  // genuine QUOTED IDENTIFIER embedded in a larger expression (e.g.
+  // `"PROMO_DIM"."PROMO_COST" + 1`), which this rewrite then failed to
+  // recognize at all post-masking, leaving the raw sentinel-adjacent text
+  // (or worse, raw sentinel bytes) in the output formula instead of
+  // `[Promo Cost]`.
+  f = f.replace(new RegExp(BOBJ_TABLECOL_SRC, 'g'),
+    (_full, _tbl, col) => `[${sigmaDisplayName(bobjResolveToken(col, lits))}]`);
 
   // Common SQL → Sigma function mappings.
   f = f.replace(/\bsubstr(?:ing)?\s*\(/gi, 'Mid(');

@@ -1,0 +1,26 @@
+{
+  "universe": {
+    "name": "Quoted Identifier Universe (CSA.TJ)",
+    "classes": [
+      {
+        "name": "Orders",
+        "objects": [
+          { "name": "Order Id",      "type": "Dimension", "select": "ORDER_FACT.ORDER_ID" },
+          { "name": "Order Channel", "type": "Dimension", "select": "\"ORDER_FACT\".\"ORDER_CHANNEL\"" },
+          { "name": "Net Revenue",   "type": "Measure",   "aggregation": "Sum", "select": "\"ORDER_FACT\".\"NET_REVENUE\"" },
+          { "name": "Gross Revenue", "type": "Measure",   "select": "sum(\"ORDER_FACT\".\"GROSS_REVENUE\")" }
+        ]
+      },
+      {
+        "name": "Customer",
+        "objects": [
+          { "name": "Customer Region", "type": "Dimension", "select": "\"CUSTOMER_DIM\".\"REGION\"" }
+        ]
+      }
+    ],
+    "joins": [
+      { "expression": "ORDER_FACT.CUSTOMER_KEY = CUSTOMER_DIM.CUSTOMER_KEY", "cardinality": "many-to-one" }
+    ],
+    "filters": []
+  }
+}
