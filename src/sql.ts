@@ -268,23 +268,64 @@ function buildSqlPath(tableRef: string, db: string, schema: string): string[] | 
   return parts;
 }
 
-/** Find the matching close-paren index starting from openIdx. */
-function sqlFindClose(str: string, openIdx: number): number {
-  let d = 0;
-  for (let i = openIdx; i < str.length; i++) {
-    if (str[i] === '(') d++;
-    else if (str[i] === ')') { d--; if (d === 0) return i; }
+/**
+ * True when str[i] opens a single- or double-quoted SQL string literal.
+ * Shared by every char-by-char paren/comma scanner below so a delimiter
+ * INSIDE a literal (a comma in 'Small, Medium, Large', a stray ')' in
+ * 'A)B(') is never read as live syntax.
+ */
+function sqlIsQuote(ch: string): boolean {
+  return ch === "'" || ch === '"';
+}
+
+/**
+ * Skip past a quoted literal starting at openIdx (which must point at the
+ * opening quote char) and return the index of its closing quote — or
+ * str.length if the literal is unterminated. Handles the SQL doubled-quote
+ * escape ('' inside a '...' literal, "" inside a "..." literal).
+ */
+function sqlSkipLiteral(str: string, openIdx: number): number {
+  const q = str[openIdx];
+  let i = openIdx + 1;
+  for (; i < str.length; i++) {
+    if (str[i] === q) {
+      if (str[i + 1] === q) { i++; continue; } // doubled-quote escape
+      return i;
+    }
   }
   return str.length;
 }
 
-/** Split a comma-separated string at depth 0. */
+/** Find the matching close-paren index starting from openIdx. Skips over
+ * parens that appear inside a single- or double-quoted SQL string literal —
+ * e.g. `CASE WHEN x = 'A)B(' THEN 1 END` must not close early on the `)`
+ * inside the literal. */
+function sqlFindClose(str: string, openIdx: number): number {
+  let d = 0;
+  for (let i = openIdx; i < str.length; i++) {
+    const ch = str[i];
+    if (sqlIsQuote(ch)) { i = sqlSkipLiteral(str, i); continue; }
+    if (ch === '(') d++;
+    else if (ch === ')') { d--; if (d === 0) return i; }
+  }
+  return str.length;
+}
+
+/** Split a comma-separated string at depth 0. Ignores commas/parens inside
+ * a single- or double-quoted SQL string literal (e.g. 'Small, Medium,
+ * Large' as one value, not three columns). */
 function splitDepthZero(str: string): string[] {
   const parts: string[] = [];
   let cur = '';
   let d = 0;
   for (let i = 0; i < str.length; i++) {
     const ch = str[i];
+    if (sqlIsQuote(ch)) {
+      const close = sqlSkipLiteral(str, i);
+      cur += str.slice(i, close + 1);
+      i = close;
+      continue;
+    }
     if (ch === '(')      { d++; cur += ch; }
     else if (ch === ')') { d--; cur += ch; }
     else if (ch === ',' && d === 0) { parts.push(cur.trim()); cur = ''; }
@@ -333,16 +374,7 @@ function extractSqlColumns(sql: string): string[] {
   const selectList = afterSelect.slice(0, fromIdx).trim();
   if (!selectList || selectList === '*') return [];
 
-  const parts: string[] = [];
-  let cur = '', d = 0;
-  for (let k = 0; k < selectList.length; k++) {
-    const ck = selectList[k];
-    if (ck === '(')      { d++; cur += ck; }
-    else if (ck === ')') { d--; cur += ck; }
-    else if (ck === ',' && d === 0) { parts.push(cur.trim()); cur = ''; }
-    else cur += ck;
-  }
-  if (cur.trim()) parts.push(cur.trim());
+  const parts = splitDepthZero(selectList);
 
   return parts.map((part, idx) => {
     const asM = part.match(/\bAS\s+([\w"`[\]]+)\s*$/i);

@@ -92,6 +92,44 @@ function preBracketKnownNames(expr: string, knownNames: Set<string>): string {
 }
 
 /**
+ * Mask "..." string-literal runs in a Sigma formula (double-quoted — unlike
+ * the single-quoted SQL/dbt-YAML text this file also handles) with a
+ * same-shape placeholder before scanning/rewriting bracket refs, then
+ * restore the literal text via the returned `unmask`. Used by the
+ * cross-element calc-column pass below: without masking, a CASE-derived
+ * dimension whose branch value happens to contain bracket-look-alike text
+ * (e.g. "Small [X]") is read as a reference to a field named X, and a
+ * fully self-contained column gets misclassified as cross-element and
+ * relocated (or dropped).
+ *
+ * The placeholder itself must not collide with anything already present in
+ * `formula`. Unlike a control-byte sentinel (which cannot appear in real
+ * text but is tooling-hostile), an ASCII sentinel like "@@LIT0@@" is
+ * typeable — a customer's own label/expr text could, however unlikely,
+ * already contain it. Content INSIDE a "..." literal is always safe (the
+ * whole quoted span is replaced as one atomic unit regardless of what it
+ * says), but a pre-existing occurrence OUTSIDE any literal — in the
+ * formula's live syntax — would never be masked, leaving it exposed to
+ * `unmask`'s blind regex substitution and corrupting unrelated text. Guard
+ * against this by widening the marker until the input provably does not
+ * contain it, rather than falling back to the unmasked (vulnerable) scan or
+ * throwing and aborting the whole conversion over a resolvable edge case.
+ * Exported for direct unit testing of this guard.
+ */
+export function maskFormulaStringLiterals(formula: string): { masked: string; unmask: (s: string) => string } {
+  let marker = '@@LIT@@';
+  while (formula.includes(marker)) marker += '@';
+  const literals: string[] = [];
+  const masked = formula.replace(/"(?:[^"\\]|\\.)*"/g, (lit) => {
+    const idx = literals.push(lit) - 1;
+    return `${marker}${idx}${marker}`;
+  });
+  const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const unmaskRe = new RegExp(`${escapedMarker}(\\d+)${escapedMarker}`, 'g');
+  return { masked, unmask: (s: string) => s.replace(unmaskRe, (_m, i) => literals[Number(i)]) };
+}
+
+/**
  * Normalize dbt "model-level YAML" (newer form: `models[].semantic_model` + `columns[]`
  * + nested `metrics[]`) into the standard `semantic_models[]` + top-level `metrics[]`
  * shape. No-op when the input is already in the standard form. Inline-aggregation
@@ -504,7 +542,7 @@ export function convertDbtToSigma(
     for (const c of (el.columns || [])) {
       if (!c.name || !c.formula) { keep.push(c); continue; }
       if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
-      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      const refs = maskFormulaStringLiterals(c.formula).masked.match(/\[([^\]\/]+)\]/g) || [];
       const hasCross = refs.some(ref => {
         const n = ref.replace(/^\[|\]$/g, '');
         return !/^(true|false|null)$/i.test(n) && !localNames.has(n.toUpperCase());
@@ -557,10 +595,12 @@ export function convertDbtToSigma(
     }
     for (const c of calcs) {
       if (c.formula && Object.keys(relatedNameMap).length) {
-        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+        const { masked, unmask } = maskFormulaStringLiterals(c.formula);
+        const rewrittenMasked = masked.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
           const rewritten = relatedNameMap[refName];
           return rewritten ? `[${rewritten}]` : match;
         });
+        c.formula = unmask(rewrittenMasked);
       }
       (de.columns as any[]).push(c);
       (de.order as string[]).push(c.id);
