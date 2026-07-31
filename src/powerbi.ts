@@ -18,7 +18,7 @@ import {
   makeRlsSecurity, makeClsSecurity,
   type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
-import { triageCrossTable, describeTriage, describeMetricBlocker, type Rel, type MetricBlocker } from './powerbi-crosstable-triage.js';
+import { triageCrossTable, describeTriage, describeMetricBlocker, isNoCoveringView, type Rel, type MetricBlocker } from './powerbi-crosstable-triage.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
 
@@ -2672,54 +2672,73 @@ export function convertPowerBIToSigma(
           const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
+            // ALWAYS run triageCrossTable — never bypass it on a name match alone.
+            // `bad` sharing a literal NAME with another element's metric (or with
+            // an already-dropped same-table sibling) does not mean it ISN'T also
+            // a real, reachable column: `columnOwners` is built from every table's
+            // columns, so a genuine hop-1 column named e.g. "AGENT_NAME" resolves
+            // correctly here regardless of whether some unrelated table ALSO
+            // happens to declare a measure with that same name. triageCrossTable's
+            // own verdict — safe/fanout-risk/ambiguous/never-hostable/malformed —
+            // is always better information than a name-based guess, so it must run
+            // first and win whenever it has anything to say at all.
+            //
+            // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
+            // entry per line) — `String(anArray)` joins with a bare comma, not a
+            // newline, silently mangling multi-line DAX before isNeverHostable
+            // ever sees it. Coerce INSIDE the array branch so an array joins with
+            // '\n' (matching how this codebase joins the same shape elsewhere,
+            // e.g. powerbi.ts's own measureDaxMap construction), and only
+            // String()-coerce the non-array case.
+            const _rawDaxExpr = ((t.measures || []).find((mm: any) => mm.name === metrics[i].name) || {}).expression;
+            const _rawDax = Array.isArray(_rawDaxExpr) ? _rawDaxExpr.join('\n') : String(_rawDaxExpr || '');
+            const _triage = triageCrossTable({
+              metricName: metrics[i].name,
+              sigmaFormula: String(metrics[i].formula),
+              rawDax: _rawDax,
+              homeTable: tableName,
+              refs: [...new Set(refs)],
+              columnOwners: triageColumnOwners,
+              relationships: triageRels,
+              metricRefs: [...metricNames],
+              // Explicit, not just inherited from triageCrossTable's own default —
+              // measured on R1-R4: 9 of 32 `no-covering-View` drops are a filtered
+              // dimension reachable at 3 hops, not 2 (see powerbi-crosstable-triage.ts).
+              maxDepth: 3,
+            });
+
             // `bad` is not always a reachability question — it can be a NAME
             // rather than a column at all. `columnOwners` has no entry for a
             // metric name (it is built only from `model.tables[].columns`), so
-            // either of the two shapes below would otherwise resolve to hop
-            // `Infinity` on every candidate and get misreported as "no View
-            // covers it", inflating that bucket with measures that were never a
-            // coverage problem (measured: 15 of 32 R1-R4 `no-covering-View`
-            // drops — see MetricBlocker's doc comment). Checked BEFORE running
-            // triageCrossTable at all — both are known without any candidate/
-            // coverage/grain analysis, so running it only to discard the result
-            // would be wasted work and risks exactly the misattribution this
-            // guards against if a future edit ever reordered the checks.
+            // either of the two shapes below resolves to hop `Infinity` on every
+            // candidate — but ONLY when triageCrossTable found NOTHING BETTER to
+            // say (`isNoCoveringView`) do we replace its generic message with the
+            // real blocker; a `safe`/`fanout-risk`/`ambiguous`/`never-hostable`
+            // verdict always wins outright (measured: 15 of 32 R1-R4
+            // `no-covering-View` drops were this — see MetricBlocker's doc
+            // comment for the full reasoning and why this must run AFTER, not
+            // instead of, triageCrossTable).
             let _blocker: MetricBlocker | null = null;
-            if (allMetricOwner[bad] && allMetricOwner[bad] !== tableName) {
-              _blocker = { kind: 'cross-element-metric', metric: bad, ownerTable: allMetricOwner[bad] };
-            } else if (siblingDropReason.has(bad)) {
-              _blocker = { kind: 'dropped-sibling', metric: bad, siblingReason: siblingDropReason.get(bad)! };
+            if (isNoCoveringView(_triage)) {
+              if (allMetricOwner[bad] && allMetricOwner[bad] !== tableName) {
+                _blocker = { kind: 'cross-element-metric', metric: bad, ownerTable: allMetricOwner[bad] };
+              } else if (siblingDropReason.has(bad)) {
+                _blocker = { kind: 'dropped-sibling', metric: bad, siblingReason: siblingDropReason.get(bad)! };
+              }
             }
-            let _reasonText: string;
-            if (_blocker) {
-              _reasonText = describeMetricBlocker(_blocker);
-            } else {
-              // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
-              // entry per line) — `String(anArray)` joins with a bare comma, not a
-              // newline, silently mangling multi-line DAX before isNeverHostable
-              // ever sees it. Coerce INSIDE the array branch so an array joins with
-              // '\n' (matching how this codebase joins the same shape elsewhere,
-              // e.g. powerbi.ts's own measureDaxMap construction), and only
-              // String()-coerce the non-array case.
-              const _rawDaxExpr = ((t.measures || []).find((mm: any) => mm.name === metrics[i].name) || {}).expression;
-              const _rawDax = Array.isArray(_rawDaxExpr) ? _rawDaxExpr.join('\n') : String(_rawDaxExpr || '');
-              const _triage = triageCrossTable({
-                metricName: metrics[i].name,
-                sigmaFormula: String(metrics[i].formula),
-                rawDax: _rawDax,
-                homeTable: tableName,
-                refs: [...new Set(refs)],
-                columnOwners: triageColumnOwners,
-                relationships: triageRels,
-                metricRefs: [...metricNames],
-                // Explicit, not just inherited from triageCrossTable's own default —
-                // measured on R1-R4: 9 of 32 `no-covering-View` drops are a filtered
-                // dimension reachable at 3 hops, not 2 (see powerbi-crosstable-triage.ts).
-                maxDepth: 3,
-              });
-              _reasonText = describeTriage(_triage);
-            }
-            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${_reasonText}`);
+            const _reasonText = _blocker ? describeMetricBlocker(_blocker) : describeTriage(_triage);
+            // The generic "recreate in a workbook element..." clause below implies
+            // a View-based fix exists — true for every triageCrossTable verdict,
+            // even fan-out-risk (rebuild at the visual's grain IS that fix), but
+            // FALSE for a MetricBlocker: a cross-element-metric block says "no hop
+            // limit fixes this," and stapling the generic clause in front of that
+            // would have the same warning contradict itself. `describeMetricBlocker`
+            // text is already self-contained (it says exactly what to do), so omit
+            // the generic clause whenever a blocker fired.
+            const _warning = _blocker
+              ? `⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped. ${_reasonText}`
+              : `⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${_reasonText}`;
+            warnings.push(_warning);
             siblingDropReason.set(metrics[i].name, _reasonText);
             metrics.splice(i, 1);
           }

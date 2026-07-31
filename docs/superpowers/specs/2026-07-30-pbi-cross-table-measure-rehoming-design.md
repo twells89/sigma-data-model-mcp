@@ -516,11 +516,75 @@ end-to-end tests through the real drop-site wiring in `src/powerbi.ts`) is in
 fix, show the specific new test fail for the expected reason, restore) was run and
 is recorded in the branch's task report, not reproduced here.
 
-`npm test` on this branch: **590 tests, 561 pass, 26 fail, 3 skipped** — pass count
-rose by the 7 new regression tests (`T4p`, `T4q`, `T12a`, `T12b`, `T13a`, `T13b`,
-`T13c`); the 26 failing tests are IDENTICAL, by name, to the 26 already failing on
-`main` before this branch — confirmed by diff, not just by count. None are caused by
-or fixed by this branch's changes.
+**One residual gap, deliberately not closed:** `describeMetricBlocker`'s
+`dropped-sibling` cascade only composes for a sibling dropped BY THIS SAME
+multi-pass loop (tracked in `siblingDropReason`, scoped per table, per
+conversion). A sibling dropped earlier for an unrelated reason outside this
+loop — e.g. an untranslatable DAX measure ("could not be auto-converted") —
+still falls through to the imprecise `no-covering-View` message for its
+dependents. A reasonable scope limit (it matches the measured 5+11
+accounting below exactly, and the loop's own drop history is the only state
+this code path has cheap access to), but a residual gap, not a completed
+generalization.
+
+### 11.2 Round-1 review fixes (three Important findings)
+
+Independent review of §11.1 found Change 1 sound (traced `reachableTables`
+line by line, built an independent 3-hop summand repro, confirmed the 26
+pre-existing failures byte-identical via `git archive`) but flagged three
+Important issues in Change 2, round 1:
+
+**1. Metric/column name collision reported a fixable measure as permanently
+unfixable.** The original implementation checked `allMetricOwner`/
+`siblingDropReason` BEFORE running `triageCrossTable` at all — a pure NAME
+match, with no check for whether the ref was ALSO a real, reachable column.
+Reproduced: a measure summing a genuine hop-1 column that resolves `safe`
+gets intercepted and reported as an unfixable cross-element-metric block
+merely because an unrelated, relationship-less table happens to declare a
+measure with the same literal name. **Fixed by restructuring, not by adding
+a guard**, exactly as directed: `triageCrossTable` now ALWAYS runs first: a
+new `isNoCoveringView(t)` predicate (a single source of truth mirroring
+`describeVerdict`'s own branch order, not a re-derivation of it) asks
+whether triage found NOTHING to say; a `MetricBlocker` message is only
+substituted when it did not. `safe`/`fanout-risk`/`ambiguous`/
+`never-hostable`/malformed all win outright over a name-based guess. New
+test `T13d` reproduces the collision and confirms the real column verdict
+wins.
+
+**2. The warning text contradicted itself on the blocker path.** The generic
+"recreate in a workbook element at the visual's grain..." clause was
+unconditionally prepended before `_reasonText`, so a `cross-element-metric`
+message ("no hop limit fixes this") landed in the same warning as a clause
+implying a View-based fix exists. Fixed by suppressing the generic clause
+whenever a `MetricBlocker` fires (its own text is already self-contained) —
+`describeMetricBlocker` messages now stand alone. `T13a`/`T13b`/`T13c`
+tightened with an explicit `doesNotMatch(/recreate in a workbook element/)`
+assertion, which the pre-fix code failed.
+
+**3. No regression test for the mechanism the whole "depth 3 changed no
+existing verdict" argument rests on.** Added `T4r`: a synthetic two-base
+fixture (a multi-owned aggregated column, hop 0 relative to either base; a
+predicate ref reachable from one base at hop 2 and the other only at hop 3)
+asserting `reachability: 'one'` at `maxDepth: 2` and `reachability: 'many'`
+with both bases named `safe` at the default depth of 3.
+
+**Re-measured after the restructure: the R1-R4 bucket table is IDENTICAL to
+§11.1's — safe 16, fan-out-risk 37, ambiguous 9, never-hostable 22,
+blocked-cross-element-metric 5, blocked-dropped-sibling 11,
+no-covering-View 8.** The name-collision bug (finding 1) never manifested
+on this corpus — none of the 108 real measures happen to collide a genuine
+column name with an unrelated element's metric name — so fixing it changes
+no real-model bucket count, only the correctness of the classifier on input
+this corpus doesn't happen to exercise. Reported plainly rather than
+omitted: the fix is still necessary (T13d proves the bug was real), it
+simply isn't visible in this particular measurement.
+
+Rebased onto `main` @ `d839036` (a `src/tableau.ts` fix landed there,
+unrelated and untouched by this work) before this round; baseline
+re-confirmed at 26 failures, byte-identical by name, both before and after.
+`npm test` on this branch after round 1: **629 tests, 600 pass, 26 fail, 3
+skipped** — pass count rose by 2 more regression tests (`T4r`, `T13d`) on
+top of §11.1's 7; the 26 failures remain the exact same set.
 
 ---
 

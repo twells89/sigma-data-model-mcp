@@ -603,17 +603,42 @@ function describeVerdict(t: Triage): string {
 }
 
 /**
+ * True iff `describeVerdict` would render the "no View covers it within the
+ * configured depth" message for `t` — i.e. `t` is not `neverHostable` and has
+ * NO covering candidates at all (the malformed-formula branch is unreachable
+ * here: it requires `t.candidates.length` to be truthy, so it can never fire
+ * when the candidate list is empty).
+ *
+ * A single source of truth for that one branch, exported so a caller can ask
+ * "did triageCrossTable actually find nothing to say about this ref?" without
+ * re-deriving `describeVerdict`'s branch order (and risking drift from it) or
+ * — worse — string-matching its rendered text. Exists for exactly one caller:
+ * `powerbi.ts`'s cross-table drop site, which needs to know whether a
+ * `MetricBlocker` message (see below) is BETTER information than what
+ * `triageCrossTable` itself produced, or WORSE. `triageCrossTable` must
+ * always run first and its verdict must always win when it has one — a
+ * `MetricBlocker` may only replace "nothing to say" (see that type's own
+ * doc comment for why a bypass, checked BEFORE `triageCrossTable` ran at
+ * all, was wrong: a ref that happens to share a name with some other
+ * element's metric can ALSO be a real, reachable column, and `safe` or
+ * `fanout-risk` is always more informative than a name-collision guess).
+ */
+export function isNoCoveringView(t: Triage): boolean {
+  return !t.neverHostable && t.candidates.length === 0;
+}
+
+/**
  * A dropped measure's "bad" ref is not always a column-reachability question.
  * `columnOwners` (built only from `model.tables[].columns`) has no entry for a
  * METRIC name, so a ref that names one resolves to hop `Infinity` on every
  * candidate — exactly like a genuinely disconnected column — and
- * `triageCrossTable` has no way to tell the two apart on its own. When the
- * caller (which HAS the whole-model and cross-pass state this per-call,
- * side-effect-free module deliberately does not keep) can already tell the ref
- * is one of these two shapes, it should report the REAL blocker directly
- * instead of running triageCrossTable at all — asking a reachability
- * classifier to describe a non-reachability problem is how "no View covers it"
- * ends up as the reported reason for 15 of 32 `no-covering-View` measures
+ * `triageCrossTable` has no way to tell the two apart on its own. When
+ * `triageCrossTable` comes back with NOTHING to say (`isNoCoveringView`
+ * above), and the caller (which HAS the whole-model and cross-pass state this
+ * per-call, side-effect-free module deliberately does not keep) can already
+ * tell the ref is one of these two NAME shapes, the caller should report the
+ * REAL blocker instead of the generic "no View covers it" — surfacing that
+ * generic message as the reason for 15 of 32 `no-covering-View` measures
  * (R1-R4 spike) that were never a reachability problem in the first place:
  *
  *   - `cross-element-metric`: the ref names a metric declared on a DIFFERENT
@@ -631,12 +656,24 @@ function describeVerdict(t: Triage): string {
  *     than re-deriving a paraphrase, and it lets a cascade of blockers chain
  *     without losing information at each hop.
  *
- * Deliberately NOT a variant folded into `Triage`/`describeTriage`: both cases
- * are known BEFORE any candidate/coverage/grain analysis would run, so running
- * that analysis at all — only to discard its result — would cost real work for
- * no benefit and risks a spurious `candidates: []` (the ref is not owned by any
- * table, so every base fails coverage) misreading as "no View covers it" if a
- * future edit ever reordered the checks.
+ * CHECKED ONLY AFTER `triageCrossTable` RUNS, AND ONLY WHEN IT FOUND NOTHING —
+ * this used to be a bypass checked BEFORE `triageCrossTable` ran at all, which
+ * was wrong: a ref can happen to share a literal NAME with some other
+ * element's metric while ALSO being a real, reachable COLUMN (a plain name
+ * collision — two unrelated things sharing a string). `triageCrossTable`
+ * already resolves that correctly via `columnOwners` — a bypass on the name
+ * alone reported a perfectly re-homable `safe` (or an accurately-flagged
+ * `fanout-risk`) measure as a permanently-unfixable metric conflict. Running
+ * `triageCrossTable` FIRST and asking `isNoCoveringView` afterward makes its
+ * verdict authoritative whenever it has one: `safe`/`fanout-risk`/`ambiguous`/
+ * `never-hostable`/malformed are all strictly more informative than a
+ * name-based guess, and only WIN over silence (`isNoCoveringView`) should a
+ * `MetricBlocker` message ever replace it.
+ *
+ * Deliberately NOT a variant folded into `Triage`/`describeTriage` even so:
+ * both `MetricBlocker` cases are about a NAME the caller alone can resolve
+ * (whole-model metric ownership, cross-pass drop history) that `Triage` has
+ * no way to compute for itself from a single call's arguments.
  */
 export type MetricBlocker =
   | { kind: 'cross-element-metric'; metric: string; ownerTable: string }
