@@ -483,15 +483,87 @@ function tsIsAggregateFormula(expr: string): boolean {
     .test(expr || '');
 }
 
+// ── ThoughtSpot-specific literal masking ────────────────────────────────────
+// tsFormulaToSigma's keyword-mapping tail (sum/count/average/…, the date-part
+// and math/string renames, safe_divide/cond-agg arg swaps) used to run plain
+// regex .replace() over the formula text right after converting a TML
+// '…' literal to a Sigma "…" string — with no further protection until
+// tsWrapColumnRefs ran at the very END of the function. Live-reproduced:
+// a formula that was NOTHING BUT the literal 'This report shows sum(x)
+// trends' came back as "This report shows Sum(\x020\x03) trends" — RAW,
+// UNRESTORED SENTINEL BYTES leaking into the final Sigma formula (not just
+// mis-rewritten content). Root cause was two-fold:
+//   1. The aggregate-rename regex (`sum|count|…`) matched "sum(" INSIDE the
+//      already-double-quoted literal and rewrote it, exactly the qlik.ts
+//      defect class.
+//   2. tsWrapColumnRefs was called TWICE — once per-argument (nested, inside
+//      the aggregate-rename replacer) and once on the WHOLE string at the
+//      end — each with its OWN separate, local `saved` array and its OWN
+//      \x02/\x03 sentinel scheme. The final call's bracket-protection step
+//      re-masked the (still raw-double-quoted) literal, which by then
+//      CONTAINED the inner call's leftover sentinel from bracketing "x"
+//      inside the rewritten "sum(x)" — and String.replace() does not
+//      re-scan a replacement value for further matches, so that inner
+//      sentinel was never resolved. Two independent mask/restore cycles
+//      nested inside one formula corrupt each other; mask ONCE, thread the
+//      SAME `lits` through every pass, unmask ONCE.
+//
+// A `[bracketed field]` is atomic here too (a `[TABLE::COL]` ref, or the
+// `[Display Name]` it's rewritten to, might itself contain an apostrophe) —
+// an apostrophe inside one is not a quote opener. A pre-existing `"…"` span
+// (TML literals are single-quoted; a raw double-quoted span is not TML's own
+// convention, but tsWrapColumnRefs already defensively protected it) is
+// masked the same way and restored verbatim. An unterminated `'`, `"`, or
+// `[` is left as an ordinary character — scanning resumes normally and does
+// NOT swallow the rest of the formula.
+interface TsMaskedLit { kind: "'" | '"' | '['; raw: string; }
+const TS_LIT_SENT = '\x02';
+const TS_LIT_SENT_RE = new RegExp(`${TS_LIT_SENT}(\\d+)${TS_LIT_SENT}`, 'g');
+
+function tsMaskLiterals(s: string, lits: TsMaskedLit[] = []): { masked: string; lits: TsMaskedLit[] } {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === '[' || ch === '"' || ch === "'") {
+      const closeChar = ch === '[' ? ']' : ch;
+      const close = s.indexOf(closeChar, i + 1);
+      if (close !== -1) {
+        const raw = s.slice(i, close + 1);
+        out += `${TS_LIT_SENT}${lits.push({ kind: ch as TsMaskedLit['kind'], raw }) - 1}${TS_LIT_SENT}`;
+        i = close + 1;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+/** Finalizes every remaining masked span for Sigma output. A `'…'` literal
+ *  becomes a Sigma double-quoted string; a `"…"` or `[…]` span is restored
+ *  verbatim (unchanged either way). */
+function tsUnmaskLiterals(s: string, lits: TsMaskedLit[]): string {
+  return s.replace(TS_LIT_SENT_RE, (_m, i) => {
+    const lit = lits[Number(i)];
+    if (!lit) return _m;
+    return lit.kind === "'" ? `"${lit.raw.slice(1, -1)}"` : lit.raw;
+  });
+}
+
 // Translate a ThoughtSpot RLS rule expression to a Sigma boolean.
 // ts_username → CurrentUserEmail(); `<col> =|in ts_groups` → CurrentUserInTeam(<col>);
 // the rest (column refs [T::COL]→[Display], operators, in {…}) via tsFormulaToSigma.
 function tsRlsExprToSigma(expr: string, elementByTable: Record<string, any>): string {
   if (!expr?.trim()) return '';
   let e = expr.trim();
-  // Single-quoted string literals → double-quoted FIRST, so tsFormulaToSigma's
-  // column-ref bracketing protects them (otherwise 'Online' → [Online]).
-  e = e.replace(/'([^']*)'/g, '"$1"');
+  // NOTE: the single-quote → double-quote conversion used to happen here,
+  // before handing off to tsFormulaToSigma. That's exactly the hazard
+  // tsMaskLiterals below exists to close — tsFormulaToSigma now does its own
+  // mask-on-entry (which needs to see the ORIGINAL '…' delimiter to tell a
+  // literal from a bracket/quoted ref), so this function no longer converts
+  // quotes itself.
   e = e.replace(/\[([^\]]+)\]\s*(?:=|in)\s*ts_groups/gi, 'CurrentUserInTeam([$1])');
   e = e.replace(/ts_groups\s*(?:=|in)\s*\[([^\]]+)\]/gi, 'CurrentUserInTeam([$1])');
   e = e.replace(/\bts_username\b/gi, 'CurrentUserEmail()');
@@ -501,22 +573,32 @@ function tsRlsExprToSigma(expr: string, elementByTable: Record<string, any>): st
 function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): string {
   if (!expr) return '';
   let s = expr;
-  // TML string literals are single-quoted; Sigma's are double-quoted. Convert
-  // FIRST so tsWrapColumnRefs' literal protection covers them (otherwise
-  // 'West' gets identifier-wrapped into [West]). No-op when the caller (RLS
-  // path) already converted.
-  s = s.replace(/'([^']*)'/g, '"$1"');
   // Model TML formula refs are `[TABLE::COL]` (e.g. `[ORDER_FACT::GROSS_REVENUE]`).
   // Rewrite to bare `[Display Name]` so downstream column-ref handling and the
   // single-/cross-element bucketing (which key off display names) resolve them.
-  // Worksheet TML uses bare identifiers, so this is a no-op there.
+  // Worksheet TML uses bare identifiers, so this is a no-op there. Runs BEFORE
+  // masking (below) — it needs to see and parse REAL bracket content, and this
+  // narrow, structurally-anchored `alias::col` shape isn't something a
+  // free-text TML literal would realistically contain.
   s = s.replace(/\[([^\]:]+)::([^\]]+)\]/g, (_, _tbl, col) => `[${sigmaDisplayName(col.trim())}]`);
+
+  // Mask ONCE, here, for the rest of the function — see the block comment
+  // above tsMaskLiterals (near tsIsAggregateFormula). Every keyword-mapping
+  // pass below (if/then/else, in{…}, the aggregate map, safe_divide, the
+  // cond-agg arg swaps, and the date/math/string/null renames) runs against
+  // masked text, full stop — including the ONE bracket-identifier pass at the
+  // end (formerly two separate tsWrapColumnRefs calls, each with its own
+  // colliding mask/restore cycle).
+  const { masked, lits } = tsMaskLiterals(s);
+  s = masked;
+
   s = tsConvertIfThenElse(s);
-  // `<col> in { "a", "b" }` → `In(<col>, "a", "b")`. The left side may now be a
-  // bracketed display-name ref (from the rewrite above) or a bare identifier.
-  s = s.replace(/(\[[^\]]+\]|\w+)\s+in\s*\{([^}]+)\}/gi, (_, col, vals) => {
+  // `<col> in { "a", "b" }` → `In(<col>, "a", "b")`. The left side may now be
+  // a masked bracket-ref sentinel (from the rewrite above, now masked) or a
+  // bare identifier.
+  s = s.replace(new RegExp(`(${TS_LIT_SENT}\\d+${TS_LIT_SENT}|\\w+)\\s+in\\s*\\{([^}]+)\\}`, 'gi'), (_, col, vals) => {
     const vlist = vals.split(',').map((v: string) => v.trim()).join(', ');
-    const colRef = col.startsWith('[') ? col : `[${sigmaDisplayName(col.trim())}]`;
+    const colRef = new RegExp(`^${TS_LIT_SENT}\\d+${TS_LIT_SENT}$`).test(col) ? col : `[${sigmaDisplayName(col.trim())}]`;
     return `In(${colRef}, ${vlist})`;
   });
   // ThoughtSpot's distinct count is the two-word keyword `unique count` —
@@ -528,10 +610,20 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
     std_deviation: 'StdDev', variance: 'Variance',
     count_not_null: 'CountDistinct', cumulative_sum: 'CumulativeSum',
   };
+  // NOTE: the aggregate argument is intentionally left UN-bracketed here —
+  // the single tsBracketIdents(s) pass on the whole formula, below, already
+  // covers it. Bracketing it twice (once here, once there) re-wraps the
+  // already-bracketed identifier the second time around — e.g.
+  // `sum(revenue)` → `Sum([Revenue])` here, then the whole-string pass sees
+  // `[Revenue]` and, having no bracket-awareness of its own, wraps it again
+  // into `[[Revenue]]`; a multi-word display name like `net_revenue` →
+  // `[Net Revenue]` gets split into TWO refs, `[[Net] [Revenue]]`, since the
+  // second pass's identifier regex matches "Net" and "Revenue" separately
+  // once they're space-separated inside the bracket. Live-reproduced.
   s = s.replace(/\b(sum|count_distinct|count_not_null|count|average|avg|max|min|median|std_deviation|variance|cumulative_sum)\s*\(([^)]+)\)/gi,
     (_, fn, arg) => {
       const sigmaFn = tsAggMap[fn.toLowerCase()] || fn;
-      return `${sigmaFn}(${tsWrapColumnRefs(arg.trim())})`;
+      return `${sigmaFn}(${arg.trim()})`;
     });
   s = tsRewriteSafeDivide(s);
   // Conditional aggregates. ThoughtSpot puts the condition FIRST
@@ -587,8 +679,11 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
   s = s.replace(/\btoday\s*\(\s*\)/gi, 'Today()');
   s = s.replace(/\bdate_diff\s*\(/gi, 'DateDiff(');
   s = s.replace(/\bdatediff\s*\(/gi, 'DateDiff(');
-  s = tsWrapColumnRefs(s);
-  return s;
+  s = tsBracketIdents(s);
+  // The single unmask that closes out this function's mask-on-entry — a
+  // masked `'…'` literal becomes a Sigma double-quoted string; a masked
+  // `[…]`/`"…"` span is restored verbatim.
+  return tsUnmaskLiterals(s, lits);
 }
 
 // Paren-balanced rewrite of a ThoughtSpot two-arg conditional aggregate
@@ -666,17 +761,26 @@ function tsConvertIfThenElse(s: string): string {
   return s;
 }
 
-function tsWrapColumnRefs(expr: string): string {
-  const saved: string[] = [];
-  let s = expr
-    .replace(/\[[^\]]*\]/g, m => { saved.push(m); return `\x02${saved.length - 1}\x03`; })
-    .replace(/"[^"]*"/g,    m => { saved.push(m); return `\x02${saved.length - 1}\x03`; });
+// Bracket bare identifiers so downstream column-ref resolution catches them.
+// Formerly named tsWrapColumnRefs and called TWICE per formula (once nested,
+// per-aggregate-argument; once on the whole string at the end) — each call
+// did its OWN separate stash/restore of brackets and quotes with its own
+// local `saved` array. Live-reproduced: those two independent mask cycles
+// nested inside one formula corrupted each other — the outer call's bracket
+// mask re-wrapped the (still-visible) inner call's leftover sentinel, and
+// String.replace() doesn't re-scan a replacement value for further matches,
+// so the inner sentinel was never resolved and RAW CONTROL BYTES leaked into
+// the final Sigma formula. Both call sites now arrive PRE-MASKED (via
+// tsMaskLiterals in tsFormulaToSigma, once, shared across the whole formula)
+// so this function no longer needs — or does — any masking of its own; a
+// bare identifier can only contain [A-Za-z0-9_], so wrapping one in a fresh
+// `[…]` bracket here is always safe and never needs to be masked itself.
+function tsBracketIdents(expr: string): string {
   const skip = /^(if|then|else|and|or|not|in|null|true|false|today|IsNull|If|In|List|Sum|Count|Avg|Max|Min|CountDistinct|StdDev|Variance|DateDiff|Today|CumulativeSum|Not)$/;
-  s = s.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/gi, (match, ident) => {
+  return expr.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/gi, (match, ident) => {
     if (skip.test(ident)) return match;
     return `[${sigmaDisplayName(ident)}]`;
   });
-  return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i]);
 }
 
 // ── ThoughtSpot window functions → grouped child elements ───────────────────

@@ -338,6 +338,31 @@ function oacExprToSigma(expr: string): { formula: string; warnings: string[] } {
   let f = expr.trim();
   const warnings: string[] = [];
 
+  // An OAC logical-column expression is user-written SQL-like text and CAN
+  // contain single-quoted string literals (OAC's dialect follows Oracle
+  // convention: `"Table"."Col"` for quoted identifiers, `'text'` for string
+  // literals — e.g. `CASE WHEN "T"."STATUS" = 'When Due' THEN ... END`).
+  // Every pass below — the unsupported-function check, SQL_TSI_ mapping,
+  // the NVL/SUBSTR/.../CURRENT_DATE function-name rewrites, the dotted
+  // "table"."col"/bare table.col field-ref substitution, and the IN-list
+  // splitter — is a regex scan that cannot tell code from data. Left
+  // unmasked, a literal containing one of these tokens is silently
+  // rewritten — confirmed live via convertOacToSigma:
+  //   'This uses SQL_TSI_MONTH label' → "This uses "month" label"
+  //     (a SYNTACTICALLY INVALID Sigma string — unescaped nested quotes)
+  //   'Contact ACME.Corp for details' → "[Corp] for details"
+  //     (the literal text is destroyed, replaced with a bracket ref to a
+  //     column that may not even exist)
+  //
+  // Mask every literal span ONCE, here, before any pass runs; every pass
+  // below operates on the masked text; unmask at the very end, which is
+  // also where a single-quoted literal becomes Sigma's double-quoted form
+  // (this replaces the old separate, unmasked quote-conversion pass). Only
+  // single-quoted spans are masked — OAC's `"double-quoted"` identifiers
+  // are structural syntax the field-ref pass below still needs to see.
+  const { masked, lits } = maskOacLiterals(f);
+  f = masked;
+
   const unsupportedRe = /\b(AGO|TODATE|PERIODROLLING|FILTER|EVALUATE|EVALUATE_AGGR|MSUM|MCOUNT|MAVG|MMAX|MMIN|NTILE|TOPN|BOTTOMN|PERCENTRANK|NVL2|OBIEE_BIN)\s*\(/i;
   const unsupMatch = f.match(unsupportedRe);
   if (unsupMatch) warnings.push(`uses "${unsupMatch[1].toUpperCase()}()" — no direct Sigma equivalent; review manually`);
@@ -365,11 +390,60 @@ function oacExprToSigma(expr: string): { formula: string; warnings: string[] } {
   f = f.replace(/"[^"]+"\."([^"]+)"/g, (_, col) => `[${oacDisplayName(col)}]`);
   f = f.replace(/\b[A-Za-z_][A-Za-z0-9_ ]*\.[A-Za-z_][A-Za-z0-9_]+\b/g,
     m => `[${oacDisplayName(m.split('.').pop()!)}]`);
-  f = f.replace(/'([^']*)'/g, '"$1"');
   f = f.replace(/(\w+(?:\([^)]*\))?|\[[^\]]+\])\s+IN\s+\(([^)]+)\)/gi,
     (_, lhs, items) => `In(${lhs}, ${items.split(',').map((v: string) => v.trim()).join(', ')})`);
 
   if (/\bCASE\b/i.test(f)) f = sqlCaseToIf(f);
 
-  return { formula: f, warnings };
+  return { formula: unmaskOacLiterals(f, lits), warnings };
+}
+
+// Masks every single-quoted string literal in `s` behind a sentinel built
+// from NUL + digits + SOH — no letters, so none of the ALL-CAPS function-
+// name/keyword regexes above can ever match inside one. Mirrors
+// maskOmniLiterals (omni.ts) and maskAlteryxLiterals (alteryx.ts) — same
+// proven shape, reproduced locally here since each of those files (and
+// formulas.ts, the original reference) has a different owner.
+//
+// A `[bracketed identifier]` span is treated as atomic (an apostrophe
+// inside one is part of the identifier, not a literal delimiter), and an
+// unterminated `[` or `'` is kept as an ordinary character rather than
+// swallowing the rest of the string.
+const OAC_LIT_RE = /'(?:[^']|'')*'/g;
+
+function maskOacLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === "'") {
+      OAC_LIT_RE.lastIndex = i;
+      const m = OAC_LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed
+// to a single apostrophe, and any embedded double quote backslash-escaped.
+function unmaskOacLiterals(s: string, lits: string[]): string {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
+    const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
+    return `"${inner}"`;
+  });
 }

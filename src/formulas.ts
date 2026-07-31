@@ -218,19 +218,36 @@ export function tableauParamSwitchToSigma(
   const head = f.match(/^case\s+\[Parameters?\]\s*\.\s*\[([^\]]+)\]\s+([\s\S]*?)\s*end\s*$/i);
   if (!head) return null;
   const paramName = head[1];
-  const body = head[2];
+  // Mask the body's string literals ONCE before any when/then/else split runs
+  // — an unmasked split's `then` capture is bounded by a lookahead for the
+  // next `when`/`else` keyword, so a then-value literal that itself contains
+  // the bare word "when" or "else" (e.g. `then 'Value when true'`) satisfies
+  // that lookahead early and truncates the value mid-literal (live-reproduced:
+  // see tableau.param-switch-literal-masking.test.ts). This mirrors the
+  // mask-before-split contract tableauControlToSigma already uses
+  // for the identical bug class (see _maskTableauLiterals above), reusing
+  // that BOTH-quote-style variant rather than SQL's single-quote-only
+  // `_maskLiterals` — this is Tableau calc syntax, where `"..."` is a string
+  // literal like `'...'`, not (as in SQL) a quoted identifier.
+  const { masked: body, lits } = _maskTableauLiterals(head[2]);
   const cases: { when: string; then: string }[] = [];
-  // `when <quoted-literal> then <result up to next when/else/end-of-body>`
-  const pairRe = /\bwhen\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s+then\s+([\s\S]*?)(?=\s*\bwhen\b|\s*\belse\b|$)/gi;
+  // `when <masked-literal-sentinel> then <result up to next when/else/end-of-body>`
+  const pairRe = new RegExp(
+    `\\bwhen\\s+${_TABLEAU_SENTINEL_SRC}\\s+then\\s+([\\s\\S]*?)(?=\\s*\\bwhen\\b|\\s*\\belse\\b|$)`,
+    'gi',
+  );
   let m: RegExpExecArray | null;
   while ((m = pairRe.exec(body))) {
-    const whenVal = m[1].slice(1, -1).replace(/\\(.)/g, '$1');   // strip quotes + unescape
-    const thenSig = tableauFormulaToSigma(m[2].trim(), warnings);
+    const whenVal = _tabLitInner(lits, m[1]);                 // strip quotes + unescape
+    const thenRaw = _restoreRawTableauLiterals(m[2], lits).trim();
+    const thenSig = tableauFormulaToSigma(thenRaw, warnings);
     cases.push({ when: whenVal, then: thenSig });
   }
   if (!cases.length) return null;
   const elseM = body.match(/\belse\s+([\s\S]*?)$/i);
-  const elseExpr = elseM ? tableauFormulaToSigma(elseM[1].trim(), warnings) : null;
+  const elseExpr = elseM
+    ? tableauFormulaToSigma(_restoreRawTableauLiterals(elseM[1], lits).trim(), warnings)
+    : null;
   const parts = cases.map(c => `"${c.when}", ${c.then}`).join(', ');
   const switchFormula = `Switch([${controlId}], ${parts}${elseExpr ? `, ${elseExpr}` : ''})`;
   return { paramName, controlId, cases, elseExpr, switchFormula };
@@ -1318,7 +1335,7 @@ export function formulaHasUntranslatableFragment(f: string): boolean {
     || TABLEAU_TABLE_CALC_TOKEN_CI_RE.test(f)
     || /\/\*\s*(?:LOD|table calc|no Sigma equivalent)/.test(f)) return true;
   // Leftover SQL CASE syntax (Sigma has no CASE/WHEN/THEN/END — only If/Switch).
-  // A `then`/`end`/`when` keyword surviving translation means tableauCaseToSigma
+  // A `then`/`end`/`when` keyword surviving translation means tableauControlToSigma
   // could not claim a (often malformed/nested) CASE; emitting it errors the column.
   // Mask string literals + [bracket refs] first so a column/value containing those
   // letters (e.g. [Month End], "trend") never false-positives.
@@ -1470,49 +1487,176 @@ export function tableauWindowToSigmaChart(formula: string): TableauWindowChartRe
 // extracted branch fragment to a FRESH tableauFormulaToSigma call as genuine
 // raw text, then fold that call's result back into THIS call's shared
 // sentinel space.
-function tableauIfToSigma(f: string, lits: string[]): string {
-  return f.replace(/\bIF\b([\s\S]+?)\bEND\b/gi, (match) => {
-    let inner = match.replace(/^\s*IF\s*/i, '').replace(/\s*END\s*$/i, '');
-    const elseIdx = inner.search(/\bELSE\b(?!\s*IF\b)/i);
-    let elseVal = 'null';
-    if (elseIdx >= 0) {
-      elseVal = _tableauRecurse(inner.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim(), lits);
-      inner = inner.slice(0, elseIdx);
+//
+// ── Depth-aware IF/CASE block scanning ──────────────────────────────────────
+// A first-match `/\bIF\b([\s\S]+?)\bEND\b/gi` (or CASE's equivalent) is blind
+// to nesting: it stops at the FIRST "END" in the string regardless of depth,
+// so a nested IF or CASE inside a THEN/ELSE branch — which has its own END —
+// gets mistaken for the OUTER block's closing keyword, leaving everything
+// past that point (the real ELSE branch, the real END) as raw leftover text.
+// Live-reproduced, no literals involved (see tableau.nested-if-case.test.ts):
+//   IF [a]=1 THEN IF [b]=2 THEN 'x' ELSE 'y' END ELSE 'z' END
+//     -> `If([a]=1, IF [b]=2, "y") ELSE "z" END`   (garbage, not a crash)
+//
+// `_scanTableauBlock` fixes this the same way `_scanCase` (SQL/LookML half,
+// above) fixes the analogous SQL CASE-nesting bug: starting at `pos` (right
+// after the opening IF/CASE keyword, at block-nesting depth 1 relative to
+// it), it tracks a SHARED depth counter that ANY nested IF or CASE bumps —
+// not two independent counters — so "CASE inside IF" and "IF inside CASE"
+// both nest correctly against the same scan, and only records a
+// THEN/ELSEIF/ELSE/WHEN marker as belonging to THIS block when it occurs at
+// depth 1. A `[bracketed identifier]` span is skipped whole (same idiom as
+// `_scanCase`/`_maskLiterals`); string literals need no such care here since
+// they are already hidden behind the mask-on-entry sentinel by the time this
+// runs. The correctly-bounded branch text is handed to `_tableauRecurse`
+// (unchanged), which converts it via a FRESH `tableauFormulaToSigma` call —
+// so an inner control structure is converted by its OWN translator, never by
+// this scan's naive text-splitting.
+interface _TabBlockMarker { type: 'THEN' | 'ELSEIF' | 'ELSE' | 'WHEN'; start: number; end: number }
+interface _TabBlockScan { endStart: number; endIndex: number; markers: _TabBlockMarker[] }
+
+const _TAB_BLOCK_KW_RE = /^(IF|CASE|ELSEIF|THEN|ELSE|WHEN|END)\b/i;
+
+function _scanTableauBlock(s: string, pos: number): _TabBlockScan {
+  const markers: _TabBlockMarker[] = [];
+  let blockDepth = 1, i = pos;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      const close = s.indexOf(']', i + 1);
+      i = close === -1 ? s.length : close + 1;
+      continue;
     }
-    const parts = inner.split(/\bELSEIF\b/i);
-    let result = elseVal;
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const thenParts = parts[i].split(/\bTHEN\b/i);
-      if (thenParts.length < 2) continue;
-      const cond = _tableauRecurse(thenParts[0].trim(), lits);
-      const val = _tableauRecurse(thenParts[1].trim(), lits);
-      result = 'If(' + cond + ', ' + val + ', ' + result + ')';
+    if (/[A-Za-z]/.test(c) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1]))) {
+      const m = _TAB_BLOCK_KW_RE.exec(s.slice(i));
+      if (m) {
+        const kw = m[1].toUpperCase(), start = i, end = i + m[1].length;
+        if (kw === 'IF' || kw === 'CASE') {
+          blockDepth++;
+        } else if (kw === 'END') {
+          blockDepth--;
+          if (blockDepth === 0) return { endStart: start, endIndex: end, markers };
+        } else if (blockDepth === 1) {
+          markers.push({ type: kw as 'THEN' | 'ELSEIF' | 'ELSE' | 'WHEN', start, end });
+        }
+        i = end;
+        continue;
+      }
     }
-    return result;
-  });
+    i++;
+  }
+  return { endStart: -1, endIndex: -1, markers };
 }
 
-// Same masked-input contract as tableauIfToSigma above.
-function tableauCaseToSigma(f: string, lits: string[]): string {
-  return f.replace(/\bCASE\b([\s\S]+?)\bEND\b/gi, (match, body) => {
-    const elseIdx = body.search(/\bELSE\b/i);
-    let elseVal = 'null';
-    let whenBody = body;
-    if (elseIdx >= 0) {
-      elseVal = _tableauRecurse(body.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim(), lits);
-      whenBody = body.slice(0, elseIdx);
+// Reconstructs an IF block's nested If(...) from its structurally-scanned
+// markers (THEN/ELSEIF/ELSE at depth 1 — see `_scanTableauBlock`) rather than
+// a naive text `.split()`, so a nested control structure's OWN THEN/ELSEIF/
+// ELSE (already excluded from `markers` by the depth check) can never be
+// mistaken for this block's structure. `innerOffset` converts the markers'
+// absolute positions (in the outer masked formula) to positions relative to
+// `inner`.
+function _convertIfBody(inner: string, markers: _TabBlockMarker[], innerOffset: number, lits: string[]): string {
+  const rel = markers.map(mk => ({ type: mk.type, start: mk.start - innerOffset, end: mk.end - innerOffset }));
+  const elseMarker = rel.find(mk => mk.type === 'ELSE');
+  const chainEnd = elseMarker ? elseMarker.start : inner.length;
+  const elseVal = elseMarker ? _tableauRecurse(inner.slice(elseMarker.end).trim(), lits) : 'null';
+  // Chain alternates THEN, ELSEIF, THEN, ELSEIF, ..., THEN — one THEN per
+  // clause, one ELSEIF between consecutive clauses.
+  const chain = rel.filter(mk => mk.type === 'THEN' || mk.type === 'ELSEIF');
+  const clauses: { cond: string; val: string }[] = [];
+  let condStart = 0;
+  for (let k = 0; k < chain.length; k += 2) {
+    const thenMk = chain[k];
+    if (!thenMk || thenMk.type !== 'THEN') break;      // malformed — stop, same best-effort spirit as the original split
+    const cond = inner.slice(condStart, thenMk.start).trim();
+    const nextMk = chain[k + 1];                        // the following ELSEIF marker, if any
+    const valEnd = nextMk ? nextMk.start : chainEnd;
+    const val = inner.slice(thenMk.end, valEnd).trim();
+    clauses.push({ cond, val });
+    condStart = nextMk ? nextMk.end : valEnd;
+  }
+  let result = elseVal;
+  for (let k = clauses.length - 1; k >= 0; k--) {
+    result = 'If(' + _tableauRecurse(clauses[k].cond, lits) + ', ' + _tableauRecurse(clauses[k].val, lits) + ', ' + result + ')';
+  }
+  return result;
+}
+
+// Same masked-input contract as _convertIfBody above, mirrored for CASE's
+// WHEN/THEN/ELSE structure (a CASE clause compares its `field` against each
+// WHEN-value, unlike IF's free-form boolean condition).
+function _convertCaseBody(inner: string, markers: _TabBlockMarker[], innerOffset: number, lits: string[]): string {
+  const rel = markers.map(mk => ({ type: mk.type, start: mk.start - innerOffset, end: mk.end - innerOffset }));
+  const elseMarker = rel.find(mk => mk.type === 'ELSE');
+  const chainEnd = elseMarker ? elseMarker.start : inner.length;
+  const elseVal = elseMarker ? _tableauRecurse(inner.slice(elseMarker.end).trim(), lits) : 'null';
+  const chain = rel.filter(mk => mk.type === 'WHEN' || mk.type === 'THEN');
+  const firstWhen = chain.find(mk => mk.type === 'WHEN');
+  const field = firstWhen ? _tableauRecurse(inner.slice(0, firstWhen.start).trim(), lits) : '[?]';
+  const clauses: { cond: string; val: string }[] = [];
+  for (let k = 0; k < chain.length; k += 2) {
+    const whenMk = chain[k];
+    const thenMk = chain[k + 1];
+    if (!whenMk || whenMk.type !== 'WHEN' || !thenMk || thenMk.type !== 'THEN') break;  // malformed — stop
+    const nextWhenMk = chain[k + 2];
+    const cond = inner.slice(whenMk.end, thenMk.start).trim();
+    const valEnd = nextWhenMk ? nextWhenMk.start : chainEnd;
+    const val = inner.slice(thenMk.end, valEnd).trim();
+    clauses.push({ cond, val });
+  }
+  let result = elseVal;
+  for (let k = clauses.length - 1; k >= 0; k--) {
+    result = 'If(' + field + ' = ' + _tableauRecurse(clauses[k].cond, lits) + ', ' + _tableauRecurse(clauses[k].val, lits) + ', ' + result + ')';
+  }
+  return result;
+}
+
+// IF-block and CASE-block conversion MUST run as a single unified scan, not
+// two independent sequential whole-string passes (which is what an earlier
+// version of this fix did, mirroring the pre-fix tableauIfToSigma/
+// tableauCaseToSigma split, and which reviewer testing caught as newly
+// broken): once a first pass finishes converting every IF block in `f`, the
+// string it hands to a second, separate CASE pass already contains the
+// literal text "If(" from that conversion — and `_scanTableauBlock`'s
+// keyword match is case-insensitive (it has to be, Tableau keywords are
+// case-insensitive), so "If(" satisfies `\bIF\b` and is misread as the
+// opener of a FRESH nested IF block that (having no THEN/END of its own)
+// never finds a matching END, aborting the scan and leaving the outer CASE
+// entirely unconverted. Scanning for IF and CASE openers TOGETHER, in one
+// left-to-right pass that never revisits text it already substituted,
+// avoids this: a nested block (of either kind) is only ever converted once,
+// via `_tableauRecurse`'s fresh sub-call, before the outer scan's pointer
+// jumps straight past the whole consumed span.
+function tableauControlToSigma(f: string, lits: string[]): string {
+  let out = '', last = 0, i = 0;
+  while (i < f.length) {
+    const c = f[i];
+    if (c === '[') {
+      const close = f.indexOf(']', i + 1);
+      i = close === -1 ? f.length : close + 1;
+      continue;
     }
-    const fieldMatch = whenBody.match(/^([\s\S]*?)\bWHEN\b/i);
-    const field = fieldMatch ? _tableauRecurse(fieldMatch[1].trim(), lits) : '[?]';
-    const pairs = whenBody.replace(/^[\s\S]*?\bWHEN\b/i, '').split(/\bWHEN\b/i).filter(Boolean);
-    let result = elseVal;
-    for (let i = pairs.length - 1; i >= 0; i--) {
-      const thenParts = pairs[i].split(/\bTHEN\b/i);
-      if (thenParts.length < 2) continue;
-      result = 'If(' + field + ' = ' + _tableauRecurse(thenParts[0].trim(), lits) + ', ' + _tableauRecurse(thenParts[1].trim(), lits) + ', ' + result + ')';
+    if (/[A-Za-z]/.test(c) && (i === 0 || !/[A-Za-z0-9_]/.test(f[i - 1]))) {
+      const isIf = /^IF\b/i.test(f.slice(i));
+      const isCase = !isIf && /^CASE\b/i.test(f.slice(i));
+      if (isIf || isCase) {
+        const blockStart = i;
+        const bodyStart = i + (isIf ? 2 : 4);
+        const scan = _scanTableauBlock(f, bodyStart);
+        if (scan.endIndex === -1) { i++; continue; }      // unterminated — leave as raw text, matches prior behavior
+        const inner = f.slice(bodyStart, scan.endStart);
+        const converted = isIf
+          ? _convertIfBody(inner, scan.markers, bodyStart, lits)
+          : _convertCaseBody(inner, scan.markers, bodyStart, lits);
+        out += f.slice(last, blockStart) + converted;
+        last = scan.endIndex;
+        i = scan.endIndex;
+        continue;
+      }
     }
-    return result;
-  });
+    i++;
+  }
+  return out + f.slice(last);
 }
 
 // ── Tableau-specific literal masking ────────────────────────────────────────
@@ -1555,13 +1699,13 @@ function tableauCaseToSigma(f: string, lits: string[]): string {
 // `IF [x] = 'contains THEN keyword' THEN 'a' ELSE 'b' END` silently lost the
 // 'a' branch — not corruption, a WRONG ANSWER; `'See DATEPART(\'year\',
 // [Date]) info'` converted inside the quotes). Mask-once, with the two
-// recursing helpers (tableauIfToSigma/tableauCaseToSigma) explicitly
+// recursing helper (tableauControlToSigma) explicitly
 // restoring-then-remasking around their own recursive calls, is the only
 // version proven closed against all of those.
 const _TABLEAU_LIT_SQ_RE = /'(?:[^'\\]|\\.)*'/g;
 const _TABLEAU_LIT_DQ_RE = /"(?:[^"\\]|\\.)*"/g;
-const _TABLEAU_SENTINEL_SRC = ' (\\d+)';
-const _TABLEAU_SENTINEL_RE = / (\d+)/g;
+const _TABLEAU_SENTINEL_SRC = '\u0000(\\d+)\u0001';
+const _TABLEAU_SENTINEL_RE = /\u0000(\d+)\u0001/g;
 
 // `lits` is optional so the top-level call in tableauFormulaToSigma can start
 // a fresh array, while _tableauRecurse (below) passes the OUTER call's array
@@ -1584,7 +1728,7 @@ function _maskTableauLiterals(s: string, lits: string[] = []): { masked: string;
       re.lastIndex = i;
       const m = re.exec(s);
       if (m && m.index === i) {
-        out += ` ${lits.push(m[0]) - 1}`;
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
         i += m[0].length;
         continue;
       }
@@ -1596,8 +1740,8 @@ function _maskTableauLiterals(s: string, lits: string[] = []): { masked: string;
 }
 
 // Restores literals to their ORIGINAL raw Tableau text (quotes, backslash
-// escapes and all). Used only by _tableauRecurse (below): tableauIfToSigma/
-// tableauCaseToSigma are the only passes that recurse into a FRESH
+// escapes and all). Used only by _tableauRecurse (below): tableauControlToSigma
+// is the only pass that recurses into a FRESH
 // tableauFormulaToSigma call per branch, and that fresh call must see genuine
 // Tableau text, not a sentinel keyed into THIS call's private `lits` array
 // (the same cross-scope-index hazard _restoreRawLiterals documents above for
@@ -1630,8 +1774,8 @@ function _unmaskTableauLiterals(s: string, lits: string[]): string {
 // FRESH tableauFormulaToSigma call (that call does its own complete
 // mask→process→unmask, fully self-contained), then re-masks the result INTO
 // the shared `lits` array (continuing its index numbering, so no collision
-// with sentinels the OUTER call already minted). Used by tableauIfToSigma/
-// tableauCaseToSigma, the only two passes that recurse into a fresh
+// with sentinels the OUTER call already minted). Used by tableauControlToSigma,
+// the only pass that recurses into a fresh
 // top-level call per branch.
 //
 // Both hazards this closes are real, not hypothetical: handing the recursive
@@ -1658,7 +1802,7 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
   // Mask ONCE, here, for the ENTIRE function body — see _maskTableauLiterals
   // above. From this point on, nothing sees a live quote unless it
-  // deliberately restores one (tableauIfToSigma/tableauCaseToSigma's
+  // deliberately restores one (tableauControlToSigma's
   // recursive branches, via _tableauRecurse — see there for why, and how the
   // result gets re-masked before rejoining this pipeline). `raw0` is kept
   // around only for the early bail-out paths just below (LOD/table-calc/
@@ -1746,9 +1890,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   // unmask below.
   f = tableauInToSigma(f);
 
-  f = tableauIfToSigma(f, lits);
+  // IF and CASE blocks convert in ONE unified pass — see
+  // tableauControlToSigma's comment for why running them as two separate
+  // sequential passes (an earlier version of this fix) is wrong.
+  f = tableauControlToSigma(f, lits);
   f = f.replace(/\bIIF\s*\(/gi, 'If(');
-  f = tableauCaseToSigma(f, lits);
 
   // DATEPART('year', [Date]) → Year([Date]) — sentinel-aware: matches the
   // MASKED form of the unit-name literal (never a live quote) and resolves

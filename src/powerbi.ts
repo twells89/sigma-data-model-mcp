@@ -866,6 +866,85 @@ function rewriteCalculateConditionals(
   return { f, dropped: false };
 }
 
+/**
+ * Mask `"..."` DAX string-literal spans with same-length blanks, so a
+ * downstream regex/depth-walk over raw DAX (or DAX-derived Sigma-formula)
+ * text can't mistake literal TEXT that merely LOOKS like syntax — a mapped
+ * function name, a comma, a paren, or a `[Column]`-shaped bracket — for the
+ * real thing. DAX escapes an embedded quote by DOUBLING it (`""`), matching
+ * `stripDaxComments`'s own established convention for this codebase — not a
+ * backslash.
+ *
+ * A `[bracketed identifier]` (DAX `Table[Column]` / a translated Sigma
+ * `[Element/Column]`) is treated as an ATOMIC span FIRST — copied through
+ * unchanged before any quote-scan ever sees its contents — so an embedded
+ * `"` inside an unusual column name can't be misread as opening a literal
+ * that then swallows real text hunting for its close. Brackets never nest
+ * here; hitting a second `[` before the first one's `]` means the first
+ * never closed (leave it as an ordinary character rather than reaching PAST
+ * an unrelated later bracket to "close" on ITS `]`, which would swallow
+ * everything in between). An unterminated `"` is likewise left as an
+ * ordinary character — neither delimiter is ever allowed to swallow the
+ * rest of the string.
+ *
+ * Length-preserving (same length, same non-literal characters) so offsets
+ * computed against the masked text apply unchanged to the original — the
+ * DIVIDE arg/paren walk in `pbiDaxToSigma` relies on exactly this to slice
+ * real argument text out of the ORIGINAL (unmasked) formula.
+ */
+export function maskDaxStringLiterals(s: string): string {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== ']' && s[j] !== '[') j++;
+      if (j < s.length && s[j] === ']') { out += s.slice(i, j + 1); i = j + 1; } else { out += c; i++; }
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      let closed = false;
+      while (j < s.length) {
+        if (s[j] === '"') {
+          if (s[j + 1] === '"') { j += 2; continue; }   // doubled escaped quote
+          j++; closed = true; break;
+        }
+        j++;
+      }
+      if (closed) { out += ' '.repeat(j - i); i = j; } else { out += c; i++; }   // unterminated — not a literal
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/** Apply a global-regex replace to `s`, but only for matches that survive
+ *  literal-masking (`maskDaxStringLiterals`) — i.e. matches OUTSIDE any
+ *  `"..."` DAX string literal. A match that only exists because bracket- or
+ *  keyword-shaped TEXT happens to sit inside a literal is left completely
+ *  alone (the mask and `s` are identical outside literal spans, so a match
+ *  found on the masked copy names the exact same real span in `s`). */
+function replaceOutsideDaxLiterals(
+  s: string, re: RegExp, replacer: (...args: any[]) => string,
+): string {
+  const masked = maskDaxStringLiterals(s);
+  const scanner = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+  let out = '';
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = scanner.exec(masked))) {
+    const args: any[] = [...m, m.index, s];
+    out += s.slice(last, m.index) + replacer(...args);
+    last = m.index + m[0].length;
+    if (m[0].length === 0) scanner.lastIndex++;
+  }
+  return out + s.slice(last);
+}
+
 // Drop any metric whose formula references a MEASURE that was itself dropped
 // (a CALCULATE/iterator/ranking measure that didn't translate) — e.g. a ratio
 // built on it. Without this the dependent metric posts but silently resolves to
@@ -873,11 +952,17 @@ function rewriteCalculateConditionals(
 // NOT make it into `metrics`; pruned metrics are added back so transitive chains
 // (A→B→droppedC) collapse too. Scoped to dropped MEASURE names ONLY — column
 // refs and surviving measures are never touched. (dangling-ref cascade)
+//
+// Scan a literal-MASKED copy — a comparison/label value like "see [Some
+// Dropped Measure] for detail" must not be mistaken for a real reference to a
+// measure that was actually dropped; that false positive cascade-drops a
+// legitimate, fully-translated metric (dangerous: looks silent past the
+// per-drop warning, which itself misnames the "reference" as real).
 function pruneDanglingMetrics(metrics: any[], droppedNames: Set<string>, warnings: string[] | null): void {
   for (let pass = 0; pass < 10; pass++) {
     const before = metrics.length;
     for (let i = metrics.length - 1; i >= 0; i--) {
-      const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r) => r.slice(1, -1));
+      const refs = (maskDaxStringLiterals(String(metrics[i].formula)).match(/\[([^\]\/]+)\]/g) || []).map((r) => r.slice(1, -1));
       const bad = refs.find((r) => droppedNames.has(r));
       if (bad) {
         if (warnings) warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which did not translate — dropped to avoid a dangling reference.`);
@@ -1011,23 +1096,30 @@ export function pbiDaxToSigma(
   // WEEKNUM -> Excel-style week-of-year formula (NOT ISO DatePart). (beads-sigma-a8h)
   f = rewriteWeeknum(f);
 
-  // DIVIDE(a, b, alt) — nested-paren-aware parser
+  // DIVIDE(a, b, alt) — nested-paren-aware parser. Walk a literal-MASKED copy
+  // so a comma/paren INSIDE a string arg (a fallback label like "N/A, review"
+  // or "(no data)") can't be mistaken for an argument separator or change the
+  // paren depth — either one corrupts the split args or truncates/extends the
+  // replaced span onto the wrong text (dangerous: wrong value). Content is
+  // still sliced from the ORIGINAL `f` (masking is length-preserving, so the
+  // walk's indices apply unchanged to the unmasked text).
   const divideMatch = f.match(/\bDIVIDE\s*\(/i);
   if (divideMatch) {
+    const maskedF = maskDaxStringLiterals(f);
     const startIdx = divideMatch.index! + divideMatch[0].length;
     const divArgs: string[] = [];
     let depth = 1, argStart = startIdx;
-    for (let i = startIdx; i < f.length && depth > 0; i++) {
-      if (f[i] === '(') depth++;
-      else if (f[i] === ')') { depth--; if (depth === 0) { divArgs.push(f.slice(argStart, i).trim()); break; } }
-      else if (f[i] === ',' && depth === 1) { divArgs.push(f.slice(argStart, i).trim()); argStart = i + 1; }
+    for (let i = startIdx; i < maskedF.length && depth > 0; i++) {
+      if (maskedF[i] === '(') depth++;
+      else if (maskedF[i] === ')') { depth--; if (depth === 0) { divArgs.push(f.slice(argStart, i).trim()); break; } }
+      else if (maskedF[i] === ',' && depth === 1) { divArgs.push(f.slice(argStart, i).trim()); argStart = i + 1; }
     }
     if (divArgs.length >= 2) {
       const num = divArgs[0], den = divArgs[1], alt = divArgs[2];
       let d2 = 1, endPos = startIdx;
-      for (; endPos < f.length && d2 > 0; endPos++) {
-        if (f[endPos] === '(') d2++;
-        else if (f[endPos] === ')') d2--;
+      for (; endPos < maskedF.length && d2 > 0; endPos++) {
+        if (maskedF[endPos] === '(') d2++;
+        else if (maskedF[endPos] === ')') d2--;
       }
       // bead hs5h: parenthesize BOTH operands. A numerator like "DeptMed - CoMed"
       // (from an inlined VAR/RETURN DIVIDE(a-b, c)) otherwise emits "a - b / c",
@@ -1121,9 +1213,16 @@ export function pbiDaxToSigma(
   f = f.replace(/\bDATEDIFF\s*\(/gi, 'DateDiff(');
 
   // Clean up 'table'[column] → [column] (quoted table qualifier)
-  // Collect unique table prefixes before [ to detect multi-table references
-  const quotedTablePrefixes = (f.match(/'([^']+)'\[/g) || []).map(m => m.replace(/'\[$/g, '').replace(/^'/g, ''));
-  const unquotedTablePrefixes = (f.match(/\b([A-Za-z_]\w*)\[/g) || []).map(m => m.replace(/\[$/, ''));
+  // Collect unique table prefixes before [ to detect multi-table references.
+  // Detect AND rewrite against a literal-MASKED copy: a display-text string
+  // like "Store[Count]: high" contains a bare Table[Column]-shaped substring
+  // that is DATA, not a real qualifier — unmasked, it both (a) pollutes
+  // allTablePrefixes into a bogus "multiple tables" warning, and (b) gets
+  // silently REWRITTEN by the .replace() calls below, corrupting the literal
+  // text baked into the emitted formula (dangerous: wrong value).
+  const maskedForPrefixes = maskDaxStringLiterals(f);
+  const quotedTablePrefixes = (maskedForPrefixes.match(/'([^']+)'\[/g) || []).map(m => m.replace(/'\[$/g, '').replace(/^'/g, ''));
+  const unquotedTablePrefixes = (maskedForPrefixes.match(/\b([A-Za-z_]\w*)\[/g) || []).map(m => m.replace(/\[$/, ''));
   const allTablePrefixes = [...new Set([...quotedTablePrefixes, ...unquotedTablePrefixes])].filter(p =>
     !/^(If|Switch|Not|And|Or|Sum|Avg|Min|Max|Count|CountIf|CountDistinct|CumulativeSum|Coalesce|Nullif|Round|Floor|Ceiling|Abs|Upper|Lower|Trim|Left|Right|Mid|Replace|Find|Len|Year|Month|Day|Hour|Minute|Second|Today|Now|MakeDate|DateDiff|DateAdd|DateTrunc|DateFormat|IsNull|IsNotNull|Int|Number|Text|Sqrt|Power|Concat|In|GrandTotal|CumulativeAvg|Weekday|Mod|DateTrunc)$/.test(p)
   );
@@ -1131,9 +1230,9 @@ export function pbiDaxToSigma(
     const tableNames = allTablePrefixes.join(', ');
     warnings.push(`⚠ Calculated column "${measureName}": references columns from multiple tables (${tableNames}). Column context has been simplified — verify formula references the correct columns.`);
   }
-  f = f.replace(/'[^']+'\[([^\]]+)\]/g, '[$1]');
+  f = replaceOutsideDaxLiterals(f, /'[^']+'\[([^\]]+)\]/g, (_m, ref) => `[${ref}]`);
   // Also handle unquoted: Table[Column] → [Column]
-  f = f.replace(/\b[A-Za-z_]\w*\[([^\]]+)\]/g, '[$1]');
+  f = replaceOutsideDaxLiterals(f, /\b[A-Za-z_]\w*\[([^\]]+)\]/g, (_m, ref) => `[${ref}]`);
 
   // Strip RELATED([col]) → [col] AFTER table-prefix normalization, so that
   // RELATED('dim'[X]) (which the line 121 regex couldn't match because of
@@ -2552,7 +2651,11 @@ export function convertPowerBIToSigma(
         // first, fall back to the global map so cross-table refs (e.g. from
         // RELATED('dim'[COL])) get a usable display name that the post-pass
         // cross-element move can map back to a triple-form ref.
-        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m: string, colName: string) => {
+        // Scan/rewrite a literal-MASKED copy — a text value like "see [Amount]
+        // for detail" must not be REWRITTEN in place just because "Amount"
+        // happens to be a tracked column name (dangerous: corrupts the literal
+        // content baked into the emitted formula).
+        sigmaFormula = replaceOutsideDaxLiterals(sigmaFormula, /\[([^\]\/]+)\]/g, (_m: string, colName: string) => {
           if (pbiToSigmaName[colName]) return `[${pbiToSigmaName[colName]}]`;
           if (allPbiToSigmaNames[colName]) return `[${allPbiToSigmaNames[colName]}]`;
           return `[${colName}]`;
@@ -2604,7 +2707,10 @@ export function convertPowerBIToSigma(
         sigmaFormula = null;
       }
       if (sigmaFormula) {
-        sigmaFormula = sigmaFormula.replace(/\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
+        // Same literal-masked rewrite as the calc-column path above — a text
+        // fallback/label value must not have its "[Name]"-shaped content
+        // rewritten just because it matches a tracked column name.
+        sigmaFormula = replaceOutsideDaxLiterals(sigmaFormula, /\[([^\]\/]+)\]/g, (_m2: string, colName: string) => {
           return pbiToSigmaName[colName] ? `[${pbiToSigmaName[colName]}]` : `[${colName}]`;
         });
         const _mFmt = inferSigmaFormat(sigmaFormula, m.name, (m as any).formatString);
@@ -2664,12 +2770,20 @@ export function convertPowerBIToSigma(
         for (let i = metrics.length - 1; i >= 0; i--) {
           // normalize any mis-cased ref to its canonical column/metric name first, so the
           // guard below judges the ref on identity rather than on spelling
-          metrics[i].formula = String(metrics[i].formula).replace(/\[([^\]\/]+)\]/g, (whole: string, ref: string) => {
+          // Scan/rewrite a literal-MASKED copy — a label/help string mentioning
+          // another measure or column BY NAME (e.g. "See [Broken Measure] note")
+          // must not be treated as a real reference: unmasked, it both gets
+          // needlessly rewritten in place (corrupting the literal) AND can feed
+          // a phantom "bad" ref into the cross-table guard below, which then
+          // drops a fully independent, otherwise-valid metric as "cross-table"
+          // (dangerous: looks like a deliberate migration-quality warning, but
+          // the named blocker was never actually referenced).
+          metrics[i].formula = replaceOutsideDaxLiterals(String(metrics[i].formula), /\[([^\]\/]+)\]/g, (whole: string, ref: string) => {
             if (colDisplays.has(ref) || metricNames.has(ref)) return whole;   // already exact
             const c = canonicalCol.get(ref.toLowerCase()) || canonicalMetric.get(ref.toLowerCase());
             return c ? `[${c}]` : whole;
           });
-          const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
+          const refs = (maskDaxStringLiterals(String(metrics[i].formula)).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
             // ALWAYS run triageCrossTable — never bypass it on a name match alone.
@@ -3021,7 +3135,12 @@ export function convertPowerBIToSigma(
       if (/^\[[^\]\/]+\/[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
       // simple 2-seg [Table/Field] passthrough column — keep
       if (/^\[[^\]\/]+\/[^\]\/]+\]$/.test(c.formula)) { keep.push(c); continue; }
-      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      // Scan a literal-MASKED copy — a label/help string containing
+      // bracket-shaped text must not be mistaken for a real cross-element
+      // ref; that false positive needlessly pulls a fully local calc column
+      // off its source element (misplaced at best, dropped entirely if no
+      // derived "<Table> View" ends up covering it).
+      const refs = maskDaxStringLiterals(c.formula).match(/\[([^\]\/]+)\]/g) || [];
       const hasCross = refs.some((ref: string) => {
         const rn = ref.replace(/^\[|\]$/g, '');
         return !/^(true|false|null)$/i.test(rn) && !localNames.has(rn.toUpperCase());
@@ -3187,7 +3306,11 @@ export function convertPowerBIToSigma(
 
     for (const c of calcs) {
       if (c.formula && Object.keys(relatedNameMap).length) {
-        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+        // Scan/rewrite a literal-MASKED copy — a text value whose content
+        // happens to name a related column must not be rewritten in place
+        // (corrupts the literal) just because its bracket-shaped text matches
+        // a real relatedNameMap entry.
+        c.formula = replaceOutsideDaxLiterals(c.formula, /\[([^\]\/]+)\]/g, (match: string, refName: string) => {
           const rewritten = relatedNameMap[refName];
           return rewritten ? `[${rewritten}]` : match;
         });

@@ -1,0 +1,10 @@
+{
+  "description": "Round-2 regression guard: Order Id is a plain unquoted anchor (ORDER_FACT.ORDER_ID) so ORDER_FACT is discovered via a clean route; every OTHER column SELECT uses a genuine double-quoted identifier form (\"TABLE\".\"COL\"), including a bare quoted Table.Col dimension (Order Channel), a bare quoted Table.Col measure (Net Revenue, aggregation hint, no sum() wrapper), a sum(\"T\".\"C\") aggregate wrapper (Gross Revenue), and a dimension (Customer Region on CUSTOMER_DIM) whose table is discoverable ONLY through its own quoted SELECT (no other object references CUSTOMER_DIM). Prior bug: widening bobjMask to also mask \"...\" spans (fixing a different defect — an apostrophe inside a double-quoted STRING LITERAL swallowing a real Table.Col ref) left innerIsSimpleColumn/isBareColumn out of sync with the now-mask-aware parseTableColTokens, since they still regex-matched RAW text. With an unquoted anchor present (as here), that mismatch CRASHED outright on the very next quoted dimension (tokens[0] read as undefined — converter threw, a hard fail under this harness's try/catch); without one, it silently dropped the table+metric instead (0 elements). All three functions now share one mask-aware regex + resolver (BOBJ_TABLECOL_SRC / bobjResolveToken).",
+  "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 1,
+    "noErrorColumns": true,
+    "noDoubledBracketRefs": true
+  }
+}

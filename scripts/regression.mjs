@@ -173,6 +173,21 @@ async function loadConverters() {
 function shapeSummary(model, result = {}) {
   const elements = (model.pages || []).flatMap(p => p.elements || []);
   const sec = result.security || [];
+  // Doubled-bracket column-ref scan: `[[Foo]]` / `[[Foo] [Bar]]` is never
+  // valid Sigma formula syntax — it's the signature of a bracket-identifier
+  // rewrite pass running TWICE over the same span (each aggregate-arg call
+  // plus a later whole-string pass, or two independent mask/restore cycles
+  // colliding). Live-reproduced (thoughtspot.ts, beads-sigma cross-element
+  // fixture): `sum(net_revenue)` came back as `Sum([[Net] [Revenue]])` — a
+  // 200-OK POST with no error column (the two split refs each happened to
+  // resolve), so `noErrorColumns` alone did not catch it. Scan ALL formulas
+  // across every element's columns/metrics, not just this one fixture's —
+  // the double-bracket defect class isn't converter-specific.
+  const allFormulas = elements.flatMap(e => [
+    ...(e.columns || []).map(c => c.formula),
+    ...(e.metrics || []).map(m => m.formula),
+  ]).filter(f => typeof f === 'string');
+  const doubledBracketFormulas = allFormulas.filter(f => /\[\s*\[/.test(f));
   return {
     // Architecture B: RLS/CLS is REPORTED in result.security, not injected into
     // the model. So assert on these counts (minSecurity/minRlsRules/minClsRules),
@@ -195,6 +210,8 @@ function shapeSummary(model, result = {}) {
       (n, e) => n + (e.columns?.filter(c => /CurrentUserAttribute(Text|Number)?\s*\(/.test(c.formula || '')).length || 0),
       0
     ),
+    doubledBracketFormulas: doubledBracketFormulas.length,
+    doubledBracketSample: doubledBracketFormulas.slice(0, 3),
   };
 }
 
@@ -227,6 +244,11 @@ function checkAsserts(asserts, summary) {
   if (asserts?.minWorkbookPatterns != null && summary.workbookPatterns != null
       && summary.workbookPatterns < asserts.minWorkbookPatterns) {
     issues.push(`reported workbook patterns ${summary.workbookPatterns} < expected min ${asserts.minWorkbookPatterns}`);
+  }
+  // Default-on (mirrors noErrorColumns) — a formula with a doubled bracket
+  // ref (`[[Foo]]`) is never valid Sigma syntax; see shapeSummary's comment.
+  if (asserts?.noDoubledBracketRefs !== false && summary.doubledBracketFormulas > 0) {
+    issues.push(`${summary.doubledBracketFormulas} formula(s) with a doubled bracket ref (e.g. "[[...]]"): ${JSON.stringify(summary.doubledBracketSample)}`);
   }
   return issues;
 }

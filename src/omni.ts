@@ -595,6 +595,23 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
   if (!sql || typeof sql !== 'string') return null;
   let expr = sql.trim();
 
+  // A user-written Omni `sql:` expression is real SQL and CAN contain
+  // single-quoted string literals (e.g. `CASE WHEN due_label = 'When Due'
+  // THEN 'On Time' ELSE 'Late' END`). Every pass below — field substitution,
+  // ::TYPE casts, the IN-list splitter, CASE→If() lowering, and SQL
+  // function-name mapping — is a regex scan or depth-walk that cannot tell
+  // code from data. Left unmasked, the word "When" inside that literal reads
+  // as a live WHEN keyword and corrupts the whole CASE (confirmed live: the
+  // condition is destroyed and the emitted If() binds the wrong value).
+  //
+  // Mask every literal span ONCE, here, before any pass runs; every pass
+  // below operates on the masked text; unmask at the very end, which is
+  // also where a single-quoted SQL literal becomes Sigma's double-quoted
+  // form (this replaces what used to be a separate, unmasked quote-
+  // conversion pass).
+  const { masked, lits } = maskOmniLiterals(expr);
+  expr = masked;
+
   // 1. Field reference substitution
   // For Custom SQL elements Sigma uses bare [Display Name] refs (no table prefix).
   const isCustomSql = tableName === 'Custom SQL';
@@ -622,10 +639,7 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
     return val;
   });
 
-  // 2. Single-quoted strings → double-quoted
-  expr = expr.replace(/'([^']*)'/g, '"$1"');
-
-  // 3. expr IN (a, b, c) → In(expr, a, b, c)
+  // 2. expr IN (a, b, c) → In(expr, a, b, c)
   expr = expr.replace(
     /(\w+(?:\([^)]*\))?|\[[^\]]+\])\s+IN\s+\(([^)]+)\)/gi,
     (_, lhs, items) => {
@@ -634,16 +648,70 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
     }
   );
 
-  // 4. CASE WHEN … END → nested If()
+  // 3. CASE WHEN … END → nested If()
   expr = sqlCaseToIf(expr);
 
-  // 5. SQL function names → Sigma equivalents
+  // 4. SQL function names → Sigma equivalents
   expr = expr.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g, (match, fn) => {
     const mapped = OMNI_FUNC_MAP[fn.toUpperCase()];
     return mapped ?? match;
   });
 
-  return expr;
+  return unmaskOmniLiterals(expr, lits);
+}
+
+// Masks every single-quoted string literal in `s` behind a sentinel
+// (\u0000<index>\u0001 — no letters, so pass 4's identifier-followed-by-"("
+// function-name scan never matches it, and the bare digits alone don't
+// satisfy that regex's `[A-Za-z_]` leading-character requirement either) so
+// every later regex/depth-walk pass sees data, not code, where a literal used
+// to be. `_maskLiterals` in formulas.ts is the proven reference for this
+// shape; reproduced locally here since that file has a different owner.
+//
+// A `[bracketed identifier]` span is treated as atomic: an apostrophe inside
+// one (e.g. `[Manager's Approval]`) is part of the identifier, not a string-
+// literal delimiter, so bracketed spans are skipped whole before the quote
+// scan ever sees them. An unterminated `[` or `'` (no matching close anywhere
+// in the rest of the string) is NOT treated as an opening delimiter — it's
+// kept as an ordinary character and scanning continues — so a stray quote
+// can never swallow the remainder of the expression.
+const OMNI_LIT_RE = /'(?:[^']|'')*'/g;
+
+function maskOmniLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === "'") {
+      OMNI_LIT_RE.lastIndex = i;
+      const m = OMNI_LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed
+// to a single apostrophe, and any embedded double quote backslash-escaped.
+function unmaskOmniLiterals(s: string, lits: string[]): string {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
+    const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
+    return `"${inner}"`;
+  });
 }
 
 function sqlCaseToIf(expr: string): string {
