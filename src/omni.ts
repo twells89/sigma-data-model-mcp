@@ -661,7 +661,7 @@ function omniTranslateFormula(sql: string, tableName: string): string | null {
 }
 
 // Masks every single-quoted string literal in `s` behind a sentinel
-// ( <index> — no letters, so pass 4's identifier-followed-by-"("
+// (\u0000<index>\u0001 — no letters, so pass 4's identifier-followed-by-"("
 // function-name scan never matches it, and the bare digits alone don't
 // satisfy that regex's `[A-Za-z_]` leading-character requirement either) so
 // every later regex/depth-walk pass sees data, not code, where a literal used
@@ -694,7 +694,7 @@ function maskOmniLiterals(s: string): { masked: string; lits: string[] } {
       OMNI_LIT_RE.lastIndex = i;
       const m = OMNI_LIT_RE.exec(s);
       if (m && m.index === i) {
-        out += ` ${lits.push(m[0]) - 1}`;
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
         i += m[0].length;
         continue;
       }
@@ -708,7 +708,7 @@ function maskOmniLiterals(s: string): { masked: string; lits: string[] } {
 // Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed
 // to a single apostrophe, and any embedded double quote backslash-escaped.
 function unmaskOmniLiterals(s: string, lits: string[]): string {
-  return s.replace(/ (\d+)/g, (_m, i) => {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
     const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
     return `"${inner}"`;
   });

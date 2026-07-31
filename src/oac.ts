@@ -428,7 +428,7 @@ function maskOacLiterals(s: string): { masked: string; lits: string[] } {
       OAC_LIT_RE.lastIndex = i;
       const m = OAC_LIT_RE.exec(s);
       if (m && m.index === i) {
-        out += ` ${lits.push(m[0]) - 1}`;
+        out += `\u0000${lits.push(m[0]) - 1}\u0001`;
         i += m[0].length;
         continue;
       }
@@ -442,7 +442,7 @@ function maskOacLiterals(s: string): { masked: string; lits: string[] } {
 // Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed
 // to a single apostrophe, and any embedded double quote backslash-escaped.
 function unmaskOacLiterals(s: string, lits: string[]): string {
-  return s.replace(/ (\d+)/g, (_m, i) => {
+  return s.replace(/\u0000(\d+)\u0001/g, (_m, i) => {
     const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
     return `"${inner}"`;
   });
