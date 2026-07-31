@@ -24,7 +24,7 @@
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { convertDbtToSigma } from './dbt.js';
+import { convertDbtToSigma, maskFormulaStringLiterals } from './dbt.js';
 
 function findElementByColumnName(model: any, colName: string) {
   return model.pages[0].elements.filter((e: any) =>
@@ -130,5 +130,34 @@ semantic_models:
     assert.equal(owners.length, 1, 'expected exactly one element carrying "Is Pro Segment"');
     const col = owners[0].columns.find((c: any) => c.name === 'Is Pro Segment');
     assert.match(col.formula, /\/Customer Segment\]/);
+  });
+});
+
+describe('dbt literal masking: sentinel-collision guard', () => {
+  // Same guard as lookml.ts's copy of this helper (byte-for-byte duplicated
+  // logic, see the module comment above maskFormulaStringLiterals in
+  // dbt.ts): an ASCII sentinel ("@@LIT0@@"-shaped) is typeable, so formula
+  // text could already contain it. The naive (unguarded) version can't tell
+  // its own inserted placeholder apart from a pre-existing occurrence — both
+  // get replaced with the same literal on unmask, corrupting unrelated text.
+  test('a formula already containing the exact default sentinel round-trips unchanged', () => {
+    const input = 'If([@@LIT@@0@@LIT@@] = 1, "Small", "Large")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    const out = unmask(masked);
+    assert.equal(out, input, `sentinel collision corrupted the formula: ${out}`);
+  });
+
+  test('a formula containing the bare "@@LIT0@@" token (no widening needed) round-trips unchanged', () => {
+    const input = 'Concat([@@LIT0@@], "Small [X]")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    const out = unmask(masked);
+    assert.equal(out, input, `sentinel collision corrupted the formula: ${out}`);
+  });
+
+  test('control: a formula with no sentinel-look-alike text is masked/unmasked normally', () => {
+    const input = 'If([Amount] < 100, "Small", "Large")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    assert.doesNotMatch(masked, /Small|Large/);
+    assert.equal(unmask(masked), input);
   });
 });

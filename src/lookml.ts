@@ -475,6 +475,44 @@ function resolveSqlTableNameRefs(
   return body;
 }
 
+/**
+ * Mask "..." string-literal runs in a Sigma formula (double-quoted — unlike
+ * the single-quoted LookML/SQL text this file also handles) with a
+ * same-shape placeholder before scanning/rewriting bracket refs, then
+ * restore the literal text via the returned `unmask`. Used by the
+ * cross-element calc-column pass below: without masking, a case/tier
+ * bucket label that happens to contain bracket-look-alike text (e.g.
+ * "Small [X]") is read as a reference to a field named X, and a fully
+ * self-contained column gets misclassified as cross-element and relocated
+ * (or dropped).
+ *
+ * The placeholder itself must not collide with anything already present in
+ * `formula`. Unlike a control-byte sentinel (which cannot appear in real
+ * text but is tooling-hostile), an ASCII sentinel like "@@LIT0@@" is
+ * typeable — a customer's own label/else-value text could, however
+ * unlikely, already contain it. Content INSIDE a "..." literal is always
+ * safe (the whole quoted span is replaced as one atomic unit regardless of
+ * what it says), but a pre-existing occurrence OUTSIDE any literal — in the
+ * formula's live syntax — would never be masked, leaving it exposed to
+ * `unmask`'s blind regex substitution and corrupting unrelated text. Guard
+ * against this by widening the marker until the input provably does not
+ * contain it, rather than falling back to the unmasked (vulnerable) scan or
+ * throwing and aborting the whole conversion over a resolvable edge case.
+ * Exported for direct unit testing of this guard.
+ */
+export function maskFormulaStringLiterals(formula: string): { masked: string; unmask: (s: string) => string } {
+  let marker = '@@LIT@@';
+  while (formula.includes(marker)) marker += '@';
+  const literals: string[] = [];
+  const masked = formula.replace(/"(?:[^"\\]|\\.)*"/g, (lit) => {
+    const idx = literals.push(lit) - 1;
+    return `${marker}${idx}${marker}`;
+  });
+  const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const unmaskRe = new RegExp(`${escapedMarker}(\\d+)${escapedMarker}`, 'g');
+  return { masked, unmask: (s: string) => s.replace(unmaskRe, (_m, i) => literals[Number(i)]) };
+}
+
 // ── LookML View → Sigma Element Conversion ───────────────────────────────────
 
 function lookExtractPath(view: any, sqlTableNameMap?: Record<string, string>): string[] {
@@ -1955,23 +1993,6 @@ export function convertLookMLToSigma(
   }
 
   if (!connectionId) warnings.unshift('⚠ Connection ID not set — update in JSON before saving to Sigma');
-
-  // Sigma formulas (unlike LookML SQL) quote string literals with DOUBLE
-  // quotes ("like this"). The cross-element detection/rewrite below scans a
-  // column's already-converted formula text for bare `[Name]` refs — without
-  // masking, a case/tier bucket label that happens to contain bracket-look-
-  // alike text (e.g. "Small [X]") is read as a reference to a field named X,
-  // and a fully self-contained column gets misclassified as cross-element
-  // and relocated (or dropped). Mask "..." runs before scanning/rewriting,
-  // then restore the literal text afterward.
-  const maskFormulaStringLiterals = (formula: string): { masked: string; unmask: (s: string) => string } => {
-    const literals: string[] = [];
-    const masked = formula.replace(/"(?:[^"\\]|\\.)*"/g, (lit) => {
-      const idx = literals.push(lit) - 1;
-      return `@@LIT${idx}@@`;
-    });
-    return { masked, unmask: (s: string) => s.replace(/@@LIT(\d+)@@/g, (_m, i) => literals[Number(i)]) };
-  };
 
   // ── Pull cross-element calc cols off source elements (moved to derived) ─
   // Calc cols whose formula references a related-table column by display name

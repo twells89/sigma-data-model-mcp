@@ -24,7 +24,7 @@
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { convertLookMLToSigma } from './lookml.js';
+import { convertLookMLToSigma, maskFormulaStringLiterals } from './lookml.js';
 
 const model = {
   name: 'shop.model.lkml',
@@ -172,5 +172,52 @@ describe('lookml literal masking: control — a genuine cross-element ref still 
     const col = (view.columns || []).find((c: any) => c.name === 'Full Label');
     assert.ok(col, 'expected "Full Label" on the derived element');
     assert.match(col!.formula, /\[Orders\/customers\/Name\]/);
+  });
+});
+
+describe('lookml literal masking: sentinel-collision guard', () => {
+  // maskFormulaStringLiterals uses an ASCII sentinel ("@@LIT0@@"-shaped)
+  // rather than a control byte — greppable, no binary-file problem — but an
+  // ASCII sentinel is typeable, so formula text could already contain it
+  // (e.g. a bracket-look-alike left over from a *previous* pass, or just an
+  // unlucky label). If the input already contains the sentinel the naive
+  // (unguarded) version corrupts unrelated text on unmask: it can't tell its
+  // own inserted placeholder apart from a pre-existing occurrence, so BOTH
+  // get replaced with the same literal. Demonstrated against the naive
+  // version (see the sibling assertion below, run manually against a copy
+  // of the pre-guard implementation): unmasking
+  //   If([@@LIT0@@] = 1, "Small", "Large")
+  // (masked as `If([@@LIT0@@] = 1, @@LIT0@@, @@LIT1@@)`) turns BOTH
+  // occurrences of "@@LIT0@@" into "Small", corrupting the pre-existing
+  // bracket-look-alike text into `If(["Small"] = 1, "Small", "Large")`.
+  test('a formula already containing the exact default sentinel round-trips unchanged', () => {
+    const input = 'If([@@LIT@@0@@LIT@@] = 1, "Small", "Large")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    const out = unmask(masked);
+    assert.equal(out, input, `sentinel collision corrupted the formula: ${out}`);
+  });
+
+  test('a formula containing the bare "@@LIT0@@" token (no widening needed) round-trips unchanged', () => {
+    const input = 'Concat([@@LIT0@@], "Small [X]")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    const out = unmask(masked);
+    assert.equal(out, input, `sentinel collision corrupted the formula: ${out}`);
+  });
+
+  test('the masked text never contains a bare (unwidened) @@LIT sentinel that was not already there', () => {
+    // Escalate: an input that contains every "obvious" width of widened
+    // marker up to several '@'s — the guard must keep widening past all of
+    // them rather than settling on the first one that merely avoids the
+    // ORIGINAL default.
+    const input = 'If([@@LIT@@@@@0@@LIT@@@@@] = 1, "A", "B")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    assert.equal(unmask(masked), input, 'round-trip must restore the original text exactly');
+  });
+
+  test('control: a formula with no sentinel-look-alike text is masked/unmasked normally', () => {
+    const input = 'If([Amount] < 100, "Small", "Large")';
+    const { masked, unmask } = maskFormulaStringLiterals(input);
+    assert.doesNotMatch(masked, /Small|Large/);
+    assert.equal(unmask(masked), input);
   });
 });
