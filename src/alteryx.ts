@@ -463,6 +463,26 @@ function alteryxFormulaToSigma(formula: string, warnings: string[]): string {
   if (!formula?.trim()) return '';
   let f = formula.trim();
 
+  // An Alteryx Formula-tool expression is user-written and CAN contain
+  // single-quoted string literals (e.g. `IF [Status] = 'Active' THEN 'Choose
+  // THEN plan' ELSE 'No' ENDIF`). Every pass below — the IF/ENDIF lowering,
+  // the ALTERYX_FUNC_MAP name mapping, the bracket-identifier re-casing, and
+  // the IN-list splitter — is a regex scan, `.search()`, or `.split()` that
+  // cannot tell code from data. Left unmasked, a literal containing "THEN"/
+  // "ELSEIF"/"ELSE", a mapped function name, or a comma is read as live
+  // syntax and corrupts the formula — confirmed live via
+  // convertAlteryxToSigma (e.g. the THEN-branch value is silently dropped
+  // and a stray quote survives into the output).
+  //
+  // Mask every literal span ONCE, here, before any pass runs; every pass
+  // below operates on the masked text; unmask at the very end, which is
+  // also where a single-quoted literal becomes Sigma's double-quoted form
+  // (this replaces what used to be a separate, unmasked quote-conversion
+  // pass, and the per-item `'x'` → `"x"` cleanup inside the IN-list
+  // handler, which only ran on a naive comma-split of already-live text).
+  const { masked, lits } = maskAlteryxLiterals(f);
+  f = masked;
+
   if (/\bIF\b/i.test(f) && /\bENDIF\b/i.test(f)) f = alteryxIfToSigma(f);
 
   for (const [ax, sig] of Object.entries(ALTERYX_FUNC_MAP)) {
@@ -475,14 +495,71 @@ function alteryxFormulaToSigma(formula: string, warnings: string[]): string {
     return '[' + sigmaDisplayName(colName) + ']';
   });
   f = f.replace(/(\[[^\]]+\]|\b\w+\b)\s+IN\s*\(([^)]+)\)/gi, (_, expr, args) => {
-    const vals = args.split(',').map((v: string) => v.trim().replace(/^'(.*)'$/, '"$1"'));
+    const vals = args.split(',').map((v: string) => v.trim());
     return `In(${expr}, ${vals.join(', ')})`;
   });
-  f = f.replace(/'([^']*)'/g, '"$1"');
 
   if (/\bCASE\b/i.test(f)) f = sqlCaseToIf(f);
 
-  return f.trim();
+  return unmaskAlteryxLiterals(f, lits).trim();
+}
+
+// Masks every single-quoted string literal in `s` behind a sentinel built
+// from NUL + digits + SOH. Those two control characters cannot occur in a
+// real Alteryx formula, and the sentinel deliberately contains NO letters:
+// the ALTERYX_FUNC_MAP loop and the bracket re-casing regex below both key
+// off `[A-Za-z]`, so neither ever matches the sentinel or the bare digits
+// between its control-character delimiters. A plain ASCII placeholder
+// would NOT be safe — it could collide with ordinary text already in the
+// formula. Mirrors `_maskLiterals`/`_unmaskLiterals` in formulas.ts (that
+// file has a different owner, so this is a local, independently-reproduced
+// copy of the same proven shape — see omni.ts's maskOmniLiterals for the
+// identical pattern in this repo).
+//
+// A `[bracketed identifier]` span is treated as atomic: an apostrophe
+// inside one (e.g. `[Manager's Approval]`) is part of the identifier, not
+// a string-literal delimiter, so bracketed spans are skipped whole before
+// the quote scan ever sees them. An unterminated `[` or `'` (no matching
+// close anywhere in the rest of the string) is NOT treated as an opening
+// delimiter — it's kept as an ordinary character and scanning continues —
+// so a stray quote can never swallow the remainder of the expression.
+const ALTERYX_LIT_RE = /'(?:[^']|'')*'/g;
+
+function maskAlteryxLiterals(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === "'") {
+      ALTERYX_LIT_RE.lastIndex = i;
+      const m = ALTERYX_LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += ` ${lits.push(m[0]) - 1}`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores literals in Sigma form: double-quoted, SQL's '' escape collapsed
+// to a single apostrophe, and any embedded double quote backslash-escaped.
+function unmaskAlteryxLiterals(s: string, lits: string[]): string {
+  return s.replace(/ (\d+)/g, (_m, i) => {
+    const inner = lits[Number(i)].slice(1, -1).replace(/''/g, "'").replace(/"/g, '\\"');
+    return `"${inner}"`;
+  });
 }
 
 function alteryxIfToSigma(f: string): string {
@@ -533,10 +610,31 @@ function alteryxExtractPath(fileStr: string, dbOverride: string, schOverride: st
   return [dbOverride || 'DATABASE', schOverride || 'SCHEMA', filename || 'UNKNOWN'];
 }
 
-/** Minimal SQL CASE WHEN...THEN...ELSE...END → nested If() conversion (shared with OAC) */
+/**
+ * Minimal SQL CASE WHEN...THEN...ELSE...END → nested If() conversion.
+ * Shared (exported) — called from oac.ts and bobj.ts as well as this file.
+ *
+ * By the time any current caller invokes this, SQL's single-quoted literals
+ * have already been converted to Sigma's double-quoted form (each caller
+ * runs its own `'...'` → `"..."` pass first) — so the live quote character
+ * reaching this function is `"`, not `'`. The WHEN/THEN/ELSE regex below has
+ * no idea a `"..."` literal exists: a literal containing the word "then" —
+ * e.g. `CASE WHEN [x] = 'contains THEN keyword' THEN 'a' ELSE 'b' END` — is
+ * read as a real keyword boundary and corrupts the condition (confirmed
+ * live via convertAlteryxToSigma: `If([x] = "contains, keyword" THEN "a",
+ * "b")`, with the real THEN swallowed into the condition text).
+ *
+ * Masking here — rather than requiring every caller to pre-mask — means
+ * bobj.ts (which imports this function but has a different owner, so its
+ * call site can't be edited from here) gets the fix for free. Callers that
+ * DO mask their own single-quoted literals before calling this (alteryx.ts,
+ * oac.ts) simply hand this function text with no live `"..."` spans left to
+ * find — this masking pass is then a harmless no-op for them.
+ */
 export function sqlCaseToIf(expr: string): string {
+  const { masked, lits } = maskDoubleQuotedForCase(expr);
   const caseRe = /\bCASE\b([\s\S]*?)\bEND\b/gi;
-  return expr.replace(caseRe, (_, inner) => {
+  const result = masked.replace(caseRe, (_, inner) => {
     const whenRe = /\bWHEN\b\s*([\s\S]+?)\s*\bTHEN\b\s*([\s\S]+?)(?=\s*\bWHEN\b|\s*\bELSE\b|\s*$)/gi;
     const elseMatch = inner.match(/\bELSE\b\s*([\s\S]+?)$/i);
     const elsePart = elseMatch ? elseMatch[1].trim() : 'Null()';
@@ -550,4 +648,52 @@ export function sqlCaseToIf(expr: string): string {
     }
     return result;
   });
+  return unmaskDoubleQuotedForCase(result, lits);
+}
+
+// Masks every double-quoted (Sigma-form) string literal in `s` behind a
+// NUL+digits+SOH sentinel — same shape and rationale as maskAlteryxLiterals
+// above (no letters, so the WHEN/THEN/ELSE keyword regex above can never
+// match inside one), just keyed on `"` instead of `'` since that is the
+// live quote style already-converted text carries by the time it reaches
+// this function. Handles a `\"` escape inside the literal (Sigma's escaped-
+// embedded-quote form) so a literal like `"she said \"hi\""` masks as ONE
+// span, not three. `[bracketed identifier]` spans and unterminated quotes
+// get the same atomic/non-swallowing treatment as maskAlteryxLiterals.
+const CASE_DQ_LIT_RE = /"(?:[^"\\]|\\.)*"/g;
+
+function maskDoubleQuotedForCase(s: string): { masked: string; lits: string[] } {
+  const lits: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      if (close !== -1) {
+        out += s.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+    }
+    if (s[i] === '"') {
+      CASE_DQ_LIT_RE.lastIndex = i;
+      const m = CASE_DQ_LIT_RE.exec(s);
+      if (m && m.index === i) {
+        out += ` ${lits.push(m[0]) - 1}`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+// Restores each literal to its ORIGINAL, already-double-quoted text
+// verbatim — unlike the single-quote maskers in this file, no quote-style
+// conversion is needed here: the text was already in final Sigma form
+// before it was masked.
+function unmaskDoubleQuotedForCase(s: string, lits: string[]): string {
+  return s.replace(/ (\d+)/g, (_m, i) => lits[Number(i)] ?? _m);
 }
