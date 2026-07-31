@@ -447,7 +447,19 @@ export function triageCrossTable(args: {
   maxDepth?: number; metricRefs?: string[];
 }): Triage {
   const { metricName, sigmaFormula, rawDax, homeTable, refs, columnOwners, relationships } = args;
-  const maxDepth = args.maxDepth ?? 2;
+  // Default 3, not 2 (raised after re-measuring the `no-covering-View` bucket on
+  // R1-R4): 9 of its 32 measures are `CALCULATE(agg, DIM[attr] = value)` shapes
+  // whose filtered dimension is reachable from the aggregate's own fact at 3 hops,
+  // not 2. Raising the default costs nothing on the grain side — coverage and
+  // grain are independent concerns here. `reachableTables` is a monotonic BFS: a
+  // ref that already resolved at <= 2 hops keeps that exact hop distance no
+  // matter how far `maxDepth` reaches past it, so an existing covered candidate's
+  // grain verdict (T4a-T4n, T8d-T8g) cannot change. The only thing depth 3 adds is
+  // NEW candidates for refs that were previously unreachable at any hop — each
+  // judged by the SAME grain rule as any other candidate, so a genuinely
+  // cross-hop column inside an aggregate's summand is still `fanout-risk` at hop
+  // 3 exactly as it would be at hop 1 or 2 (T4q). See T4p/T4q.
+  const maxDepth = args.maxDepth ?? 3;
   const metricRefSet = new Set(args.metricRefs ?? []);
   const dependsOnMetrics = [...new Set(refs.filter((r) => metricRefSet.has(r)))];
   const columnRefs = refs.filter((r) => !metricRefSet.has(r));
@@ -588,4 +600,57 @@ function describeVerdict(t: Triage): string {
   const risky = t.candidates[0];
   return `TRIAGE: "${risky.baseTable} View" (${hop(risky)}) covers it but FAN-OUT RISK — ` +
     `[${risky.unsafeRefs.join(', ')}] would double-count across the join; rebuild at the visual's grain.`;
+}
+
+/**
+ * A dropped measure's "bad" ref is not always a column-reachability question.
+ * `columnOwners` (built only from `model.tables[].columns`) has no entry for a
+ * METRIC name, so a ref that names one resolves to hop `Infinity` on every
+ * candidate — exactly like a genuinely disconnected column — and
+ * `triageCrossTable` has no way to tell the two apart on its own. When the
+ * caller (which HAS the whole-model and cross-pass state this per-call,
+ * side-effect-free module deliberately does not keep) can already tell the ref
+ * is one of these two shapes, it should report the REAL blocker directly
+ * instead of running triageCrossTable at all — asking a reachability
+ * classifier to describe a non-reachability problem is how "no View covers it"
+ * ends up as the reported reason for 15 of 32 `no-covering-View` measures
+ * (R1-R4 spike) that were never a reachability problem in the first place:
+ *
+ *   - `cross-element-metric`: the ref names a metric declared on a DIFFERENT
+ *     element. Sigma metrics cannot reference another element's metric, at
+ *     any join distance — a hard constraint, not a reachability gap. No
+ *     `maxDepth` will ever change this verdict, unlike an ordinary
+ *     column-coverage failure.
+ *   - `dropped-sibling`: the ref names a SAME-element metric that was itself
+ *     already dropped, in an earlier pass of the caller's own multi-pass drop
+ *     loop, for a reason that has nothing to do with THIS measure's own
+ *     columns (fan-out risk, never-hostable, or anything else). This
+ *     measure's real blocker is that dependency, so its message quotes the
+ *     sibling's own `describeTriage`/`describeMetricBlocker` text VERBATIM —
+ *     reusing the already-verified wording is simpler and more trustworthy
+ *     than re-deriving a paraphrase, and it lets a cascade of blockers chain
+ *     without losing information at each hop.
+ *
+ * Deliberately NOT a variant folded into `Triage`/`describeTriage`: both cases
+ * are known BEFORE any candidate/coverage/grain analysis would run, so running
+ * that analysis at all — only to discard its result — would cost real work for
+ * no benefit and risks a spurious `candidates: []` (the ref is not owned by any
+ * table, so every base fails coverage) misreading as "no View covers it" if a
+ * future edit ever reordered the checks.
+ */
+export type MetricBlocker =
+  | { kind: 'cross-element-metric'; metric: string; ownerTable: string }
+  | { kind: 'dropped-sibling'; metric: string; siblingReason: string };
+
+/** Render a `MetricBlocker` as the operator-facing suffix appended to the drop warning. */
+export function describeMetricBlocker(b: MetricBlocker): string {
+  if (b.kind === 'cross-element-metric') {
+    return `TRIAGE: references metric "${b.metric}", which is declared on a DIFFERENT element ` +
+      `("${b.ownerTable}") — Sigma metrics cannot reference another element's metric, at any join ` +
+      `distance; no hop limit fixes this. Recreate the dependency as a workbook-level calculation, ` +
+      `or duplicate "${b.metric}" onto this element.`;
+  }
+  return `TRIAGE: depends on sibling metric "${b.metric}", which was itself dropped — its own drop ` +
+    `reason: ${b.siblingReason} That dependency, not column reachability, is this measure's real ` +
+    `blocker; resolve "${b.metric}" first, or rewrite this measure without it.`;
 }

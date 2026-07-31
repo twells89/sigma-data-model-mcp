@@ -18,7 +18,7 @@ import {
   makeRlsSecurity, makeClsSecurity,
   type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
-import { triageCrossTable, describeTriage, type Rel } from './powerbi-crosstable-triage.js';
+import { triageCrossTable, describeTriage, describeMetricBlocker, type Rel, type MetricBlocker } from './powerbi-crosstable-triage.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
 
@@ -2207,6 +2207,22 @@ export function convertPowerBIToSigma(
   const triageRels: Rel[] = (model.relationships || [])
     .filter((r: any) => r.fromTable && r.toTable)
     .map((r: any) => ({ from: r.fromTable, to: r.toTable }));
+  // Whole-model metric name -> declaring table, built up front for the same reason
+  // as triageColumnOwners above: the cross-table drop loop below runs ONE TABLE AT
+  // A TIME, so by the time table k's own metrics are checked, this is the only way
+  // to know a "bad" ref names a metric declared on a DIFFERENT table at all — a
+  // hard Sigma constraint (metrics cannot reference another element's metric, at
+  // any join distance) that `triageCrossTable` has no basis to reason about, since
+  // it isn't a column and isn't a same-element ref either. `Object.create(null)` —
+  // NOT `{}` — for the same reason as triageColumnOwners: a real model can name a
+  // measure `toString`/`constructor`/etc. First-wins on a name collision across
+  // tables (rare; DAX measure names are usually unique per model).
+  const allMetricOwner: Record<string, string> = Object.create(null);
+  for (const _t of (model.tables || [])) {
+    for (const _m of (_t.measures || [])) {
+      if (_m?.name && !allMetricOwner[_m.name]) allMetricOwner[_m.name] = _t.name;
+    }
+  }
   // measure (PBI) name -> owning element id, for cross-table ratio detection
   // (beads-sigma-m1a). Includes measures later moved to the fact element.
   const measureToElementId: Record<string, string> = {};
@@ -2630,6 +2646,13 @@ export function convertPowerBIToSigma(
         const k = d.toLowerCase();
         if (!canonicalCol.has(k)) canonicalCol.set(k, d);
       }
+      // Metric name -> the exact reason text this metric was itself dropped for,
+      // across ALL passes of the loop below (persists outside the `pass` loop —
+      // a metric dropped in pass 0 must still be found when a LATER metric's
+      // ref to it is judged in pass 1+). Populated whichever branch below fires,
+      // so a chain of dependent drops composes: if B depends on A and C depends
+      // on B, C's message quotes B's message, which already quotes A's.
+      const siblingDropReason = new Map<string, string>();
       for (let pass = 0; pass < 5; pass++) {
         const metricNames = new Set(metrics.map((mm: any) => mm.name));
         const canonicalMetric = new Map<string, string>();
@@ -2649,26 +2672,55 @@ export function convertPowerBIToSigma(
           const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
-            // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
-            // entry per line) — `String(anArray)` joins with a bare comma, not a
-            // newline, silently mangling multi-line DAX before isNeverHostable
-            // ever sees it. Coerce INSIDE the array branch so an array joins with
-            // '\n' (matching how this codebase joins the same shape elsewhere,
-            // e.g. powerbi.ts's own measureDaxMap construction), and only
-            // String()-coerce the non-array case.
-            const _rawDaxExpr = ((t.measures || []).find((mm: any) => mm.name === metrics[i].name) || {}).expression;
-            const _rawDax = Array.isArray(_rawDaxExpr) ? _rawDaxExpr.join('\n') : String(_rawDaxExpr || '');
-            const _triage = triageCrossTable({
-              metricName: metrics[i].name,
-              sigmaFormula: String(metrics[i].formula),
-              rawDax: _rawDax,
-              homeTable: tableName,
-              refs: [...new Set(refs)],
-              columnOwners: triageColumnOwners,
-              relationships: triageRels,
-              metricRefs: [...metricNames],
-            });
-            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${describeTriage(_triage)}`);
+            // `bad` is not always a reachability question — it can be a NAME
+            // rather than a column at all. `columnOwners` has no entry for a
+            // metric name (it is built only from `model.tables[].columns`), so
+            // either of the two shapes below would otherwise resolve to hop
+            // `Infinity` on every candidate and get misreported as "no View
+            // covers it", inflating that bucket with measures that were never a
+            // coverage problem (measured: 15 of 32 R1-R4 `no-covering-View`
+            // drops — see MetricBlocker's doc comment). Checked BEFORE running
+            // triageCrossTable at all — both are known without any candidate/
+            // coverage/grain analysis, so running it only to discard the result
+            // would be wasted work and risks exactly the misattribution this
+            // guards against if a future edit ever reordered the checks.
+            let _blocker: MetricBlocker | null = null;
+            if (allMetricOwner[bad] && allMetricOwner[bad] !== tableName) {
+              _blocker = { kind: 'cross-element-metric', metric: bad, ownerTable: allMetricOwner[bad] };
+            } else if (siblingDropReason.has(bad)) {
+              _blocker = { kind: 'dropped-sibling', metric: bad, siblingReason: siblingDropReason.get(bad)! };
+            }
+            let _reasonText: string;
+            if (_blocker) {
+              _reasonText = describeMetricBlocker(_blocker);
+            } else {
+              // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
+              // entry per line) — `String(anArray)` joins with a bare comma, not a
+              // newline, silently mangling multi-line DAX before isNeverHostable
+              // ever sees it. Coerce INSIDE the array branch so an array joins with
+              // '\n' (matching how this codebase joins the same shape elsewhere,
+              // e.g. powerbi.ts's own measureDaxMap construction), and only
+              // String()-coerce the non-array case.
+              const _rawDaxExpr = ((t.measures || []).find((mm: any) => mm.name === metrics[i].name) || {}).expression;
+              const _rawDax = Array.isArray(_rawDaxExpr) ? _rawDaxExpr.join('\n') : String(_rawDaxExpr || '');
+              const _triage = triageCrossTable({
+                metricName: metrics[i].name,
+                sigmaFormula: String(metrics[i].formula),
+                rawDax: _rawDax,
+                homeTable: tableName,
+                refs: [...new Set(refs)],
+                columnOwners: triageColumnOwners,
+                relationships: triageRels,
+                metricRefs: [...metricNames],
+                // Explicit, not just inherited from triageCrossTable's own default —
+                // measured on R1-R4: 9 of 32 `no-covering-View` drops are a filtered
+                // dimension reachable at 3 hops, not 2 (see powerbi-crosstable-triage.ts).
+                maxDepth: 3,
+              });
+              _reasonText = describeTriage(_triage);
+            }
+            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${_reasonText}`);
+            siblingDropReason.set(metrics[i].name, _reasonText);
             metrics.splice(i, 1);
           }
         }

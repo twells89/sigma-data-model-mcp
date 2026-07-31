@@ -400,6 +400,128 @@ classifies **more than 23** measures as safe (the handoff's home==base rule esti
 **Measured safe count: 13. This does not exceed 23 — the hypothesis, as stated, did
 not hold on this corpus.**
 
+### 11.1 Two follow-up fixes to the `no-covering-View` bucket, re-measured
+
+A spike categorised all 32 of the PR 1 `no-covering-View` measures and proposed two
+fixes. Both were re-measured directly against R1-R4 on this branch (not assumed from
+the spike) before and after implementation, using the same method as §11 (running
+`convertPowerBIToSigma` over the four models and classifying every `(cross-table
+measure) — dropped` warning by its `TRIAGE:` text).
+
+**Fix 1 — raise `triageCrossTable`'s default `maxDepth` from 2 to 3.** The spike found
+9 of the 32 are `CALCULATE(agg, DIM[attr] = value)` shapes where the filtered
+dimension is reachable from the aggregate's own fact at 3 hops, not 2 — and predicted
+all 9 would flip to a clean `safe` verdict, taking safe from 13 to 22.
+
+**Measured result differs from the spike's prediction:**
+
+| bucket | depth 2 (§11 baseline) | depth 3 (this branch) | delta |
+|---|---|---|---|
+| safe | 13 | 16 | **+3**, not +9 |
+| fan-out risk | 37 | 37 | **0** |
+| ambiguous | 4 | 9 | **+5** |
+| never-hostable | 22 | 22 | **0** |
+| no-covering-View | 32 | 24 | **-8** |
+| malformed | 0 | 0 | 0 |
+
+8 measures leave `no-covering-View` at depth 3, not 9 — but only **3** land cleanly on
+`safe`; the other **5** land on `ambiguous` instead. Depth 3 does not only add new
+`safe` hosts for the 8 previously-uncovered measures — for **5 measures that were
+already `safe` at depth 2 with exactly one covering base**, the wider reach uncovers a
+SECOND independently-safe base that depth 2 couldn't see, and `triageCrossTable`
+correctly reports that as `ambiguous` (needs a human choice) rather than silently
+picking one, per the existing multi-candidate rule (T4i). Net safe count is 13 + 8 - 5
+= 16, not 22. **Reported here because it differs from the spike's premise, not to
+reconcile the two** — the spike's per-measure categorisation of which 9 would move
+was directionally right (8 of 9 did move), but its claim that they all land on a
+*clean* `safe` verdict did not hold: a majority of what moves lands on `ambiguous`
+just as often as `safe`.
+
+**The guard's core safety property holds exactly as designed: fan-out risk (37) and
+never-hostable (22) are IDENTICAL before and after.** No measure moved from either
+bucket into `safe`. This is not incidental — `reachableTables` is a monotonic BFS
+(first-visit-wins), so a reference that already resolved at <= 2 hops keeps that exact
+hop distance at any higher `maxDepth`; increasing depth can only ADD new candidates
+for previously-unreachable refs, never change an already-covered candidate's grain
+verdict. Confirmed both by the unchanged aggregate counts and by a per-measure diff
+across all 108 warnings: zero measures show a `fanout-risk → safe` or
+`never-hostable → safe` transition. New unit tests `T4p`/`T4q`
+(`src/powerbi.crosstable-triage.test.ts`) lock this down synthetically: a 3-hop
+PREDICATE-only reference is now `safe` with no `maxDepth` override (T4p), while a
+genuine 3-hop reference INSIDE an aggregate's summand is still `fanout-risk` (T4q) —
+depth alone cannot manufacture a false `safe`.
+
+`describeTriage`'s "no View covers it within the configured depth" wording already
+names no specific number (Task 8 made this generic for exactly this reason — a caller
+passing a non-default `maxDepth` would otherwise get a message naming the wrong
+figure) — confirmed unchanged, no edit needed.
+
+**Fix 2 — attribute the other 15 `no-covering-View` measures to their real blocker.**
+The spike found these are not reachability problems: they inherit an unrelated
+failure from a sibling METRIC reference that `columnOwners` has no entry for (it is
+built only from columns), so the ref resolves to hop `Infinity` on every candidate
+exactly like a genuinely disconnected column would — 5 reference a metric declared on
+a DIFFERENT element (a hard Sigma constraint; no hop limit ever fixes this), 6 have a
+same-table sibling dropped for FAN-OUT reasons, and 4 have a same-table sibling
+dropped as NEVER-HOSTABLE.
+
+Implemented as two new caller-side checks in `src/powerbi.ts`, run BEFORE
+`triageCrossTable` for a "bad" ref that turns out to be one of these two name shapes,
+bypassing the reachability classifier entirely rather than asking it to describe a
+non-reachability problem:
+- a whole-model, up-front `name → declaring table` index catches a ref naming a
+  metric declared on a different element;
+- a per-table `Map` recording each dropped metric's own reason (populated across the
+  existing multi-pass drop loop) catches a ref naming a same-table sibling that was
+  itself already dropped, and quotes that sibling's own drop reason verbatim so a
+  chain of dependent drops composes without losing information.
+
+Both surfaced via a new `MetricBlocker` type / `describeMetricBlocker` function in
+`src/powerbi-crosstable-triage.ts`, deliberately NOT folded into `Triage`/
+`describeTriage` — both conditions are known before any coverage/grain analysis would
+run, so running that analysis at all (only to discard the result) risks exactly the
+misattribution being fixed if a future edit ever reordered the checks.
+
+**Measured result — combined with Fix 1 (this branch's final state):**
+
+| bucket | depth 2, pre-fix (§11 baseline) | this branch (depth 3 + Fix 2) | delta |
+|---|---|---|---|
+| safe | 13 | 16 | +3 (Fix 1 only; Fix 2 does not change this) |
+| fan-out risk | 37 | 37 | 0 |
+| ambiguous | 4 | 9 | +5 (Fix 1 only) |
+| never-hostable | 22 | 22 | 0 |
+| **blocked — cross-element metric ref** | — | **5** | new bucket |
+| **blocked — dropped-sibling cascade** | — | **11** | new bucket |
+| no-covering-View | 32 | **8** | -24 total (-8 from Fix 1, -16 from Fix 2) |
+| malformed | 0 | 0 | 0 |
+
+**5 cross-element-metric measures exactly matches the spike's count.** The
+dropped-sibling cascade measures **11, not 10 (6 fan-out + 4 never-hostable)**: sub-
+classifying by the sibling's own ultimate reason confirms 6 fan-out + 4 never-hostable
+(exactly matching the spike) **plus 1 more** whose sibling's own verdict is `safe` —
+that sibling is only reachable (and therefore only exists as a candidate at all)
+because of Fix 1's depth-3 default; at depth 2 it would have been `no-covering-View`
+itself. A `safe` verdict does not exempt a measure from being dropped — PR 1 is
+triage-only and drops every cross-table measure regardless of verdict, pending PR 2's
+deferred-drop-and-attach — so a dependent measure still inherits the gap. This 16th
+case is a genuine interaction between the two fixes, not a discrepancy to explain
+away: Fix 2's cascade tracking is verdict-agnostic by design (it quotes whatever
+reason the sibling was dropped for, not just fan-out/never-hostable specifically), so
+it correctly catches this shape too even though the spike's manual read — done before
+Fix 1 existed — had no way to find it.
+
+All new coverage (`T12a`/`T12b` unit tests for `describeMetricBlocker`, `T13a`-`T13c`
+end-to-end tests through the real drop-site wiring in `src/powerbi.ts`) is in
+`src/powerbi.crosstable-triage.test.ts`. Every negative-control proof (revert the
+fix, show the specific new test fail for the expected reason, restore) was run and
+is recorded in the branch's task report, not reproduced here.
+
+`npm test` on this branch: **590 tests, 561 pass, 26 fail, 3 skipped** — pass count
+rose by the 7 new regression tests (`T4p`, `T4q`, `T12a`, `T12b`, `T13a`, `T13b`,
+`T13c`); the 26 failing tests are IDENTICAL, by name, to the 26 already failing on
+`main` before this branch — confirmed by diff, not just by count. None are caused by
+or fixed by this branch's changes.
+
 ---
 
 ## 13. Numeric verification of the fan-out guard
