@@ -1040,3 +1040,133 @@ test('live Domo Beast Mode corpus: golden-value spot checks over representative 
     'Sum((If(Lower([Account.BillingCountry]) LIKE "united states", 0, If(Lower([Account.BillingCountry]) LIKE "usa", 0, If(Lower([Account.BillingCountry]) LIKE "us", 0, 1))) ))'
   );
 });
+
+// ── bead qorq: pass 3 double-brackets an ALREADY-bracketed ALL-CAPS ref ────
+// Track A (PR #115) made the CASE/COUNT(DISTINCT) structure perfect, but
+// left pass 3 (bare ALL-CAPS identifier bracketing) unable to tell a token
+// already sitting inside `[...]` from a genuinely bare one — `[NET_REVENUE]`
+// came out `[[Net Revenue]]`. This is exactly what a Snowflake-backed Domo
+// instance hits on every Beast Mode: Snowflake folds unquoted column names to
+// UPPERCASE, and Domo's own `convert-beast-modes.rb` preprocessing already
+// emits `[Bracketed]` refs before the SQL ever reaches this converter — the
+// live 74-formula corpus measured 0/74 for this defect purely because that
+// corpus's own sample data happens to use mixed-case names (never exercising
+// the ALL-CAPS path). Fixed by masking `[...]` spans out of pass 3's view
+// (`_maskBrackets`/`_unmaskBrackets` in formulas.ts), computing the correct
+// single-bracketed form up front for an ALL-CAPS body and leaving anything
+// else (mixed case, an apostrophe) verbatim.
+//
+// All RED outputs below were captured by running these exact inputs against
+// unmodified merged main (2ba3ea8), via a one-off tsx probe — this test
+// block did not exist there.
+
+test('a bracketed ALL-CAPS ref is not double-bracketed (bead qorq)', () => {
+  // Verified red at 2ba3ea8: lookConvertExpression('[NET_REVENUE]') -> '[[Net Revenue]]'
+  assert.equal(lookConvertExpression('[NET_REVENUE]'), '[Net Revenue]');
+});
+
+// The real, hand-verified live Domo "Margin Pct" Beast Mode (formulas.pending.json,
+// bead qorq brief) — an ALL-CAPS-bracketed CASE ratio, pinned to its exact
+// expected output byte-for-byte.
+// Verified red at 2ba3ea8:
+//   lookSqlToSigmaRules(sql) ->
+//     'If(Sum([[Net Revenue]]) = 0, 0, Sum([[Gross Profit]]) / Sum([[Net Revenue]]))'
+test('the real live Domo "Margin Pct" Beast Mode converts to the exact hand-verified output (bead qorq)', () => {
+  const sql = "(CASE WHEN (SUM([NET_REVENUE]) = 0) THEN 0 ELSE (SUM([GROSS_PROFIT]) / SUM([NET_REVENUE])) END )";
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If(Sum([Net Revenue]) = 0, 0, Sum([Gross Profit]) / Sum([Net Revenue]))'
+  );
+});
+
+// Non-regression pin: a BARE (unbracketed) ALL-CAPS identifier already
+// converted correctly before this fix — `_maskBrackets` finds no `[...]`
+// span at all here, so pass 3's own conversion runs completely unmasked, same
+// as always. Identical on both sides of bead qorq (confirmed against 2ba3ea8:
+// same output, '[Net Revenue]') — kept so a future change to the new masking
+// seam cannot silently break the plain bare-identifier path without a test
+// going red.
+test('a bare (unbracketed) ALL-CAPS identifier still converts correctly — non-regression pin (bead qorq)', () => {
+  assert.equal(lookConvertExpression('NET_REVENUE'), '[Net Revenue]');
+});
+
+// Non-regression pin: a mixed-case bracket ref (`[Net Revenue]`, `[Order Id]`,
+// `[IsClosed]`, `[created_on]`) was never touched by pass 3's ALL-CAPS-only
+// regex in the first place — mixed case fails `[A-Z_][A-Z0-9_]*` outright, no
+// masking involved. Identical on both sides of bead qorq (confirmed against
+// 2ba3ea8: same output). Kept so `_bracketSpanFinalText`'s "leave anything
+// that isn't a pure ALL-CAPS body exactly as found" branch cannot silently
+// regress into rewriting an already-correct bracket ref.
+test('a mixed-case bracket ref is left completely unchanged — non-regression pin (bead qorq)', () => {
+  assert.equal(lookConvertExpression('[Net Revenue]'), '[Net Revenue]');
+});
+
+// Mask-ordering proof: a bracketed ALL-CAPS ref that needs converting AND a
+// string literal whose CONTENTS happen to be ALL-CAPS text, in the same
+// expression. The literal mask runs at the top of lookConvertExpression,
+// long before _maskBrackets ever sees the string — so 'NET_REVENUE' the
+// literal must survive as inert quoted text (never mistaken for a column
+// name to bracket), while [NET_REVENUE] the ref converts normally.
+// Verified red at 2ba3ea8: lookConvertExpression("[NET_REVENUE] = 'NET_REVENUE'")
+//   -> '[[Net Revenue]] = "NET_REVENUE"' (LHS double-bracketed; the literal
+//   was already correctly inert even pre-fix — this test's job is to prove
+//   the fix does not disturb that).
+test('an ALL-CAPS ref inside a string literal is left alone while a real bracketed ALL-CAPS ref converts, in the same expression (bead qorq)', () => {
+  assert.equal(
+    lookConvertExpression("[NET_REVENUE] = 'NET_REVENUE'"),
+    '[Net Revenue] = "NET_REVENUE"'
+  );
+});
+
+// An apostrophe inside a [bracketed identifier] (`[Manager's Approval]`) is
+// part of the identifier, not structure — the same hazard Task 1/sqp1's
+// reviews caught in stripOuterParens/_maskCountDistinct. _maskBrackets does
+// not track quote state at all (unlike those two scanners): it only looks
+// for the next ']' via a plain indexOf, so an apostrophe inside a span poses
+// it no risk in the first place. Paired with a real ALL-CAPS ref in the same
+// expression so this is a genuine red/green proof, not merely "an untouched
+// mixed-case ref stays untouched" restated.
+// Verified red at 2ba3ea8: lookConvertExpression("[Manager's Approval] = 1 AND [NET_REVENUE] > 0")
+//   -> "[Manager's Approval] = 1 AND [[Net Revenue]] > 0"
+test("a bracketed identifier containing an apostrophe stays safe alongside a real ALL-CAPS ref that converts (bead qorq)", () => {
+  assert.equal(
+    lookConvertExpression("[Manager's Approval] = 1 AND [NET_REVENUE] > 0"),
+    "[Manager's Approval] = 1 AND [Net Revenue] > 0"
+  );
+});
+
+// An unterminated '[' (no matching ']' anywhere in the rest of the string)
+// must degrade to an ordinary character, never swallow the remainder of the
+// string — same policy _maskLiterals/_maskCountDistinct/_scanCase already
+// settled for this exact file. Paired with a real, PROPERLY-bracketed
+// ALL-CAPS ref earlier in the same expression: if _maskBrackets ever
+// regressed into swallowing to end-of-string on the stray trailing '[', the
+// scan position for the first, well-formed span would not be affected (it
+// closes before the stray one even starts) — so this specifically exercises
+// "the malformed tail doesn't corrupt anything, and pass 3 still finds the
+// bare ALL-CAPS text sitting after the stray '['."
+// Verified red at 2ba3ea8: lookConvertExpression('[NET_REVENUE] + [UNCLOSED_TAG')
+//   -> '[[Net Revenue]] + [[Unclosed Tag]'
+test('an unterminated [ does not swallow the rest of the string or corrupt an earlier well-formed bracket span (bead qorq)', () => {
+  assert.equal(
+    lookConvertExpression('[NET_REVENUE] + [UNCLOSED_TAG'),
+    '[Net Revenue] + [[Unclosed Tag]'
+  );
+});
+
+// Combined stress test (bead qorq brief, "The fix" section): a bracketed
+// ALL-CAPS ref, a string literal, a COUNT(DISTINCT ...), and a nested CASE —
+// all four masks (_maskBrackets, _maskLiterals, _maskCountDistinct, the
+// nested-CASE mask) active on the SAME expression at once, proving the
+// ordering established in formulas.ts's bead-qorq comment block holds under
+// their actual interaction, not just in isolation.
+// Verified red at 2ba3ea8:
+//   lookSqlToSigmaRules(sql) ->
+//     'If([[Region]] = "WEST", If(CountDistinct([[Order Id]]) > 0, Sum([[Net Revenue]]), 0), 0)'
+test('a bracketed ALL-CAPS ref, a string literal, COUNT(DISTINCT), and a nested CASE all convert correctly together (bead qorq)', () => {
+  const sql = "(CASE WHEN [REGION] = 'WEST' THEN (CASE WHEN COUNT(DISTINCT [ORDER_ID]) > 0 THEN SUM([NET_REVENUE]) ELSE 0 END) ELSE 0 END)";
+  assert.equal(
+    lookSqlToSigmaRules(sql),
+    'If([Region] = "WEST", If(CountDistinct([Order Id]) > 0, Sum([Net Revenue]), 0), 0)'
+  );
+});

@@ -842,6 +842,112 @@ function _naiveTitleCase(fn: string): string {
   return fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
 }
 
+// ── Pass 3 double-bracketing (bead qorq) ────────────────────────────────────
+// Pass 3 below rewrites a bare ALL-CAPS identifier to `[Display Name]`, but its
+// regex has no way to tell a token that is ALREADY inside `[...]` from a
+// genuinely bare one: `\b[A-Z_][A-Z0-9_]*\b` matches `NET_REVENUE` identically
+// whether or not it is sitting inside brackets. So an already-bracketed
+// ALL-CAPS ref got wrapped a SECOND time: `[NET_REVENUE]` -> `[[Net
+// Revenue]]`. Measured on merged main (2ba3ea8): every Beast Mode from a
+// Snowflake-backed Domo instance hits this, because Snowflake folds unquoted
+// column names to UPPERCASE and Domo's own `convert-beast-modes.rb`
+// preprocessing already emits `[Bracketed]` refs — the live 74-formula corpus
+// measured 0/74 for this defect purely because that corpus's sample data uses
+// mixed-case names, never exercising the ALL-CAPS path at all.
+//
+// Fix: mask every `[...]` span out of pass 3's view. Unlike the other three
+// masks in this file, this one does not restore the ORIGINAL bracket text —
+// it restores the FINAL, already-decided text computed up front by
+// `_bracketSpanFinalText` (the same "mask now, compute the finished text now,
+// splice the finished text back after the mechanical pass" shape
+// `_convertNestedCases` already uses for a CASE span, not the
+// mask/restore-raw-then-convert-later shape `_maskLiterals` uses for a string
+// literal). An ALL-CAPS bracket body is converted to its display name NOW
+// (`[NET_REVENUE]` -> `[Net Revenue]`, exactly what pass 3 would do to the
+// same text if it were bare); any other bracket body (mixed case, spaces, an
+// apostrophe — `[Net Revenue]`, `[Order Id]`, `[Manager's Approval]`) is
+// already valid Sigma bracket syntax and is masked/restored VERBATIM.
+//
+// ORDERING: this mask/unmask pair is scoped tightly around pass 3 alone
+// (masked immediately before it, unmasked immediately after), not wrapped
+// around passes 1/2 too, and it sits AFTER the CD mask, literal mask, and
+// nested-CASE mask that already ran at the top of `lookConvertExpression` —
+// load-bearing, not incidental:
+//   - AFTER the literal mask: a string literal (already reduced to an inert
+//     NUL/digit/SOH sentinel by the time this runs) can never be mistaken for
+//     a live `[...]` span by this scanner, even when its ORIGINAL text
+//     happened to contain literal `[`/`]` characters — verified below with a
+//     literal that contains ALL-CAPS text. Scanning for brackets before the
+//     literal mask ran would risk exactly that confusion.
+//   - AFTER the CD mask: a bracket already pulled out of `expr` entirely into
+//     `cd.args` (e.g. `[ORDER_ID]` inside `COUNT(DISTINCT [ORDER_ID])`) is
+//     simply not present here to mis-mask — it gets this SAME fix
+//     independently, inside `_unmaskCountDistinct`'s own recursive
+//     `lookConvertExpression` call on that shorter argument string.
+//   - AFTER the nested-CASE mask: a CASE embedded in arithmetic was already
+//     fully converted via `lookConvertCase` (which applies this same fix to
+//     its own leaf chunks) and spliced in as an inert EOT/ENQ sentinel before
+//     pass 1 ever ran, so no live bracket from that span reaches pass 3 either.
+//   - BEFORE only pass 3, not passes 1/2: nothing else in passes 1 (function
+//     mapping) or 2 (IN-list) can wrap a bracket's inner content a second
+//     time — pattern 2's IN-list rewrite captures a `[...]` LHS as one opaque
+//     unit and never touches what's inside it, so those passes need no
+//     bracket-blindness fix; only pass 3's identifier-level regex does.
+//
+// Uses SO/SI (\x0E/\x0F — Shift Out / Shift In) so it cannot collide with the
+// literal mask (NUL/SOH), the COUNT(DISTINCT) mask (STX/ETX), or the
+// nested-CASE mask (EOT/ENQ), and — like all three — carries NO letters: a
+// letter-bearing placeholder would itself look like a bare ALL-CAPS
+// identifier and get bracketed by the very pass it exists to hide from
+// (verified against the same hazard the literal mask's own comment already
+// documents for a ` L0 ` sentinel coming back as `[L 0]`).
+const _BRACKET_UNMASK_RE = /\x0E(\d+)\x0F/g;
+
+function _bracketSpanFinalText(rawSpan: string): string {
+  const inner = rawSpan.slice(1, -1);
+  // Same shape pass 3 itself tests a bare token against: a real ALL-CAPS SQL
+  // identifier, not a reserved word. Anything else — mixed case, spaces, an
+  // apostrophe, digits-first — is already valid Sigma bracket syntax; leave
+  // it exactly as found.
+  if (/^[A-Z_][A-Z0-9_]*$/.test(inner) && !_SQL_KEYWORD_RE.test(inner)) {
+    return lookColRef(inner);
+  }
+  return rawSpan;
+}
+
+function _maskBrackets(s: string): { masked: string; spans: string[] } {
+  const spans: string[] = [];
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (s[i] === '[') {
+      const close = s.indexOf(']', i + 1);
+      // An unterminated '[' (no matching ']' anywhere in the rest of the
+      // string) is not a real bracketed span — same policy _maskLiterals and
+      // _maskCountDistinct already settled: treat it as an ordinary character
+      // and keep scanning. Swallowing to end-of-string here would hide every
+      // ALL-CAPS identifier after it from pass 3 entirely, leaving them
+      // un-bracketed — the same class of corruption the unterminated-'['
+      // policy elsewhere in this file exists to prevent.
+      if (close !== -1) {
+        const finalText = _bracketSpanFinalText(s.slice(i, close + 1));
+        out += `\x0E${spans.push(finalText) - 1}\x0F`;
+        i = close + 1;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, spans };
+}
+
+function _unmaskBrackets(s: string, spans: string[]): string {
+  // `?? _m` is defensive, not reachable from real SQL: every sentinel here is
+  // one `_maskBrackets` just minted, so the index is always in range — same
+  // reasoning as `_spliceNestedCases`'s and `_restoreRawLiterals`'s guards.
+  return s.replace(_BRACKET_UNMASK_RE, (_m, i) => spans[Number(i)] ?? _m);
+}
+
 /** Convert an entire expression: map functions, convert column refs, fix IN lists */
 export function lookConvertExpression(expr: string): string {
   const cd = _maskCountDistinct(expr);
@@ -907,11 +1013,18 @@ export function lookConvertExpression(expr: string): string {
   });
 
   // 3. Convert bare ALL_CAPS identifiers (not followed by '(') to [Display Name]
-  expr = expr.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/g, (match) => {
-    if (_SQL_KEYWORD_RE.test(match)) return match;              // shared with pass 1 — see comment above
-    if (/^\d+$/.test(match)) return match;
-    return lookColRef(match);
-  });
+  // Mask [bracketed] spans first — see the bead-qorq block above: this
+  // regex cannot tell a token INSIDE brackets from a bare one, so without the
+  // mask an already-bracketed ALL-CAPS ref gets wrapped a second time.
+  {
+    const { masked: bracketMasked, spans } = _maskBrackets(expr);
+    expr = bracketMasked.replace(/\b([A-Z_][A-Z0-9_]*)\b(?!\s*\()/g, (match) => {
+      if (_SQL_KEYWORD_RE.test(match)) return match;              // shared with pass 1 — see comment above
+      if (/^\d+$/.test(match)) return match;
+      return lookColRef(match);
+    });
+    expr = _unmaskBrackets(expr, spans);
+  }
 
   // Unmask in mirror order relative to how the three masks were applied
   // above (CD mask -> literal mask -> CASE mask): CASE splice first, since it
