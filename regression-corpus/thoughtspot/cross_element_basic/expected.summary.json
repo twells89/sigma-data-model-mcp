@@ -1,5 +1,5 @@
 {
-  "description": "beads-sigma-j6u repro. thoughtspot converter places all formulas on elements[0]. Cross-table formula must move to per-formula host with [SRC/REL/Field] form.",
+  "description": "beads-sigma-j6u repro. thoughtspot converter places all formulas on elements[0]. Cross-table formula must move to per-formula host with [SRC/REL/Field] form. Also exercises the Revenue Per Lifetime Order formula (safe_divide(sum(net_revenue), sum(lifetime_order_count))) as a bare-identifier-aggregate regression case — a prior bug double-bracketed the identifiers (Sum([[Net] [Revenue]])) since tsBracketIdents ran once per aggregate arg AND once again on the whole formula; noDoubledBracketRefs (default-on) now fails this fixture if that recurs, since minElements/noErrorColumns alone did not catch it (200-OK, no error column).",
   "convertOptions": { "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a", "database": "CSA", "schema": "TJ" },
-  "asserts": { "minElements": 2, "noErrorColumns": true }
+  "asserts": { "minElements": 2, "noErrorColumns": true, "noDoubledBracketRefs": true }
 }

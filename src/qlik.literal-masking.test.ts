@@ -144,3 +144,43 @@ describe('qlik literal masking: an unterminated quote does not swallow the rest 
     assert.match(f!, /Coalesce\(Sum\(\[B\]\), 0\)/);
   });
 });
+
+// Regression: maskQlikLiterals (the entry mask, applied to the WHOLE formula
+// before Set Analysis translation) sentinels a `[Bracketed Field]` or
+// `"Quoted Field"` name exactly like it sentinels a `'value'` literal — it
+// can't tell "field name" (structural syntax) from "data" by delimiter alone.
+// clauseToCondition's FIELD-op-{body} regex expects to see the field name as
+// literal bracket/quote text; once masked, that regex simply failed to match
+// at all (there is no more `[`/`"` character for it to see), so the ENTIRE
+// clause — and the whole Set Analysis measure — silently returned no metric.
+// Live-reproduced: Sum({<[Sales Region]={'West'}>} A) emitted NOTHING on the
+// broken branch, vs. `Sum(If( [Sales Region] = "West" , [A] , 0))` on main.
+// clauseToCondition now resolves a masked-sentinel field name back to raw
+// text (stripping delimiters) before matching, so both forms work again —
+// and a double-quoted field (which main's own regex never handled either,
+// since it only special-cased `[...]`) now works too.
+describe('qlik literal masking: Set Analysis over a bracketed/quoted field name', () => {
+  const fields = [{ name: 'Sales Region', distinctValueCount: 10 }, { name: 'A', distinctValueCount: 10 }];
+
+  test('Sum({<[Sales Region]={\'West\'}>} A) — a bracketed field name in a Set Analysis clause still emits a metric', () => {
+    const r = conv([{ title: 'BracketedFieldSetAnalysis', expr: "Sum({<[Sales Region]={'West'}>} A)" }], fields);
+    const f = firstFormula(r);
+    assert.ok(f, 'must emit a metric — must not silently drop the whole measure');
+    assert.match(f!, /\[Sales Region\]\s*=\s*"West"/, 'the field name and comparison value must both survive, unmangled');
+    assert.match(f!, /Sum\(If\(.*\[A\].*0\)\)/, 'the aggregation must still wrap an If() over [A]');
+  });
+
+  test('Sum({<[Sales Region]-={\'West\'}>} A) — exclusion (-=) on a bracketed field name still emits a metric', () => {
+    const r = conv([{ title: 'BracketedFieldExclusion', expr: "Sum({<[Sales Region]-={'West'}>} A)" }], fields);
+    const f = firstFormula(r);
+    assert.ok(f, 'must emit a metric');
+    assert.match(f!, /\[Sales Region\]\s*<>\s*"West"/, 'exclusion must translate to <>, not =');
+  });
+
+  test('Sum({<"Sales Region"={\'West\'}>} A) — a double-quoted field name in a Set Analysis clause emits a metric', () => {
+    const r = conv([{ title: 'QuotedFieldSetAnalysis', expr: `Sum({<"Sales Region"={'West'}>} A)` }], fields);
+    const f = firstFormula(r);
+    assert.ok(f, 'must emit a metric — the double-quoted field form must resolve just like the bracketed form');
+    assert.match(f!, /\[Sales Region\]\s*=\s*"West"/);
+  });
+});

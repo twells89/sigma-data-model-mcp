@@ -610,10 +610,20 @@ function tsFormulaToSigma(expr: string, _elementByTable: Record<string, any>): s
     std_deviation: 'StdDev', variance: 'Variance',
     count_not_null: 'CountDistinct', cumulative_sum: 'CumulativeSum',
   };
+  // NOTE: the aggregate argument is intentionally left UN-bracketed here —
+  // the single tsBracketIdents(s) pass on the whole formula, below, already
+  // covers it. Bracketing it twice (once here, once there) re-wraps the
+  // already-bracketed identifier the second time around — e.g.
+  // `sum(revenue)` → `Sum([Revenue])` here, then the whole-string pass sees
+  // `[Revenue]` and, having no bracket-awareness of its own, wraps it again
+  // into `[[Revenue]]`; a multi-word display name like `net_revenue` →
+  // `[Net Revenue]` gets split into TWO refs, `[[Net] [Revenue]]`, since the
+  // second pass's identifier regex matches "Net" and "Revenue" separately
+  // once they're space-separated inside the bracket. Live-reproduced.
   s = s.replace(/\b(sum|count_distinct|count_not_null|count|average|avg|max|min|median|std_deviation|variance|cumulative_sum)\s*\(([^)]+)\)/gi,
     (_, fn, arg) => {
       const sigmaFn = tsAggMap[fn.toLowerCase()] || fn;
-      return `${sigmaFn}(${tsBracketIdents(arg.trim())})`;
+      return `${sigmaFn}(${arg.trim()})`;
     });
   s = tsRewriteSafeDivide(s);
   // Conditional aggregates. ThoughtSpot puts the condition FIRST

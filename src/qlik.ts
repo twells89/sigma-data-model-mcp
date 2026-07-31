@@ -1026,15 +1026,36 @@ function setValueToCondition(field: string, rawVal: string, op: '=' | '<>', lits
 }
 
 /** Translate one clause `FIELD = {v1, v2}` (or `-=`) → a Sigma boolean.
- *  `clause` arrives already MASKED — see setValueToCondition. */
+ *  `clause` arrives already MASKED — see setValueToCondition. The FIELD name
+ *  itself may be a masked-literal sentinel too: maskQlikLiterals (entry mask)
+ *  sentinels `[Bracketed Field]` and `"Quoted Field"` spans just like it does
+ *  `'value'` spans, since it can't distinguish "field name" from "data" by
+ *  delimiter alone. But a field name is STRUCTURAL syntax, not data — it has
+ *  to be resolved back to raw text (delimiters stripped) before the
+ *  FIELD-op-{body} shape can be matched at all; a bare, unbracketed field
+ *  (`Region={...}`) was never masked and matches the plain fallback regex
+ *  unchanged. */
 function clauseToCondition(clause: string, lits: QlikMaskedLit[]): string | null {
-  // operators: =, -= (exclude), += (add — rare, treat as = for a fresh set)
-  const m = clause.match(/^\s*\[?([A-Za-z0-9_ .]+?)\]?\s*(-=|\+=|=)\s*\{([\s\S]*)\}\s*$/);
-  if (!m) return null;
-  const field = m[1].trim();
-  const setOp = m[2];
+  // operators: =, -= (exclude), += (add — rare, treat as a fresh set)
+  const sentFieldRe = new RegExp(`^\\s*${QLIK_LIT_SENT}(\\d+)${QLIK_LIT_SENT}\\s*(-=|\\+=|=)\\s*\\{([\\s\\S]*)\\}\\s*$`);
+  const sm = clause.match(sentFieldRe);
+  let field: string;
+  let setOp: string;
+  let body: string;
+  if (sm) {
+    const lit = lits[Number(sm[1])];
+    if (!lit) return null;
+    field = lit.raw.slice(1, -1).trim();   // strip [ ]/" "/' ' delimiters
+    setOp = sm[2];
+    body = sm[3].trim();
+  } else {
+    const m = clause.match(/^\s*\[?([A-Za-z0-9_ .]+?)\]?\s*(-=|\+=|=)\s*\{([\s\S]*)\}\s*$/);
+    if (!m) return null;
+    field = m[1].trim();
+    setOp = m[2];
+    body = m[3].trim();
+  }
   const op: '=' | '<>' = setOp === '-=' ? '<>' : '=';
-  const body = m[3].trim();
   if (body === '') return null;
   // nested set functions / P()/E() / element-set operators → untranslatable
   if (/[+\-*/](?![=\d])/.test(body) && /\}|\{/.test(body)) return null;

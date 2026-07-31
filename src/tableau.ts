@@ -1701,7 +1701,14 @@ export function convertTableauToSigma(
   // disjoint id-spaces — no cross-invocation id collisions — while the same input
   // still reproduces the same ids (deterministic; corpus determinism preserved).
   if (!options.__multiDsChild) {
-    resetIds(`ds${options.datasourceIndex ?? 0} ${xmlContent}`);
+    // NOTE: the separator between the datasourceIndex and the .twb content is
+    // a NUL byte (\x00), written as an escape (not a raw control-character
+    // byte) so the source stays grep/diff-able. This byte is hashed by
+    // resetIds() to seed the id counter — changing it (e.g. to a literal
+    // space) changes every generated id for every input, silently
+    // invalidating id stability for re-conversion/update flows and any
+    // id-keyed golden. Must stay byte-identical to what main hashes.
+    resetIds(`ds${options.datasourceIndex ?? 0}\x00${xmlContent}`);
   }
 
   const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;

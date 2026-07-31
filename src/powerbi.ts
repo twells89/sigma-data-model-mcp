@@ -929,7 +929,7 @@ export function maskDaxStringLiterals(s: string): string {
  *  alone (the mask and `s` are identical outside literal spans, so a match
  *  found on the masked copy names the exact same real span in `s`). */
 function replaceOutsideDaxLiterals(
-  s: string, re: RegExp, replacer: (match: string, ...rest: any[]) => string,
+  s: string, re: RegExp, replacer: (...args: any[]) => string,
 ): string {
   const masked = maskDaxStringLiterals(s);
   const scanner = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
@@ -937,7 +937,8 @@ function replaceOutsideDaxLiterals(
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = scanner.exec(masked))) {
-    out += s.slice(last, m.index) + replacer(...(m as unknown as string[]), m.index, s);
+    const args: any[] = [...m, m.index, s];
+    out += s.slice(last, m.index) + replacer(...args);
     last = m.index + m[0].length;
     if (m[0].length === 0) scanner.lastIndex++;
   }

@@ -847,12 +847,24 @@ function tableKeyOf(raw: string): string {
 // "low" END` — sqlCaseToIf (shared, src/alteryx.ts — NOT owned/edited here)
 // found the literal's OWN embedded "ELSE" and failed to parse a valid If().
 //
-// Unlike qlik.ts/thoughtspot.ts/cognos.ts, this dialect has no `[bracket]` or
-// genuine `"quoted identifier"` SPAN convention on input — the Table.Col
-// regex's `"?` is just optional decorative punctuation around a single
-// identifier token, not a delimited span — so only `'…'` needs masking here.
-// An unterminated `'` is left as an ordinary character; scanning resumes
-// normally and does NOT swallow the rest of the SELECT.
+// This dialect has no `[bracket]` identifier-span convention on input, and
+// the file's own Table.Col regex (translateBobjExpr, below) only ever treats
+// a `"` as ONE DECORATIVE CHARACTER immediately flanking a single identifier
+// token (`"?TABLE"?."?COL"?`) — never as a genuine multi-character quoted
+// span. But BOBJ SELECT text can still legitimately CONTAIN a `"…"`
+// double-quoted STRING LITERAL (data), and that span is exactly as dangerous
+// unmasked as a `'…'` one: a `'` inside it opens a bogus single-quote span
+// that runs to the NEXT real `'` anywhere later in the SELECT, silently
+// swallowing everything in between — including a real `Table.Col` reference.
+// Live-reproduced: `"Mgr's Name" || PROMO_DIM.PROMO_COST || 'x'` — the
+// apostrophe inside "Mgr's Name" opened a fake `'…'` span that ran all the
+// way to the trailing `'x'`, hiding `PROMO_DIM.PROMO_COST` from
+// parseTableColTokens entirely: PROMO_DIM silently dropped from the data
+// model, and the column left untranslated in the formula. So both `'…'` and
+// `"…"` spans are masked here, identically — mirroring qlik.ts/
+// thoughtspot.ts/cognos.ts, which already mask both delimiters for the same
+// reason. An unterminated `'` or `"` is left as an ordinary character;
+// scanning resumes normally and does NOT swallow the rest of the SELECT.
 //
 // parseTableColTokens only needs the literal's SPAN hidden from its scan
 // (it never re-emits text, so there's nothing to restore) — bobjMask's `lits`
@@ -868,8 +880,9 @@ function bobjMask(s: string, lits: BobjMaskedLit[] = []): { masked: string; lits
   let out = '';
   let i = 0;
   while (i < s.length) {
-    if (s[i] === "'") {
-      const close = s.indexOf("'", i + 1);
+    const ch = s[i];
+    if (ch === "'" || ch === '"') {
+      const close = s.indexOf(ch, i + 1);
       if (close !== -1) {
         const raw = s.slice(i, close + 1);
         out += `${BOBJ_LIT_SENT}${lits.push({ raw }) - 1}${BOBJ_LIT_SENT}`;
