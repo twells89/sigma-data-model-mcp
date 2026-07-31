@@ -830,13 +830,81 @@ function tableKeyOf(raw: string): string {
   return raw.replace(/["'`\[\]]/g, '').split('.').pop()!.trim().toUpperCase();
 }
 
-/** All `Table.Column` tokens in a SELECT (quotes stripped). */
+// ── BOBJ-specific literal masking ───────────────────────────────────────────
+// A BOBJ SELECT's `Table.Col` scanning (this function, translateBobjExpr's own
+// column-ref rewrite below) runs a plain regex over the raw SELECT text with
+// no idea a `'…'` string literal exists. Live-reproduced two ways, from one
+// object whose SELECT was the literal 'See ORDER_FACT.NET_REVENUE note':
+//   1. parseTableColTokens (this function) — called during INGESTION to
+//      decide which PHYSICAL TABLE an object belongs to — found the literal's
+//      OWN dotted text and invented a phantom "SEE_ORDER_FACT" warehouse
+//      table that doesn't exist in the universe. Not a formula bug — a
+//      corrupted DATA MODEL.
+//   2. translateBobjExpr's identical rewrite turned the same literal into
+//      "[Net Revenue] note" — losing "See ... note" outright.
+// A CASE literal is worse: `CASE WHEN X>100 THEN 'high or else low' ELSE
+// 'low' END` came back as `[Net Revenue] > 100 THEN "high or else low" ELSE
+// "low" END` — sqlCaseToIf (shared, src/alteryx.ts — NOT owned/edited here)
+// found the literal's OWN embedded "ELSE" and failed to parse a valid If().
+//
+// Unlike qlik.ts/thoughtspot.ts/cognos.ts, this dialect has no `[bracket]` or
+// genuine `"quoted identifier"` SPAN convention on input — the Table.Col
+// regex's `"?` is just optional decorative punctuation around a single
+// identifier token, not a delimited span — so only `'…'` needs masking here.
+// An unterminated `'` is left as an ordinary character; scanning resumes
+// normally and does NOT swallow the rest of the SELECT.
+//
+// parseTableColTokens only needs the literal's SPAN hidden from its scan
+// (it never re-emits text, so there's nothing to restore) — bobjMask's `lits`
+// return is simply discarded there. translateBobjExpr needs the fuller
+// mask-once/unmask-once cycle (mirroring qlik.ts/cognos.ts) since its OUTPUT
+// must carry the literal's real content, converted to a Sigma double-quoted
+// string.
+interface BobjMaskedLit { raw: string; }
+const BOBJ_LIT_SENT = String.fromCharCode(2);
+const BOBJ_LIT_SENT_RE = new RegExp(`${BOBJ_LIT_SENT}(\\d+)${BOBJ_LIT_SENT}`, 'g');
+
+function bobjMask(s: string, lits: BobjMaskedLit[] = []): { masked: string; lits: BobjMaskedLit[] } {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === "'") {
+      const close = s.indexOf("'", i + 1);
+      if (close !== -1) {
+        const raw = s.slice(i, close + 1);
+        out += `${BOBJ_LIT_SENT}${lits.push({ raw }) - 1}${BOBJ_LIT_SENT}`;
+        i = close + 1;
+        continue;
+      }
+    }
+    out += s[i];
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+/** Finalizes every remaining masked literal to Sigma's double-quoted form —
+ *  the single unmask that closes out translateBobjExpr's mask-on-entry.
+ *  Mirrors the previous `f.replace(/'([^']*)'/g, '"$1"')` byte-for-byte (no
+ *  escaping of an embedded double quote — pre-existing behavior, unchanged). */
+function bobjUnmask(s: string, lits: BobjMaskedLit[]): string {
+  return s.replace(BOBJ_LIT_SENT_RE, (_m, i) => {
+    const lit = lits[Number(i)];
+    return lit ? `"${lit.raw.slice(1, -1)}"` : _m;
+  });
+}
+
+/** All `Table.Column` tokens in a SELECT (quotes stripped). Scans a literal-
+ *  masked copy — see the block comment above — so a `'…'` literal that merely
+ *  CONTAINS dotted-reference-shaped text can't be mistaken for a real column
+ *  reference (and, upstream, can't make the caller invent a phantom table). */
 function parseTableColTokens(sql: string): Array<{ table: string; col: string }> {
   if (!sql) return [];
+  const scan = bobjMask(sql).masked;
   const out: Array<{ table: string; col: string }> = [];
   const re = /"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(sql))) out.push({ table: m[1].trim(), col: m[2].trim() });
+  while ((m = re.exec(scan))) out.push({ table: m[1].trim(), col: m[2].trim() });
   return out;
 }
 
@@ -940,6 +1008,16 @@ function translateBobjExpr(
   let f = (expr || '').trim();
   const warnings: string[] = [];
 
+  // Mask ONCE, here, for the rest of the function — see the block comment
+  // above bobjMask (near parseTableColTokens). Every pass below (the @-
+  // function strip, the Table.Col rewrite, the SQL→Sigma function renames,
+  // and the shared sqlCaseToIf CASE→If() lowering — imported from
+  // alteryx.ts, NOT owned/edited here, but purely structural so it's safe to
+  // hand masked text: it splits on WHEN/THEN/ELSE/END keywords only, never
+  // needs a literal's actual content) runs against masked text, full stop.
+  const { masked, lits } = bobjMask(f);
+  f = masked;
+
   // Universe @-functions have no DM equivalent — flag, then best-effort strip.
   const at = f.match(/@(\w+)\s*\(/);
   if (at) {
@@ -954,7 +1032,12 @@ function translateBobjExpr(
     f = f.replace(/@Aggregate_Aware\s*\(\s*([^,()]+)[\s\S]*?\)/gi, '$1');
   }
 
-  // Table.Col → bare [Display] (only the column part survives in a Sigma element).
+  // Table.Col → bare [Display] (only the column part survives in a Sigma
+  // element). Safe on masked text: a literal's own dotted-reference-shaped
+  // CONTENT is already hidden behind its sentinel by this point, so it can no
+  // longer be independently rewritten by this pass (live-reproduced pre-fix:
+  // a literal 'See ORDER_FACT.NET_REVENUE note' came back as "[Net Revenue]
+  // note", losing "See ... note" outright).
   f = f.replace(/"?([A-Za-z_][\w ]*?)"?\s*\.\s*"?([A-Za-z_]\w*)"?/g,
     (_full, _tbl, col) => `[${sigmaDisplayName(col)}]`);
 
@@ -973,8 +1056,19 @@ function translateBobjExpr(
   f = f.replace(/\bcurrent_date\b/gi, 'Today()');
   f = f.replace(/\bsysdate\b/gi, 'Today()');
   f = f.replace(/\|\|/g, '&');                 // SQL concat → Sigma concat
-  f = f.replace(/'([^']*)'/g, '"$1"');         // string literals
+  // CASE … END → If(...). Safe on masked text: a THEN/ELSE branch literal's
+  // own "when"/"then"/"else"/"end" text is hidden behind one opaque sentinel
+  // — live-reproduced pre-fix: `CASE WHEN X>100 THEN 'high or else low' ELSE
+  // 'low' END` made sqlCaseToIf find the LITERAL'S OWN embedded "ELSE" and
+  // fail to produce a valid If(), leaving "THEN"/"ELSE"/"END" as stray
+  // literal text in the output formula.
   if (/\bcase\b/i.test(f)) f = sqlCaseToIf(f);
+
+  // The single unmask that closes out this function's mask-on-entry — a
+  // masked `'…'` literal becomes a Sigma double-quoted string. Replaces the
+  // old naive `f.replace(/'([^']*)'/g, '"$1"')`, which ran too late (and too
+  // narrowly) to protect anything upstream of it.
+  f = bobjUnmask(f, lits);
 
   return { formula: f, warnings };
 }
