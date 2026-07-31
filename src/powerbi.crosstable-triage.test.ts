@@ -1024,7 +1024,10 @@ test('T9b triageCrossTable stays safe against a plain-object-literal columnOwner
 //      removed, or reordered — a false alarm this snapshot must not raise.
 //   2. Each `order` array (a ordered list of column ids) is replaced by its
 //      LENGTH — still pins "how many columns are ordered", not which
-//      generated ids compose the list.
+//      generated ids compose the list. The same treatment applies to a
+//      folder's `items` array (also a list of generated column ids, added by
+//      the lookup-declutter grouping in buildDerivedElements) — pins "how
+//      many columns are in this folder", not their generated identity.
 // EXCEPTION: `connectionId` also ends in `Id` but is NOT counter-generated —
 // it is the caller's `OPTS.connectionId` passed through verbatim — so it is
 // deliberately kept. A future bug that drops or corrupts connection wiring
@@ -1042,7 +1045,7 @@ test('T9b triageCrossTable stays safe against a plain-object-literal columnOwner
 // narrower guarantee this version gives.
 const stripIds = (v: any): any =>
   JSON.parse(JSON.stringify(v), (k, val) => {
-    if (k === 'order' && Array.isArray(val)) return val.length;
+    if ((k === 'order' || k === 'items') && Array.isArray(val)) return val.length;
     if (k === 'connectionId') return val;
     if (k === 'id' || /Id$/.test(k)) return undefined;
     return val;
@@ -1076,8 +1079,12 @@ const STAR_GOLDEN = {
           columns: [
             { formula: '[SALES_FACT/Amount]' },
             { formula: '[SALES_FACT/Agent Key]' },
-            { formula: '[SALES_FACT/AGENT_DIM/Agent Name]' },
+            { formula: '[SALES_FACT/AGENT_DIM/Agent Name]', hidden: true },
           ],
+          // Lookup-declutter (Phase 1): the related column above is hidden and
+          // grouped into a per-target folder — see buildDerivedElements in
+          // sigma-ids.ts. `items` is stripped to its length (see stripIds).
+          folders: [{ name: 'AGENT_DIM', items: 1 }],
           order: 3,
         },
       ],
