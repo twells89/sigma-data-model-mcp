@@ -1619,6 +1619,74 @@ export function firstTopLevelSelectIndex(stmt: string): number {
   return -1;
 }
 
+/**
+ * Mask `"..."` string-literal spans in a translated Sigma-syntax formula
+ * (tableauFormulaToSigma's OUTPUT — the form used for RLS/off-fact detection
+ * below) with same-length blanks, so a `[Ref]`-bracket scan for RLS/off-fact
+ * cross-element detection can't mistake literal TEXT that merely LOOKS like a
+ * bracketed reference for a real column reference — a help string reading
+ * `"See [Approved Region] for details"`, or a comparison value that happens
+ * to contain a stray `]`.
+ *
+ * A `[bracketed identifier]` is treated as an ATOMIC span FIRST — copied
+ * through unchanged before any quote-scanning ever looks at its contents —
+ * so an embedded `"` inside a caption (a column genuinely named `[12" Pipe]`)
+ * can't be mistaken for the start of a string literal that then swallows
+ * real formula text hunting for its close. An unterminated `"` or `[` is
+ * left as an ordinary character and scanning resumes normally right after it
+ * — it must NOT swallow the rest of the string (a stray delimiter in
+ * malformed/truncated input shouldn't blank out every real ref past that
+ * point).
+ *
+ * Only `"` is a string delimiter, matching tableauFormulaToSigma's own output
+ * syntax and this codebase's established convention (see maskAndCheckQuotes
+ * in powerbi-crosstable-triage.ts) — `'` is ordinary character content. The
+ * atomic bracket-skip above makes that doubly moot here: a `[Manager's
+ * Approval]` ref is copied through whole before the apostrophe inside it is
+ * ever examined, so it can never be read as a quote-opener.
+ *
+ * Length-preserving (same length, same non-literal characters) so offsets
+ * computed against the masked text apply unchanged to the original, even
+ * though today's two callers only need the mask itself (they extract match
+ * TEXT via a global regex, not positions to slice).
+ */
+export function maskFormulaStringLiterals(s: string): string {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      // Bracketed identifier: atomic. Copy through unchanged up to its
+      // matching ']' — an embedded '"' inside it must not be read as a quote
+      // opener. Brackets never nest in this syntax, so a bare next-']' search
+      // must stop at whichever comes FIRST: its own ']', or another '[' — the
+      // latter means this one never closed (an earlier bracket must not reach
+      // PAST an unrelated later bracket to "close" on that one's ']', which
+      // would swallow everything between the two, including a real literal).
+      // Unterminated either way — leave just the '[' and resume scanning
+      // normally right after it; don't swallow the rest of the string.
+      let j = i + 1;
+      while (j < s.length && s[j] !== ']' && s[j] !== '[') j++;
+      if (j < s.length && s[j] === ']') { out += s.slice(i, j + 1); i = j + 1; } else { out += c; i++; }
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      let closed = false;
+      while (j < s.length) {
+        if (s[j] === '\\' && j + 1 < s.length) { j += 2; continue; }
+        if (s[j] === '"') { j++; closed = true; break; }
+        j++;
+      }
+      if (closed) { out += ' '.repeat(j - i); i = j; } else { out += c; i++; } // unterminated — not a literal
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 export function convertTableauToSigma(
   xmlContent: string,
   options: TableauConvertOptions = {}
@@ -1633,7 +1701,7 @@ export function convertTableauToSigma(
   // disjoint id-spaces — no cross-invocation id collisions — while the same input
   // still reproduces the same ids (deterministic; corpus determinism preserved).
   if (!options.__multiDsChild) {
-    resetIds(`ds${options.datasourceIndex ?? 0} ${xmlContent}`);
+    resetIds(`ds${options.datasourceIndex ?? 0} ${xmlContent}`);
   }
 
   const { connectionId = '', database = '', schema = '', datasourceIndex = 0, tableMapping = {} } = options;
@@ -4248,7 +4316,11 @@ export function convertTableauToSigma(
           // as its column. If the RLS calc references a related-table (non-fact) column,
           // the column would be moved to a derived view downstream, orphaning the filter —
           // so we don't auto-emit; we flag it for manual placement on the owning element.
-          const rlsRefs = (sigmaFormula.match(/\[([^\]\/]+)\]/g) || []).map(r => r.replace(/^\[|\]$/g, ''));
+          // Scan a literal-MASKED copy — a comparison value like
+          // `"See [Approved Region] for details"` must not be mistaken for a real
+          // cross-element ref (that false positive drops a legitimate same-fact RLS
+          // rule from result.security — a security-relevant false negative).
+          const rlsRefs = (maskFormulaStringLiterals(sigmaFormula).match(/\[([^\]\/]+)\]/g) || []).map(r => r.replace(/^\[|\]$/g, ''));
           const offFact = rlsRefs.find(n => {
             if (/^(true|false|null)$/i.test(n)) return false;
             const hit = displayNameMap[n.toUpperCase()] || displayNameMap[n.replace(/\s+/g, '_').toUpperCase()];
@@ -4272,7 +4344,9 @@ export function convertTableauToSigma(
           // metrics have no cross-element [SRC/REL/Field] form, so such a metric would
           // error-type the element. Detect any bare ref that resolves to a non-fact
           // (or unknown) column and route the whole metric to OPEN QUESTIONS instead.
-          const refNames = (sigmaFormula.match(/\[([^\]\/]+)\]/g) || [])
+          // Scan a literal-MASKED copy — see the identical reasoning on the RLS
+          // guard above; here a false positive skips a legitimate same-fact metric.
+          const refNames = (maskFormulaStringLiterals(sigmaFormula).match(/\[([^\]\/]+)\]/g) || [])
             .map(r => r.replace(/^\[|\]$/g, ''));
           const offFactRef = refNames.find(n => {
             if (/^(true|false|null)$/i.test(n)) return false;
@@ -4529,8 +4603,13 @@ export function convertTableauToSigma(
         }
       }
       for (const mt of ((factEl as any).metrics || [])) if (mt.name) valid.add(mt.name.toLowerCase());
+      // Scan a literal-MASKED copy — a comparison value like "See [Approved
+      // Region] for details" must not be read as a real sibling ref; that
+      // false positive cascade-drops a legitimate calc/metric as "unresolvable"
+      // (dangerous: silent-looking drop of something real, with a misleading
+      // "references [X]" warning naming a column the formula never touched).
       const siblingRefs = (f: any): string[] =>
-        typeof f === 'string' ? (f.match(/\[([^\]]+)\]/g) || [])
+        typeof f === 'string' ? (maskFormulaStringLiterals(f).match(/\[([^\]]+)\]/g) || [])
           .map(s => s.slice(1, -1)).filter(r => !r.includes('/')) : [];
       const dropped: { name: string; bad: string }[] = [];
       let changed = true;
