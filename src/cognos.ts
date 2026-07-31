@@ -380,41 +380,153 @@ function aggFn(agg: string, inner: string, warnings?: string[]): string {
   return `${fn}(${inner})`;
 }
 
+// ── Cognos-specific literal masking ─────────────────────────────────────────
+// translateCognosExpr's keyword-mapping passes (the column-ref rewrite, the
+// CASE/if-then-else structural splitters, the total/sum/average/… aggregate
+// map, the date/string/math renames) used to run plain regex .replace() over
+// the raw formula text, with the '…' → "…" quote conversion happening LAST —
+// so every earlier pass ran BLIND to string literals. Three concrete,
+// live-reproduced failures motivated the fix:
+//   1. A calc whose ENTIRE expression was the literal 'This report shows
+//      total(REVENUE) trends' came back with its CONTENT rewritten —
+//      "This report shows Sum([SALES_FACT/Revenue]) trends" — both the
+//      function name AND a bare word inside the literal got treated as live
+//      code.
+//   2. A literal containing bracket-shaped text — 'see [REVENUE_TOTAL] note'
+//      — had that bracketed span independently re-cased by the very FIRST
+//      pass (the `[NS].[QS].[Item]` column-ref rewrite, which has no idea a
+//      quote exists): "see [Revenue Total] note".
+//   3. Worst: a THEN-branch literal containing the word "else" —
+//      case when REVENUE > 100 then 'high or else low' else 'low' end —
+//      made convertCaseBody's `\belse\b` search find the literal's OWN
+//      embedded "else" instead of the CASE's real one, producing a wrong,
+//      malformed formula (a stray literal "else" keyword and an unbalanced
+//      paren survived straight into the output) — a value silently dropped/
+//      mangled, not just a corrupted string. The exact defect class the
+//      tableau CASE/IF fix (src/formulas.ts) exists to close.
+//
+// Fix mirrors qlik.ts/thoughtspot.ts: mask literal spans behind sentinels,
+// run every pass against masked text, unmask once at the end. The ONE
+// wrinkle here: the column-ref rewrite (`[NS].[QS].[Item]` → `[Display
+// Name]`) must run on REAL bracket text — masking `[...]` before it runs
+// would hide the very brackets it needs to parse. So masking happens in TWO
+// stages: mask ONLY quotes first (protecting literal content from the
+// column-ref rewrite, which has no business looking inside one), run that
+// rewrite, THEN mask the resulting (now-final-form) brackets too, before
+// every later pass. A `"double-quoted"` span is masked the same defensive
+// way even though this codebase's Cognos dialect doesn't appear to use it as
+// a literal delimiter — cheap insurance, restored verbatim either way. An
+// unterminated `'`, `"`, or `[` is left as an ordinary character — scanning
+// resumes normally and does NOT swallow the rest of the expression.
+interface CognosMaskedLit { kind: "'" | '"' | '['; raw: string; }
+const COGNOS_LIT_SENT = String.fromCharCode(2);
+const COGNOS_LIT_SENT_RE = new RegExp(`${COGNOS_LIT_SENT}(\\d+)${COGNOS_LIT_SENT}`, 'g');
+
+/** Mask every top-level span opened by a character in `openers` (one or more
+ *  of `'`, `"`, `[`) behind an opaque `<index>` sentinel, appending
+ *  to (or starting) `lits`. Called twice by translateCognosExpr — once with
+ *  `["'", '"']` before the column-ref rewrite, once with `['[']` after it —
+ *  so both stages share one sentinel index space and one final unmask. */
+function cognosMask(s: string, openers: string[], lits: CognosMaskedLit[] = []): { masked: string; lits: CognosMaskedLit[] } {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (openers.includes(ch)) {
+      const closeChar = ch === '[' ? ']' : ch;
+      const close = s.indexOf(closeChar, i + 1);
+      if (close !== -1) {
+        const raw = s.slice(i, close + 1);
+        out += `${COGNOS_LIT_SENT}${lits.push({ kind: ch as CognosMaskedLit['kind'], raw }) - 1}${COGNOS_LIT_SENT}`;
+        i = close + 1;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+/** Finalizes every remaining masked span for Sigma output. A `'…'` literal
+ *  becomes a Sigma double-quoted string; a `"…"` or `[…]` span is restored
+ *  verbatim (unchanged either way). */
+function cognosUnmask(s: string, lits: CognosMaskedLit[]): string {
+  return s.replace(COGNOS_LIT_SENT_RE, (_m, i) => {
+    const lit = lits[Number(i)];
+    if (!lit) return _m;
+    return lit.kind === "'" ? `"${lit.raw.slice(1, -1)}"` : lit.raw;
+  });
+}
+
 export function translateCognosExpr(
   expr: string, qs: CognosQuerySubject, ensureRawCol: (c: ElemCtx, k: string, i: string) => string, ctx: ElemCtx,
 ): { formula: string; warnings: string[] } {
   const warnings: string[] = [];
   let f = (expr || '').trim();
 
-  // Flag unsupported window/running constructs up front (pass through, warn).
-  for (const bad of ['running-total', 'running-count', 'running-average', 'running-difference', 'moving-total', 'moving-average', 'rank', 'percentile', 'quantile', 'tertile']) {
-    if (new RegExp(`\\b${bad}\\b`, 'i').test(f)) warnings.push(`uses Cognos "${bad}" (window/running calc) — no clean single-column Sigma analog; needs manual authoring (window function).`);
-  }
+  // Stage 1 of mask-on-entry: quotes ONLY. The column-ref rewrite just below
+  // needs REAL bracket text to parse (`[NS].[QS].[Item]` chains), so brackets
+  // aren't masked yet — see the block comment above cognosMask for the full
+  // two-stage rationale.
+  let stage1 = cognosMask(f, ["'", '"']);
+  f = stage1.masked;
+  let lits = stage1.lits;
 
   // Column references: [NS].[QS].[Item] | [QS].[Item] | [Item]  → [Display Name]
+  // Safe on stage-1-masked text: a literal's own bracket-shaped CONTENT is
+  // already hidden behind its sentinel by this point, so it can no longer be
+  // independently re-cased by this rewrite (live-reproduced pre-fix: a
+  // literal 'see [REVENUE_TOTAL] note' came back as "see [Revenue Total]
+  // note").
   f = f.replace(/\[[^\]]+\](?:\.\[[^\]]+\])*/g, (ref) => {
     const segs = ref.split('.').map(s => s.replace(/[[\]]/g, '').trim());
     const item = segs[segs.length - 1];
     return `[${sigmaDisplayName(item)}]`;
   });
 
+  // Stage 2 of mask-on-entry: the brackets this rewrite just produced (now in
+  // their FINAL form) are masked too, appending to the SAME `lits` array —
+  // every pass from here to the final unmask below runs fully masked.
+  const stage2 = cognosMask(f, ['['], lits);
+  f = stage2.masked;
+  lits = stage2.lits;
+
+  // Flag unsupported window/running constructs (masked text — a literal
+  // merely CONTAINING e.g. "running-total" can no longer false-trigger this).
+  for (const bad of ['running-total', 'running-count', 'running-average', 'running-difference', 'moving-total', 'moving-average', 'rank', 'percentile', 'quantile', 'tertile']) {
+    if (new RegExp(`\\b${bad}\\b`, 'i').test(f)) warnings.push(`uses Cognos "${bad}" (window/running calc) — no clean single-column Sigma analog; needs manual authoring (window function).`);
+  }
+
   // SQL-style CASE … WHEN … THEN … END (common in Cognos calc cols) →
   // searched CASE → nested If(); simple CASE (case <sel> when <v>…) → Switch().
+  // Safe on masked text: a THEN/ELSE branch literal's own "when"/"then"/
+  // "else"/"end" text is hidden behind one opaque sentinel — live-reproduced
+  // pre-fix: `case when X>100 then 'high or else low' else 'low' end` made
+  // convertCaseBody's `\belse\b` search find the LITERAL'S OWN embedded
+  // "else" instead of the CASE's real one, producing a malformed formula
+  // with a stray literal "else" keyword and an unbalanced paren.
   f = translateCaseExpr(f);
-  // Bracket bare column identifiers (Cognos calcs often reference columns unbracketed,
-  // e.g. `case when (Product_line) = …`). Only bracket words that match a real column on
-  // this subject, and never touch text already inside [ ].
+  // Bracket bare column identifiers (Cognos calcs often reference columns
+  // unbracketed, e.g. `case when (Product_line) = …`). Only bracket words
+  // that match a real column on this subject. Safe directly on masked text
+  // (no need for the old bracket-vs-non-bracket alternation dance): a masked
+  // span's sentinel is a control character + digits, which can never match
+  // `[A-Za-z_]`, so it's inert to this scan — and a bare word sitting inside
+  // a masked literal is hidden from it too (live-reproduced pre-fix: a
+  // literal 'Product_line note' came back as "[SALES_FACT/Product Line]
+  // note" — a bare word inside a STRING VALUE got treated as a live column
+  // reference).
   const identMap = new Map<string, string>();
   for (const it of (qs.items || [])) identMap.set(it.identifier.toLowerCase(), sigmaDisplayName(it.label || it.identifier));
   if (identMap.size) {
     // Prefix with the warehouse table tail so a bare ref to a fact column resolves to the
     // raw column, NOT the same-named metric (a bare `[Revenue]` is otherwise ambiguous).
     const pfx = (ctx && (ctx as any).tableTail) ? `${(ctx as any).tableTail}/` : '';
-    f = f.replace(/\[[^\]]*\]|[^[\]]+/g, (seg) => seg.startsWith('[') ? seg
-      : seg.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*\()/g, (w) => {
-          const d = identMap.get(w.toLowerCase());
-          return d ? `[${pfx}${d}]` : w;
-        }));
+    f = f.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*\()/g, (w) => {
+      const d = identMap.get(w.toLowerCase());
+      return d ? `[${pfx}${d}]` : w;
+    });
   }
   if (/\bcase\b[\s\S]*\bwhen\b/i.test(f)) warnings.push('a CASE expression could not be fully translated (nested or non-standard) — review/author manually.');
 
@@ -468,15 +580,21 @@ export function translateCognosExpr(
        .replace(/\bfloor\s*\(/gi, 'Floor(').replace(/\bceiling\s*\(/gi, 'Ceiling(')
        .replace(/\bsqrt\s*\(/gi, 'Sqrt(').replace(/\bln\s*\(/gi, 'Ln(')
        .replace(/\bmod\s*\(/gi, 'Mod(').replace(/\bpower\s*\(/gi, 'Power(');
-  f = f.replace(/'([^']*)'/g, '"$1"');  // Cognos single-quoted strings → Sigma double-quoted
-
-  // Unknown bareword(...) functions → warn (kept as-is for manual review)
+  // Unknown bareword(...) functions → warn (kept as-is for manual review).
+  // Runs BEFORE the final unmask (still on masked text) so a literal merely
+  // CONTAINING text shaped like "foo(" can't false-trigger this warning either.
   const known = /\b(If|Switch|Sum|Avg|Count|CountDistinct|Min|Max|SumOver|AvgOver|CountOver|MinOver|MaxOver|DateAdd|DateDiff|DatePart|Mid|Upper|Lower|Trim|Coalesce|Text|RegexpReplace|Replace|Abs|Round|Floor|Ceiling|Sqrt|Ln|Mod|Power)\b/;
   for (const m of f.matchAll(/\b([a-z][a-z0-9_-]*)\s*\(/gi)) {
     if (!known.test(m[1]) && !/^(and|or|not|in|like|between|then|else|end|case|when)$/i.test(m[1])) {
       warnings.push(`function "${m[1]}()" has no confirmed Sigma mapping — review/translate manually.`);
     }
   }
+  // The single unmask that closes out this function's two-stage mask-on-entry
+  // — a masked `'…'` literal becomes a Sigma double-quoted string; a masked
+  // `[…]`/`"…"` span is restored verbatim. Replaces the old naive
+  // `f.replace(/'([^']*)'/g, '"$1"')`, which ran too late to protect anything
+  // upstream of it.
+  f = cognosUnmask(f, lits);
   return { formula: f, warnings };
 }
 

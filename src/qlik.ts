@@ -790,6 +790,142 @@ function splitTopLevel(s: string, delim: string): string[] {
   return out;
 }
 
+// ── Qlik-specific literal masking ───────────────────────────────────────────
+// qlikExprToSigma's keyword/function-name scanning (RangeSum/Class/Log/Only/
+// the Set-Analysis `{…}` detector/…) runs plain regex .test()/.replace()/
+// .match() and indexOf-based scans over the raw formula text with no idea
+// that string literals exist — live-reproduced two ways:
+//   1. A master measure whose ENTIRE expression is the single literal
+//      'RangeSum(1) legacy code' came back with the LITERAL'S CONTENT
+//      rewritten to "(Coalesce(1, 0)) legacy code" — a value that reaches a
+//      dashboard, not just a mistranslated formula.
+//   2. 'RangeSum(' & RangeSum(Sum(A), Sum(B)) — a literal containing an
+//      UNBALANCED "(" followed by a real, SEPARATE RangeSum() call — made
+//      matchClose() (below) run off the end of the string hunting for a
+//      matching close paren (it treats the literal's own closing quote as
+//      the OPEN of a fresh quote span, then never finds another one to close
+//      it, so it swallows everything after, including the real call). It
+//      returns -1; lowerRangeFns() `break`s its loop entirely; the real,
+//      separate RangeSum() call later in the same string is silently left
+//      untranslated — a Sigma formula containing a function Sigma doesn't
+//      have.
+//
+// Fix: mask ONCE, on entry to qlikExprToSigma, for the WHOLE function body —
+// every pass below (Dual(), FirstSortedValue()/Aggr() detection, Set
+// Analysis, inter-record functions, Range/Class lowering, the keyword-
+// mapping tail) runs against masked text, full stop.
+//
+// ALL THREE of Qlik's quoting forms — `'literal'`, `"quoted field"`, and
+// `[bracketed field]` — get sentineled away, not just `'…'`. Reason: this
+// file's OWN matchClose()/splitTopLevel() helpers (used throughout the
+// pipeline below) do their own ad-hoc quote-skipping keyed on a bare `'` or
+// `"` character; leaving a bracket's or double-quoted ref's content raw
+// would still expose them to it. Live-reproduced: RangeSum([Manager's
+// Approval], 5) — a real call whose bracketed field merely CONTAINS an
+// apostrophe — made matchClose() treat that apostrophe as opening a fresh
+// quote span (with nothing left in the string to close it), swallow the
+// rest of the string, return -1, and left the whole RangeSum() call
+// untranslated. Sentineling the bracket's ENTIRE span before matchClose ever
+// runs closes this: no raw `'`/`"`/`[` reaches it at all. An unterminated
+// `'`, `"`, or `[` is left as an ordinary character and scanning resumes
+// normally — it does NOT swallow the remainder of the string (the trap
+// above, for a form matchClose itself doesn't guard against).
+const QLIK_LIT_SENT = '\u0002';
+const QLIK_LIT_SENT_RE = new RegExp(`${QLIK_LIT_SENT}(\\d+)${QLIK_LIT_SENT}`, 'g');
+const QLIK_LIT_SENT_FULL_RE = new RegExp(`^${QLIK_LIT_SENT}(\\d+)${QLIK_LIT_SENT}$`);
+
+interface QlikMaskedLit {
+  /** Which delimiter opened this span — determines how it's restored. */
+  kind: "'" | '"' | '[';
+  /** Original raw text, delimiters included (e.g. `'RangeSum('`, `[Manager's Approval]`). */
+  raw: string;
+}
+
+/** Mask every top-level `'literal'`, `"quoted field"`, and `[bracketed
+ *  field]` span in `s` behind an opaque `<index>` sentinel — see
+ *  the block comment above for why all three, not just `'…'`, need it. */
+function maskQlikLiterals(s: string, lits: QlikMaskedLit[] = []): { masked: string; lits: QlikMaskedLit[] } {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === '[' || ch === '"' || ch === "'") {
+      const closeChar = ch === '[' ? ']' : ch;
+      const close = s.indexOf(closeChar, i + 1);
+      if (close !== -1) {
+        const raw = s.slice(i, close + 1);
+        out += `${QLIK_LIT_SENT}${lits.push({ kind: ch as QlikMaskedLit['kind'], raw }) - 1}${QLIK_LIT_SENT}`;
+        i = close + 1;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return { masked: out, lits };
+}
+
+/** Resolve a masked literal's raw inner text (delimiters stripped) by sentinel index. */
+function qlikLitInner(lits: QlikMaskedLit[], idx: number): string {
+  const lit = lits[idx];
+  return lit === undefined ? '' : lit.raw.slice(1, -1);
+}
+
+/** If `s` (trimmed) is EXACTLY one masked-literal sentinel, resolve it to its
+ *  raw inner text; otherwise return `s` unchanged (already-bare text — a
+ *  bare field name or a number). Used at the few sites that need a literal's
+ *  actual VALUE: a Set Analysis search string, Peek()'s field-name argument,
+ *  Num()'s (discarded) format argument in a warning message. */
+function qlikResolveLit(s: string, lits: QlikMaskedLit[]): string {
+  const m = s.trim().match(QLIK_LIT_SENT_FULL_RE);
+  return m ? qlikLitInner(lits, Number(m[1])) : s;
+}
+
+/** Restore masked spans to their ORIGINAL raw Qlik text (delimiters and all)
+ *  — a `'…'` literal, a `"…"` quoted field, and a `[…]` bracketed field all
+ *  come back exactly as written. Used for the Aggr()/FirstSortedValue()
+ *  sentinel hand-off (lowerQlikAggr / lowerQlikFirstSortedValue /
+ *  fsvRankPattern parse genuine Qlik syntax themselves, unchanged by this
+ *  fix, and must see real text, not a sentinel keyed into THIS call's private
+ *  `lits` array) and to keep warning messages readable when they echo back
+ *  an argument that might be masked. */
+function restoreQlikLiterals(s: string, lits: QlikMaskedLit[]): string {
+  return s.replace(QLIK_LIT_SENT_RE, (_m, i) => lits[Number(i)]?.raw ?? _m);
+}
+
+/** Register a brand-new literal span (NOT one lifted verbatim from the
+ *  source text) and return its sentinel token. A pass that SYNTHESIZES a new
+ *  quoted string mid-pipeline (setValueToCondition building a Sigma
+ *  double-quoted comparison value out of a Set Analysis search string) must
+ *  go through this instead of splicing `"…"` directly into the formula —
+ *  otherwise that raw, unmasked quote is exposed to every LATER pass in the
+ *  same qlikExprToSigma call (lowerRangeFns/lowerClass/the keyword tail),
+ *  which is exactly the hazard this whole mask-once scheme exists to close.
+ *  Live-reproduced: Sum({<Region={'Contains RangeSum( in it'}>} A) &
+ *  RangeSum(Sum(A), Sum(B)) — without this, translateSetAnalysis's own
+ *  synthesized "Contains RangeSum( in it" comparison string re-introduced a
+ *  raw, unbalanced `(` inside raw quotes, and the real RangeSum() call after
+ *  it was silently dropped again, even with masking on entry. */
+function qlikMaskNew(lits: QlikMaskedLit[], kind: QlikMaskedLit['kind'], raw: string): string {
+  return `${QLIK_LIT_SENT}${lits.push({ kind, raw }) - 1}${QLIK_LIT_SENT}`;
+}
+
+/** Finalizes every remaining masked span for Sigma output — the single
+ *  unmask that closes out qlikExprToSigma's mask-on-entry. A `'…'` literal
+ *  becomes a Sigma double-quoted string (mirrors the previous
+ *  `f.replace(/'([^']*)'/g, '"$1"')` byte-for-byte — no escaping of an
+ *  embedded double quote, pre-existing behavior, unchanged by this fix); a
+ *  `"…"` or `[…]` field reference is restored verbatim (unchanged either way
+ *  — downstream display-name rewriting, e.g. bracketKnownBareFields, expects
+ *  to find real `[…]` text to operate on). */
+function unmaskQlikLiterals(s: string, lits: QlikMaskedLit[]): string {
+  return s.replace(QLIK_LIT_SENT_RE, (_m, i) => {
+    const lit = lits[Number(i)];
+    if (!lit) return _m;
+    return lit.kind === "'" ? `"${lit.raw.slice(1, -1)}"` : lit.raw;
+  });
+}
+
 /**
  * Lower the row-wise Range aggregations that have a direct Sigma equivalent.
  * RangeSum/RangeAvg fold over the scalar arg list; RangeMin/RangeMax map to
@@ -854,13 +990,16 @@ function lowerClass(f: string, warnings: string[], name: string): string {
   return f;
 }
 
-/** A single Set Analysis element value → a Sigma condition for `field`. */
-function setValueToCondition(field: string, rawVal: string, op: '=' | '<>'): string | null {
+/** A single Set Analysis element value → a Sigma condition for `field`.
+ *  `v` arrives already MASKED (a caller-side single-quoted value is now a
+ *  `\u0002<idx>\u0002` sentinel — resolved via `lits`); a `"double-quoted"`
+ *  value passes through masking untouched, so it's still detected directly. */
+function setValueToCondition(field: string, rawVal: string, op: '=' | '<>', lits: QlikMaskedLit[]): string | null {
   let v = rawVal.trim();
-  // Quoted string — may be a search/comparison expression like ">=2020" or a literal.
-  const qm = v.match(/^['"](.*)['"]$/);
-  if (qm) {
-    const inner = qm[1].trim();
+  const sentM = v.match(QLIK_LIT_SENT_FULL_RE);
+  const dqM = !sentM ? v.match(/^"(.*)"$/) : null;
+  if (sentM || dqM) {
+    const inner = (sentM ? qlikLitInner(lits, Number(sentM[1])) : dqM![1]).trim();
     const cmp = inner.match(/^(>=|<=|<>|>|<|=)\s*(.+)$/);
     if (cmp) {
       // numeric/comparison search string → comparison operator
@@ -872,20 +1011,23 @@ function setValueToCondition(field: string, rawVal: string, op: '=' | '<>'): str
       }
       const rhs = cmp[2].trim();
       const rhsNum = /^-?\d+(\.\d+)?$/.test(rhs);
-      return `[${field}]${cop}${rhsNum ? rhs : `"${rhs}"`}`;
+      return `[${field}]${cop}${rhsNum ? rhs : qlikMaskNew(lits, '"', `"${rhs}"`)}`;
     }
-    // plain quoted literal
-    return `[${field}]${op}"${inner}"`;
+    // plain quoted literal — registered through qlikMaskNew (not spliced in
+    // raw) so a LATER pass in this same qlikExprToSigma call never sees a
+    // live, unmasked quote — see qlikMaskNew's doc comment.
+    return `[${field}]${op}${qlikMaskNew(lits, '"', `"${inner}"`)}`;
   }
   // bare numeric
   if (/^-?\d+(\.\d+)?$/.test(v)) return `[${field}]${op}${v}`;
   // bare token literal
-  if (/^[A-Za-z0-9_]+$/.test(v)) return `[${field}]${op}"${v}"`;
+  if (/^[A-Za-z0-9_]+$/.test(v)) return `[${field}]${op}${qlikMaskNew(lits, '"', `"${v}"`)}`;
   return null;
 }
 
-/** Translate one clause `FIELD = {v1, v2}` (or `-=`) → a Sigma boolean. */
-function clauseToCondition(clause: string): string | null {
+/** Translate one clause `FIELD = {v1, v2}` (or `-=`) → a Sigma boolean.
+ *  `clause` arrives already MASKED — see setValueToCondition. */
+function clauseToCondition(clause: string, lits: QlikMaskedLit[]): string | null {
   // operators: =, -= (exclude), += (add — rare, treat as = for a fresh set)
   const m = clause.match(/^\s*\[?([A-Za-z0-9_ .]+?)\]?\s*(-=|\+=|=)\s*\{([\s\S]*)\}\s*$/);
   if (!m) return null;
@@ -900,7 +1042,7 @@ function clauseToCondition(clause: string): string | null {
   const vals = splitTopLevel(body, ',').map(v => v.trim()).filter(Boolean);
   const conds: string[] = [];
   for (const v of vals) {
-    const c = setValueToCondition(field, v, op);
+    const c = setValueToCondition(field, v, op, lits);
     if (!c) return null;
     conds.push(c);
   }
@@ -957,8 +1099,11 @@ function bracketKnownBareFields(expr: string, displayMap: Record<string, string>
 /**
  * Translate every `AGG({<set>} EXPR)` occurrence in `f` to `AGG(If(conds, EXPR, 0))`.
  * Returns null on any untranslatable set construct (caller degrades+flags).
+ * `f` arrives already MASKED (see qlikExprToSigma's mask-on-entry); `lits`
+ * is threaded down to clauseToCondition/setValueToCondition, the two sites
+ * that need a masked literal's actual value.
  */
-function translateSetAnalysis(f: string, warnings: string[], name: string): string | null {
+function translateSetAnalysis(f: string, warnings: string[], name: string, lits: QlikMaskedLit[]): string | null {
   const aggRe = new RegExp(`\\b(${QLIK_SET_AGGS.join('|')})\\s*\\(\\s*\\{`, 'i');
   let guard = 0;
   while (aggRe.test(f) && guard++ < 50) {
@@ -1002,7 +1147,7 @@ function translateSetAnalysis(f: string, warnings: string[], name: string): stri
     const clauses = splitTopLevel(modifiers, ',').map(c => c.trim()).filter(Boolean);
     const conds: string[] = [];
     for (const cl of clauses) {
-      const c = clauseToCondition(cl);
+      const c = clauseToCondition(cl, lits);
       if (!c) {
         warnings?.push(`"${name}": Set Analysis clause "${cl}" could not be translated — left untranslated.`);
         return null;
@@ -1196,7 +1341,7 @@ const QLIK_IR_RE = /\b(Rank|HRank|VRank|Above|Below|Before|After|Top|Bottom|Prev
  * Returns null to DEGRADE (warning + workbookPatterns 'unsupported' entry pushed).
  */
 function lowerInterRecordFns(
-  f: string, warnings: string[], name: string, original: string, ctx?: QlikExprCtx,
+  f: string, warnings: string[], name: string, original: string, ctx: QlikExprCtx | undefined, lits: QlikMaskedLit[],
 ): string | null {
   const flagUnsupported = (note: string): null => {
     warnings?.push(`⚠ "${name}": ${note} — left untranslated (flagged in workbookPatterns).`);
@@ -1284,7 +1429,9 @@ function lowerInterRecordFns(
       if (args.length > 2 && args[2]) {
         return flagUnsupported(`Peek() with a table argument reads another table's load buffer (script-time semantics, not chart semantics)`);
       }
-      const fieldRaw = (args[0] || '').trim().replace(/^['"\[]/, '').replace(/['"\]]$/, '');
+      // args[0] is masked — a 'field' literal is now a sentinel (resolve via
+      // lits); a "field" or [field] ref passed masking through untouched.
+      const fieldRaw = qlikResolveLit((args[0] || '').trim(), lits).replace(/^['"\[]/, '').replace(/['"\]]$/, '').trim();
       if (!fieldRaw) return flagUnsupported('Peek() missing field argument');
       let row = -1;
       if (args.length > 1 && args[1]) {
@@ -1441,6 +1588,17 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
   let f = expr.trim();
   if (f.startsWith('=')) f = f.slice(1).trim();
 
+  // Mask string literals ONCE, here, for the ENTIRE function body — see the
+  // Qlik-specific literal masking block above lowerRangeFns. From this point
+  // on, every pass (Dual(), FirstSortedValue()/Aggr() detection, Set
+  // Analysis, inter-record functions, Range/Class lowering, the keyword-
+  // mapping tail, and the final unmask below) sees only masked text unless it
+  // deliberately restores raw text (the Aggr()/FirstSortedValue() sentinel
+  // hand-offs just below, via restoreQlikLiterals — those two lowerings parse
+  // genuine Qlik syntax themselves and are unchanged by this fix).
+  const { masked, lits } = maskQlikLiterals(f);
+  f = masked;
+
   // Dual(text, num): a literal dual value. Measures want the numeric part (2nd
   // arg), labels want the text part (1st). Lower to the numeric part by default
   // — it is the part that participates in aggregation — keeping the text only
@@ -1469,7 +1627,7 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
   // Checked BEFORE set-analysis translation so the lowering sees raw args.
   const fsvM = f.match(/^FirstSortedValue\s*\(/i);
   if (fsvM && matchClose(f, f.indexOf('('), '(', ')') === f.length - 1) {
-    return QLIK_FSV_SENTINEL + f;
+    return QLIK_FSV_SENTINEL + restoreQlikLiterals(f, lits);
   }
   if (/\bFirstSortedValue\s*\(/i.test(f)) {
     warnings?.push(`⚠ "${name}": FirstSortedValue() nested inside a larger expression — left untranslated (flagged in workbookPatterns).`);
@@ -1479,7 +1637,7 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
 
   // Set Analysis — translate to conditional aggregation, or degrade+flag.
   if (/\{\s*[\$1<][^}]*\}/.test(f) || /\{\s*<[^}]*>\s*\}/.test(f)) {
-    const translated = translateSetAnalysis(f, warnings, name);
+    const translated = translateSetAnalysis(f, warnings, name, lits);
     if (translated === null) return null;
     f = translated;
   }
@@ -1488,7 +1646,7 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
   // single-level form Sum(Aggr(<innerAgg>(<expr>), <dim>[, <dim>...])) is
   // attempted; genuinely nested Aggr or non-aggregate outer ops degrade+flag.
   if (/\bAggr\s*\(/i.test(f)) {
-    return QLIK_AGGR_SENTINEL + f;
+    return QLIK_AGGR_SENTINEL + restoreQlikLiterals(f, lits);
   }
   if (/\bGet(?:Field)?(?:Selections?|CurrentSelections?|PossibleCount|SelectedCount|AlternativeCount|ExcludedCount)\s*\(/i.test(f)) {
     warnings?.push(`"${name}": uses a Qlik selection-state function — no Sigma equivalent.`);
@@ -1500,7 +1658,7 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
   // that the RangeSum/Avg/Min/Max folding consumes. Set analysis inside the
   // inner expr was already translated above, so Rank(Sum({<…>} X)) wraps the
   // conditional-aggregation form.
-  const ir = lowerInterRecordFns(f, warnings, name, expr, ctx);
+  const ir = lowerInterRecordFns(f, warnings, name, expr, ctx, lits);
   if (ir === null) return null;
   f = ir;
   // Row-wise Range aggregations over a scalar arg list translate directly;
@@ -1532,7 +1690,7 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
   f = f.replace(/\bRepeat\s*\(/gi, 'Repeat(');
   f = f.replace(/\bConcat\s*\(/gi, 'ListAgg(');
   f = f.replace(/\bNum\s*\(\s*([^,)]+)(,([^)]+))?\)/gi, (_m, val, hasComma, fmt) => {
-    if (hasComma && warnings) warnings.push(`"${name}": Num() format argument "${(fmt||'').trim()}" stripped.`);
+    if (hasComma && warnings) warnings.push(`"${name}": Num() format argument "${qlikResolveLit((fmt||'').trim(), lits)}" stripped.`);
     return val.trim();
   });
   f = f.replace(/\bText\s*\(/gi, 'ToString(').replace(/\bDate\$\s*\(/gi, 'ToString(');
@@ -1544,6 +1702,5 @@ function qlikExprToSigma(expr: string, warnings: string[], name: string, ctx?: Q
     warnings?.push(`"${name}": YearToDate() approximated as Year(${field.trim()}) = Year(Today())`);
     return `Year(${field}) = Year(Today())`;
   });
-  f = f.replace(/'([^']*)'/g, '"$1"');
-  return f.trim();
+  return unmaskQlikLiterals(f, lits).trim();
 }
