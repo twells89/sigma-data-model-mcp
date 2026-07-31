@@ -506,8 +506,16 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     const baseName: string = srcEl.name || srcTableName;
     // Derived element NAME must differ from the base so [<base>/Field] is unambiguous.
     const derivedName = `${srcEl.name || sigmaDisplayName(srcTableName)} View`;
-    const viewCols: Array<{ id: string; formula: string }> = [];
+    const viewCols: Array<{ id: string; formula: string; hidden?: boolean }> = [];
     const viewOrder: string[] = [];
+    // Declutter (Phase 1): one folder per relationship target, collecting that
+    // target's related/lookup columns so the UI doesn't show hundreds of flat
+    // lookup columns next to the relationships that already provide the same
+    // reach. Columns are HIDDEN + GROUPED, never dropped — see the `hidden: true`
+    // note below for why removal is unsafe.
+    // `relName` is tracked only to disambiguate a name collision after the
+    // fact (see below) — stripped before the folder is emitted.
+    const folderByTarget = new Map<string, { id: string; name: string; items: string[]; relName: string }>();
 
     for (const col of (srcEl.columns || [])) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
@@ -539,6 +547,14 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
       // element already carries that value, and the cross-element passthrough of a join
       // key compiles to type "error" in Sigma (verified via readback). Skip it.
       const tgtKeyIds = new Set((rel.keys || []).map((k: any) => k.targetColumnId));
+      // Human folder name for this relationship's target — mirrors the baseName
+      // resolution above (explicit `name` wins, else warehouse path tail).
+      let tgtTableName = '';
+      if (tgtEl.source?.kind === 'warehouse-table') {
+        const tgtPath: string[] = tgtEl.source.path || [];
+        tgtTableName = tgtPath[tgtPath.length - 1] || '';
+      }
+      const tgtFolderName: string = tgtEl.name || (tgtTableName ? sigmaDisplayName(tgtTableName) : '') || rel.name;
       for (const col of (tgtEl.columns || [])) {
         if (tgtKeyIds.has(col.id)) continue;
         if (!col.formula || col.formula.startsWith('/*')) continue;
@@ -566,20 +582,59 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
         // a denormalized cross-element passthrough (it would compile to type "error").
         if (dispName.includes('/')) continue;
         const cId = sigmaShortId();
-        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]` });
+        // Related/lookup column: HIDE it (Sigma's UI renders these as "lookup"
+        // columns; a data model with one per column of every related target is
+        // the reported clutter) but never drop it — every [Base/Rel/Field]
+        // formula elsewhere, and every alt the powerbi-to-sigma migration skill
+        // registers for a workbook binding (migrate-powerbi.rb ~1199-1260), must
+        // still resolve through this exact column. Verified live (2026-07-31):
+        // a hidden cross-element column on a derived View element (a) still
+        // resolves to its real type — not "error" — via
+        // GET /v2/dataModels/<id>/columns, and (b) is still resolvable when
+        // referenced from ANOTHER element's formula. `hidden` is display/
+        // permission-only; it does not affect resolvability.
+        viewCols.push({ id: cId, formula: `[${baseName}/${rel.name}/${dispName}]`, hidden: true });
         viewOrder.push(cId);
+
+        let folder = folderByTarget.get(rel.targetElementId);
+        if (!folder) {
+          folder = { id: sigmaShortId(), name: tgtFolderName, items: [], relName: rel.name };
+          folderByTarget.set(rel.targetElementId, folder);
+        }
+        folder.items.push(cId);
+      }
+    }
+
+    // Role-playing dimensions — the same physical table joined more than once
+    // under different roles (a role-played date dimension is the classic
+    // case) — produce multiple DISTINCT folders (different targetElementId)
+    // that all resolve to the same plain target name. That's legible grouping
+    // but illegible labeling: several identically-named folders in the picker
+    // defeats the point of this declutter. Disambiguate with the relationship
+    // name, but ONLY on an actual collision — a target reached by exactly one
+    // relationship keeps its plain, unadorned name (the common case, and it
+    // reads better).
+    if (folderByTarget.size > 1) {
+      const countByName = new Map<string, number>();
+      for (const f of folderByTarget.values()) countByName.set(f.name, (countByName.get(f.name) || 0) + 1);
+      for (const f of folderByTarget.values()) {
+        if ((countByName.get(f.name) || 0) > 1) f.name = `${f.name} (${f.relName})`;
       }
     }
 
     if (viewCols.length > 0) {
-      derived.push({
+      const derivedEl: SigmaElement = {
         id: sigmaShortId(),
         kind: 'table',
         name: derivedName,
         source: { kind: 'table', elementId: srcEl.id },
         columns: viewCols,
         order: viewOrder,
-      });
+      };
+      if (folderByTarget.size > 0) {
+        (derivedEl as any).folders = [...folderByTarget.values()].map(({ id, name, items }) => ({ id, name, items }));
+      }
+      derived.push(derivedEl);
     }
   }
   return derived;
