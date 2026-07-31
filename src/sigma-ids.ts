@@ -513,7 +513,9 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
     // lookup columns next to the relationships that already provide the same
     // reach. Columns are HIDDEN + GROUPED, never dropped — see the `hidden: true`
     // note below for why removal is unsafe.
-    const folderByTarget = new Map<string, { id: string; name: string; items: string[] }>();
+    // `relName` is tracked only to disambiguate a name collision after the
+    // fact (see below) — stripped before the folder is emitted.
+    const folderByTarget = new Map<string, { id: string; name: string; items: string[]; relName: string }>();
 
     for (const col of (srcEl.columns || [])) {
       if (!col.formula || col.formula.startsWith('/*')) continue;
@@ -596,10 +598,27 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
 
         let folder = folderByTarget.get(rel.targetElementId);
         if (!folder) {
-          folder = { id: sigmaShortId(), name: tgtFolderName, items: [] };
+          folder = { id: sigmaShortId(), name: tgtFolderName, items: [], relName: rel.name };
           folderByTarget.set(rel.targetElementId, folder);
         }
         folder.items.push(cId);
+      }
+    }
+
+    // Role-playing dimensions — the same physical table joined more than once
+    // under different roles (a role-played date dimension is the classic
+    // case) — produce multiple DISTINCT folders (different targetElementId)
+    // that all resolve to the same plain target name. That's legible grouping
+    // but illegible labeling: several identically-named folders in the picker
+    // defeats the point of this declutter. Disambiguate with the relationship
+    // name, but ONLY on an actual collision — a target reached by exactly one
+    // relationship keeps its plain, unadorned name (the common case, and it
+    // reads better).
+    if (folderByTarget.size > 1) {
+      const countByName = new Map<string, number>();
+      for (const f of folderByTarget.values()) countByName.set(f.name, (countByName.get(f.name) || 0) + 1);
+      for (const f of folderByTarget.values()) {
+        if ((countByName.get(f.name) || 0) > 1) f.name = `${f.name} (${f.relName})`;
       }
     }
 
@@ -613,7 +632,7 @@ export function buildDerivedElements(elements: SigmaElement[]): SigmaElement[] {
         order: viewOrder,
       };
       if (folderByTarget.size > 0) {
-        (derivedEl as any).folders = [...folderByTarget.values()];
+        (derivedEl as any).folders = [...folderByTarget.values()].map(({ id, name, items }) => ({ id, name, items }));
       }
       derived.push(derivedEl);
     }
