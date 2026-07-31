@@ -18,7 +18,7 @@ import {
   makeRlsSecurity, makeClsSecurity,
   type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
-import { triageCrossTable, describeTriage, type Rel } from './powerbi-crosstable-triage.js';
+import { triageCrossTable, describeTriage, describeMetricBlocker, isNoCoveringView, type Rel, type MetricBlocker } from './powerbi-crosstable-triage.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
 
@@ -2207,6 +2207,22 @@ export function convertPowerBIToSigma(
   const triageRels: Rel[] = (model.relationships || [])
     .filter((r: any) => r.fromTable && r.toTable)
     .map((r: any) => ({ from: r.fromTable, to: r.toTable }));
+  // Whole-model metric name -> declaring table, built up front for the same reason
+  // as triageColumnOwners above: the cross-table drop loop below runs ONE TABLE AT
+  // A TIME, so by the time table k's own metrics are checked, this is the only way
+  // to know a "bad" ref names a metric declared on a DIFFERENT table at all — a
+  // hard Sigma constraint (metrics cannot reference another element's metric, at
+  // any join distance) that `triageCrossTable` has no basis to reason about, since
+  // it isn't a column and isn't a same-element ref either. `Object.create(null)` —
+  // NOT `{}` — for the same reason as triageColumnOwners: a real model can name a
+  // measure `toString`/`constructor`/etc. First-wins on a name collision across
+  // tables (rare; DAX measure names are usually unique per model).
+  const allMetricOwner: Record<string, string> = Object.create(null);
+  for (const _t of (model.tables || [])) {
+    for (const _m of (_t.measures || [])) {
+      if (_m?.name && !allMetricOwner[_m.name]) allMetricOwner[_m.name] = _t.name;
+    }
+  }
   // measure (PBI) name -> owning element id, for cross-table ratio detection
   // (beads-sigma-m1a). Includes measures later moved to the fact element.
   const measureToElementId: Record<string, string> = {};
@@ -2630,6 +2646,13 @@ export function convertPowerBIToSigma(
         const k = d.toLowerCase();
         if (!canonicalCol.has(k)) canonicalCol.set(k, d);
       }
+      // Metric name -> the exact reason text this metric was itself dropped for,
+      // across ALL passes of the loop below (persists outside the `pass` loop —
+      // a metric dropped in pass 0 must still be found when a LATER metric's
+      // ref to it is judged in pass 1+). Populated whichever branch below fires,
+      // so a chain of dependent drops composes: if B depends on A and C depends
+      // on B, C's message quotes B's message, which already quotes A's.
+      const siblingDropReason = new Map<string, string>();
       for (let pass = 0; pass < 5; pass++) {
         const metricNames = new Set(metrics.map((mm: any) => mm.name));
         const canonicalMetric = new Map<string, string>();
@@ -2649,6 +2672,17 @@ export function convertPowerBIToSigma(
           const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
+            // ALWAYS run triageCrossTable — never bypass it on a name match alone.
+            // `bad` sharing a literal NAME with another element's metric (or with
+            // an already-dropped same-table sibling) does not mean it ISN'T also
+            // a real, reachable column: `columnOwners` is built from every table's
+            // columns, so a genuine hop-1 column named e.g. "AGENT_NAME" resolves
+            // correctly here regardless of whether some unrelated table ALSO
+            // happens to declare a measure with that same name. triageCrossTable's
+            // own verdict — safe/fanout-risk/ambiguous/never-hostable/malformed —
+            // is always better information than a name-based guess, so it must run
+            // first and win whenever it has anything to say at all.
+            //
             // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
             // entry per line) — `String(anArray)` joins with a bare comma, not a
             // newline, silently mangling multi-line DAX before isNeverHostable
@@ -2667,8 +2701,45 @@ export function convertPowerBIToSigma(
               columnOwners: triageColumnOwners,
               relationships: triageRels,
               metricRefs: [...metricNames],
+              // Explicit, not just inherited from triageCrossTable's own default —
+              // measured on R1-R4: 9 of 32 `no-covering-View` drops are a filtered
+              // dimension reachable at 3 hops, not 2 (see powerbi-crosstable-triage.ts).
+              maxDepth: 3,
             });
-            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${describeTriage(_triage)}`);
+
+            // `bad` is not always a reachability question — it can be a NAME
+            // rather than a column at all. `columnOwners` has no entry for a
+            // metric name (it is built only from `model.tables[].columns`), so
+            // either of the two shapes below resolves to hop `Infinity` on every
+            // candidate — but ONLY when triageCrossTable found NOTHING BETTER to
+            // say (`isNoCoveringView`) do we replace its generic message with the
+            // real blocker; a `safe`/`fanout-risk`/`ambiguous`/`never-hostable`
+            // verdict always wins outright (measured: 15 of 32 R1-R4
+            // `no-covering-View` drops were this — see MetricBlocker's doc
+            // comment for the full reasoning and why this must run AFTER, not
+            // instead of, triageCrossTable).
+            let _blocker: MetricBlocker | null = null;
+            if (isNoCoveringView(_triage)) {
+              if (allMetricOwner[bad] && allMetricOwner[bad] !== tableName) {
+                _blocker = { kind: 'cross-element-metric', metric: bad, ownerTable: allMetricOwner[bad] };
+              } else if (siblingDropReason.has(bad)) {
+                _blocker = { kind: 'dropped-sibling', metric: bad, siblingReason: siblingDropReason.get(bad)! };
+              }
+            }
+            const _reasonText = _blocker ? describeMetricBlocker(_blocker) : describeTriage(_triage);
+            // The generic "recreate in a workbook element..." clause below implies
+            // a View-based fix exists — true for every triageCrossTable verdict,
+            // even fan-out-risk (rebuild at the visual's grain IS that fix), but
+            // FALSE for a MetricBlocker: a cross-element-metric block says "no hop
+            // limit fixes this," and stapling the generic clause in front of that
+            // would have the same warning contradict itself. `describeMetricBlocker`
+            // text is already self-contained (it says exactly what to do), so omit
+            // the generic clause whenever a blocker fired.
+            const _warning = _blocker
+              ? `⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped. ${_reasonText}`
+              : `⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${_reasonText}`;
+            warnings.push(_warning);
+            siblingDropReason.set(metrics[i].name, _reasonText);
             metrics.splice(i, 1);
           }
         }

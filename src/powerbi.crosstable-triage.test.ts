@@ -262,6 +262,82 @@ test('T4f depth 1 cannot reach a two-hop reference', () => {
   assert.deepEqual(t.candidates, []);
 });
 
+// SALES_FACT ──▶ AGENT_DIM ──▶ REGION_DIM ──▶ COUNTRY_DIM  (three hops)
+// A real-world `CALCULATE(SUM(FACT[AMOUNT]), DIM[attr] = value)` shape compiles
+// to Sigma `SumIf([AMOUNT], [attr] = value)` — the filtered dimension sits in the
+// PREDICATE (SumIf's second argument), which `aggregateSummand` already excludes
+// from grain analysis (see T8b/T8d). So a predicate ref that is 3 hops away is a
+// pure COVERAGE question, never a grain one: once `maxDepth` is high enough for
+// every ref to resolve, the aggregate's own summand (AMOUNT alone, hop 0) is
+// exactly as safe as it always was.
+const RELS3 = [...RELS, { from: 'REGION_DIM', to: 'COUNTRY_DIM' }];
+const OWNERS3 = { ...OWNERS, COUNTRY_NAME: ['COUNTRY_DIM'], COUNTRY_POP: ['COUNTRY_DIM'] };
+
+test('T4p CHANGE 1: default maxDepth is 3 — a 3-hop PREDICATE ref is now covered and the measure is SAFE with no maxDepth override', () => {
+  const t = triageCrossTable(base({
+    sigmaFormula: 'SumIf([AMOUNT], [COUNTRY_NAME] = "USA")',
+    refs: ['AMOUNT', 'COUNTRY_NAME'], homeTable: 'SALES_FACT',
+    relationships: RELS3, columnOwners: OWNERS3,
+    // maxDepth intentionally omitted — this test is about the DEFAULT.
+  }));
+  const c = t.candidates.find((x) => x.baseTable === 'SALES_FACT');
+  assert.ok(c, `SALES_FACT is a covered candidate (got candidates: ${JSON.stringify(t.candidates)})`);
+  assert.equal(c!.verdict, 'safe');
+  assert.equal(c!.maxHop, 3, 'coverage reaches the 3-hop predicate ref even though it never enters the grain check');
+  assert.equal(t.reachability, 'one');
+});
+
+test('T4q CHANGE 1 guard: a genuine 3-hop reference INSIDE the aggregate SUMMAND (not a predicate) still FAN-OUT RISK — depth alone must not manufacture a false safe', () => {
+  const t = triageCrossTable(base({
+    sigmaFormula: 'Max([COUNTRY_POP])',
+    refs: ['COUNTRY_POP'], homeTable: 'SALES_FACT',
+    relationships: RELS3, columnOwners: OWNERS3,
+    // maxDepth intentionally omitted — this test is about the DEFAULT.
+  }));
+  const c = t.candidates.find((x) => x.baseTable === 'SALES_FACT');
+  assert.ok(c, `SALES_FACT is a covered candidate (got candidates: ${JSON.stringify(t.candidates)})`);
+  assert.equal(c!.verdict, 'fanout-risk', 'reaching a column at hop 3 does not make summing it across that join safe');
+  assert.deepEqual(c!.unsafeRefs, ['COUNTRY_POP']);
+});
+
+// Review round 1, finding 3: nothing exercised the mechanism behind the +5
+// `ambiguous` measured on R1-R4 — a measure already `safe` at depth 2 on ONE
+// base gaining a SECOND, independently-safe base only at depth 3. AMOUNT is
+// multi-owned (a real column on BOTH SALES_FACT and AGENT_DIM, so it sits at
+// hop 0 relative to EITHER base); COUNTRY_NAME sits in SumIf's PREDICATE
+// argument (excluded from grain, same as T4p) at hop 2 from AGENT_DIM but hop
+// 3 from SALES_FACT.
+const RELS4 = [...RELS3];
+const OWNERS4 = { AMOUNT: ['SALES_FACT', 'AGENT_DIM'], COUNTRY_NAME: ['COUNTRY_DIM'] };
+
+test('T4r CHANGE 1: a measure already SAFE at depth 2 on one base gains a SECOND independently-safe base at depth 3 — correctly AMBIGUOUS, not silently kept single', () => {
+  const args = {
+    metricName: 'M', rawDax: 'irrelevant, no report-context tokens', homeTable: 'SALES_FACT',
+    sigmaFormula: 'SumIf([AMOUNT], [COUNTRY_NAME] = "USA")',
+    refs: ['AMOUNT', 'COUNTRY_NAME'],
+    columnOwners: OWNERS4, relationships: RELS4,
+  };
+
+  // At depth 2 (the OLD default): AGENT_DIM reaches COUNTRY_NAME at hop 2, but
+  // SALES_FACT cannot yet (hop 3) — exactly ONE safe host.
+  const at2 = triageCrossTable({ ...args, maxDepth: 2 });
+  assert.equal(at2.reachability, 'one');
+  assert.deepEqual(at2.candidates.filter((c) => c.verdict === 'safe').map((c) => c.baseTable), ['AGENT_DIM']);
+
+  // At depth 3 (the NEW default): SALES_FACT now ALSO reaches COUNTRY_NAME (hop
+  // 3) — a pure predicate ref, excluded from grain — and its own summand
+  // (AMOUNT, multi-owned, hop 0 either way) is exactly as safe as it always
+  // was. TWO independently-safe hosts now exist: this MUST be ambiguous, not a
+  // silently-kept single "safe" verdict.
+  const at3 = triageCrossTable(args);   // default maxDepth
+  assert.equal(at3.reachability, 'many');
+  assert.deepEqual(
+    at3.candidates.filter((c) => c.verdict === 'safe').map((c) => c.baseTable).sort(),
+    ['AGENT_DIM', 'SALES_FACT'],
+    'both independently-safe bases are present and named, not one silently dropped',
+  );
+});
+
 test('T4g a never-hostable measure yields no candidates', () => {
   const t = triageCrossTable(base({
     sigmaFormula: 'Sum([AMOUNT])', refs: ['AMOUNT'],
@@ -1043,4 +1119,196 @@ test('T5e the flip side of T5d: stripIds erases generated identity, never struct
   assert.notDeepEqual(a, b, 'sanity check: the two raw shapes must actually differ before stripping');
   assert.deepEqual(stripIds(a), stripIds(b),
     'two shapes differing ONLY in generated-id-shaped values must strip to an identical result');
+});
+
+// ── CHANGE 2: a dropped measure's "bad" ref can be a NAME, not a coverage gap ──
+//
+// 15 of the 32 `no-covering-View` measures (R1-R4 spike) are not reachability
+// problems at all — they inherit an unrelated failure from a sibling METRIC ref
+// that `columnOwners` (built only from `model.tables[].columns`) has no entry
+// for, so it resolves to hop Infinity on every candidate exactly like a
+// genuinely disconnected column would:
+//   - 5 reference a metric declared on a DIFFERENT element — a hard Sigma
+//     constraint (metrics cannot cross-reference another element's metric); no
+//     hop limit ever fixes this.
+//   - 6 have a same-table sibling metric dropped for FAN-OUT reasons (grain).
+//   - 4 have a same-table sibling dropped as NEVER-HOSTABLE (SELECTEDVALUE).
+// `Triage.dependsOnMetrics` already excludes a STILL-LIVE sibling metric ref
+// from coverage — but once that sibling is itself dropped (cascade) or lives on
+// another element, it no longer matches any "still-live metric name" the caller
+// passes in as `metricRefs`, so the ref falls through to being judged as an
+// ordinary, uncoverable column. `MetricBlocker`/`describeMetricBlocker` name
+// the TRUE blocker directly, bypassing `triageCrossTable` entirely for these
+// refs — they are not a reachability question, so a reachability classifier
+// should never be asked to describe them.
+import { describeMetricBlocker, type MetricBlocker } from './powerbi-crosstable-triage.js';
+
+test('T12a describeMetricBlocker: cross-element metric names the OTHER element and says no hop limit fixes it', () => {
+  const b: MetricBlocker = { kind: 'cross-element-metric', metric: 'Base Metric', ownerTable: 'AGENT_DIM' };
+  const msg = describeMetricBlocker(b);
+  assert.match(msg, /"Base Metric"/);
+  assert.match(msg, /AGENT_DIM/);
+  assert.match(msg, /DIFFERENT element/);
+  assert.match(msg, /no hop limit/i);
+  assert.doesNotMatch(msg, /no View covers it/, 'must not read like a reachability verdict');
+});
+
+test('T12b describeMetricBlocker: dropped-sibling quotes the sibling\'s own drop reason verbatim', () => {
+  const b: MetricBlocker = {
+    kind: 'dropped-sibling', metric: 'Sibling',
+    siblingReason: 'TRIAGE: "SALES_FACT View" (1 hop) covers it but FAN-OUT RISK — [AGENT_NAME] would double-count across the join; rebuild at the visual\'s grain.',
+  };
+  const msg = describeMetricBlocker(b);
+  assert.match(msg, /"Sibling"/);
+  assert.match(msg, /FAN-OUT RISK/, 'the sibling\'s real drop reason is surfaced, not paraphrased away');
+  assert.doesNotMatch(msg, /no View covers it/, 'must not read like a reachability verdict');
+});
+
+const tbl2 = (name: string, cols: string[], measures: any[] = []) => ({
+  name,
+  columns: cols.map((c) => ({ name: c, dataType: 'string', sourceColumn: c, summarizeBy: 'none' })),
+  measures,
+  partitions: [{ name, mode: 'import', source: { type: 'm',
+    expression: `let S = Sql.Database("h","DB"), N = S{[Name="${name}",Kind="Table"]}[Data] in N` } }],
+});
+
+test('T13a end-to-end: a measure referencing ANOTHER element\'s metric reports the cross-element blocker, not "no View covers it"', () => {
+  const m = {
+    name: 'M', compatibilityLevel: 1600,
+    model: {
+      culture: 'en-US',
+      tables: [
+        tbl2('SALES_FACT', ['AMOUNT', 'AGENT_KEY']),
+        tbl2('AGENT_DIM', ['AGENT_ID', 'AGENT_NAME'], [
+          { name: 'Agent Metric', expression: 'SUM(AGENT_DIM[AGENT_ID])' },
+        ]),
+        // REGION_DIM has no relationship to anything — its own measure references
+        // a metric declared on AGENT_DIM, a wholly different element.
+        tbl2('REGION_DIM', ['REGION_ID'], [
+          { name: 'Region Ratio', expression: '[Agent Metric] + 1' },
+        ]),
+      ],
+      relationships: [{ name: 'r1', fromTable: 'SALES_FACT', fromColumn: 'AGENT_KEY',
+                        toTable: 'AGENT_DIM', toColumn: 'AGENT_ID' }],
+    },
+  };
+  const out = convertPowerBIToSigma(m, OPTS);
+  const w = out.warnings.find((x: string) => x.includes('"Region Ratio"') && x.includes('cross-table measure'));
+  assert.ok(w, `the cross-table warning is still emitted (got ${JSON.stringify(out.warnings)})`);
+  assert.match(w!, /"Agent Metric"/);
+  assert.match(w!, /AGENT_DIM/);
+  assert.match(w!, /DIFFERENT element/);
+  assert.doesNotMatch(w!, /no View covers it/, 'the real blocker is the cross-element metric ref, not reachability');
+  // Review round 1, finding 2: the generic "recreate in a workbook element..."
+  // clause implies a View-based fix exists, contradicting "no hop limit fixes
+  // this" in the very same warning. Must be suppressed on the blocker path.
+  assert.doesNotMatch(w!, /recreate in a workbook element/,
+    'the generic View-based-fix clause must not contradict "no hop limit fixes this" in the same warning');
+});
+
+test('T13b end-to-end: a measure depending on a sibling dropped for FAN-OUT reports that, not "no View covers it"', () => {
+  const m = {
+    name: 'M', compatibilityLevel: 1600,
+    model: {
+      culture: 'en-US',
+      tables: [
+        // "Sibling" sums AGENT_DIM's own column ALONE while living on SALES_FACT —
+        // the T4b shape, and AGENT_DIM has NO outgoing relationship of its own, so
+        // there is no alternate safe host: this measure's OWN verdict is genuinely
+        // fanout-risk, not merely uncovered.
+        tbl2('SALES_FACT', ['AMOUNT', 'AGENT_KEY'], [
+          { name: 'Sibling', expression: 'SUM(AGENT_DIM[AGENT_NAME])' },
+          { name: 'Main', expression: '[Sibling] + SUM(SALES_FACT[AMOUNT])' },
+        ]),
+        tbl2('AGENT_DIM', ['AGENT_ID', 'AGENT_NAME']),
+      ],
+      relationships: [{ name: 'r1', fromTable: 'SALES_FACT', fromColumn: 'AGENT_KEY',
+                        toTable: 'AGENT_DIM', toColumn: 'AGENT_ID' }],
+    },
+  };
+  const out = convertPowerBIToSigma(m, OPTS);
+  const wSibling = out.warnings.find((x: string) => x.includes('"Sibling"') && x.includes('cross-table measure'));
+  assert.ok(wSibling, `Sibling itself is dropped as an ordinary cross-table fan-out risk (got ${JSON.stringify(out.warnings)})`);
+  assert.match(wSibling!, /FAN-OUT RISK/);
+
+  const wMain = out.warnings.find((x: string) => x.includes('"Main"') && x.includes('cross-table measure'));
+  assert.ok(wMain, `Main is still dropped and warned about (got ${JSON.stringify(out.warnings)})`);
+  assert.match(wMain!, /"Sibling"/);
+  assert.match(wMain!, /FAN-OUT RISK/, 'Main\'s warning surfaces the REAL blocker — Sibling\'s own fan-out drop');
+  assert.doesNotMatch(wMain!, /no View covers it/, 'Main must not be attributed to reachability');
+  assert.doesNotMatch(wMain!, /recreate in a workbook element/,
+    'the generic View-based-fix clause is not the real fix for a sibling-metric dependency');
+});
+
+test('T13c end-to-end: a measure depending on a sibling dropped as NEVER-HOSTABLE reports that, not "no View covers it"', () => {
+  const m = {
+    name: 'M', compatibilityLevel: 1600,
+    model: {
+      culture: 'en-US',
+      tables: [
+        tbl2('SALES_FACT', ['AMOUNT', 'AGENT_KEY'], [
+          // Cross-table (AGENT_NAME lives on AGENT_DIM, not SALES_FACT) AND
+          // report-context-dependent (SELECTEDVALUE) — same shape as T11a.
+          { name: 'Sibling', expression: 'SELECTEDVALUE(AGENT_DIM[AGENT_NAME], "")' },
+          { name: 'Main', expression: '[Sibling] + SUM(SALES_FACT[AMOUNT])' },
+        ]),
+        tbl2('AGENT_DIM', ['AGENT_ID', 'AGENT_NAME']),
+      ],
+      relationships: [{ name: 'r1', fromTable: 'SALES_FACT', fromColumn: 'AGENT_KEY',
+                        toTable: 'AGENT_DIM', toColumn: 'AGENT_ID' }],
+    },
+  };
+  const out = convertPowerBIToSigma(m, OPTS);
+  const wSibling = out.warnings.find((x: string) => x.includes('"Sibling"') && x.includes('cross-table measure'));
+  assert.ok(wSibling, `Sibling itself is dropped as never-hostable (got ${JSON.stringify(out.warnings)})`);
+  assert.match(wSibling!, /report-context-dependent/);
+
+  const wMain = out.warnings.find((x: string) => x.includes('"Main"') && x.includes('cross-table measure'));
+  assert.ok(wMain, `Main is still dropped and warned about (got ${JSON.stringify(out.warnings)})`);
+  assert.match(wMain!, /"Sibling"/);
+  assert.match(wMain!, /report-context-dependent/, 'Main\'s warning surfaces the REAL blocker — Sibling\'s own never-hostable drop');
+  assert.doesNotMatch(wMain!, /no View covers it/, 'Main must not be attributed to reachability');
+  assert.doesNotMatch(wMain!, /recreate in a workbook element/,
+    'the generic View-based-fix clause is not the real fix for a sibling-metric dependency');
+});
+
+// Review round 1, finding 1: the OLD code checked `allMetricOwner`/
+// `siblingDropReason` BEFORE running triageCrossTable at all — a pure NAME
+// match, with no check for whether the ref is ALSO a real, reachable column.
+// A name collision (two unrelated things sharing a string) then reported a
+// perfectly re-homable measure as permanently unfixable.
+test('T13d Fix (round 1, finding 1): a genuine reachable COLUMN is not blocked just because an unrelated element ALSO declares a same-named metric', () => {
+  const m = {
+    name: 'M', compatibilityLevel: 1600,
+    model: {
+      culture: 'en-US',
+      tables: [
+        tbl2('SALES_FACT', ['AMOUNT', 'AGENT_KEY'], [
+          { name: 'Tiered Amount', expression: 'MAX(AGENT_DIM[AGENT_NAME])' },
+        ]),
+        // AGENT_DIM needs its OWN outgoing relationship to qualify as a candidate
+        // base at all (triageCrossTable's `bases` are tables that appear as
+        // `from` in some relationship) — same shape as T4b2.
+        tbl2('AGENT_DIM', ['AGENT_ID', 'AGENT_NAME']),
+        tbl2('REGION_DIM', ['REGION_ID']),
+        // ORPHAN_TABLE has NO relationship to anything at all. Its measure name
+        // "AGENT_NAME" is a pure coincidence — the SAME string as AGENT_DIM's
+        // genuine, reachable column, but the two are otherwise unrelated.
+        tbl2('ORPHAN_TABLE', ['SOME_COL'], [
+          { name: 'AGENT_NAME', expression: 'SUM(ORPHAN_TABLE[SOME_COL])' },
+        ]),
+      ],
+      relationships: [
+        { name: 'r1', fromTable: 'SALES_FACT', fromColumn: 'AGENT_KEY', toTable: 'AGENT_DIM', toColumn: 'AGENT_ID' },
+        { name: 'r2', fromTable: 'AGENT_DIM', fromColumn: 'AGENT_ID', toTable: 'REGION_DIM', toColumn: 'REGION_ID' },
+      ],
+    },
+  };
+  const out = convertPowerBIToSigma(m, OPTS);
+  const w = out.warnings.find((x: string) => x.includes('"Tiered Amount"') && x.includes('cross-table measure'));
+  assert.ok(w, `the cross-table warning is still emitted (got ${JSON.stringify(out.warnings)})`);
+  assert.match(w!, /hostable on "AGENT_DIM View"/, 'the REAL, reachable column verdict wins over the name collision');
+  assert.match(w!, /fan-out SAFE/);
+  assert.doesNotMatch(w!, /DIFFERENT element/, 'must not be misreported as a cross-element metric block');
+  assert.doesNotMatch(w!, /no hop limit fixes this/, 'must not claim this is unfixable — it is a one-hop re-home');
 });
