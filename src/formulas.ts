@@ -1460,13 +1460,23 @@ export function tableauWindowToSigmaChart(formula: string): TableauWindowChartRe
   return null;
 }
 
-function tableauIfToSigma(f: string): string {
+// `f` here is ALREADY masked (see the single mask-on-entry in
+// tableauFormulaToSigma below) — real THEN/ELSE/END/WHEN keywords sitting
+// inside a live string literal used to confuse this split (a literal
+// containing the word "THEN" swallowed a branch value entirely). With
+// masking in effect before this runs, a literal's own keyword-looking text is
+// hidden inside its opaque sentinel, so only genuine code keywords split.
+// `lits` is threaded through so `_tableauRecurse` (below) can hand each
+// extracted branch fragment to a FRESH tableauFormulaToSigma call as genuine
+// raw text, then fold that call's result back into THIS call's shared
+// sentinel space.
+function tableauIfToSigma(f: string, lits: string[]): string {
   return f.replace(/\bIF\b([\s\S]+?)\bEND\b/gi, (match) => {
     let inner = match.replace(/^\s*IF\s*/i, '').replace(/\s*END\s*$/i, '');
     const elseIdx = inner.search(/\bELSE\b(?!\s*IF\b)/i);
     let elseVal = 'null';
     if (elseIdx >= 0) {
-      elseVal = tableauFormulaToSigma(inner.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim());
+      elseVal = _tableauRecurse(inner.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim(), lits);
       inner = inner.slice(0, elseIdx);
     }
     const parts = inner.split(/\bELSEIF\b/i);
@@ -1474,31 +1484,32 @@ function tableauIfToSigma(f: string): string {
     for (let i = parts.length - 1; i >= 0; i--) {
       const thenParts = parts[i].split(/\bTHEN\b/i);
       if (thenParts.length < 2) continue;
-      const cond = tableauFormulaToSigma(thenParts[0].trim());
-      const val = tableauFormulaToSigma(thenParts[1].trim());
+      const cond = _tableauRecurse(thenParts[0].trim(), lits);
+      const val = _tableauRecurse(thenParts[1].trim(), lits);
       result = 'If(' + cond + ', ' + val + ', ' + result + ')';
     }
     return result;
   });
 }
 
-function tableauCaseToSigma(f: string): string {
+// Same masked-input contract as tableauIfToSigma above.
+function tableauCaseToSigma(f: string, lits: string[]): string {
   return f.replace(/\bCASE\b([\s\S]+?)\bEND\b/gi, (match, body) => {
     const elseIdx = body.search(/\bELSE\b/i);
     let elseVal = 'null';
     let whenBody = body;
     if (elseIdx >= 0) {
-      elseVal = tableauFormulaToSigma(body.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim());
+      elseVal = _tableauRecurse(body.slice(elseIdx).replace(/^\s*ELSE\s*/i, '').trim(), lits);
       whenBody = body.slice(0, elseIdx);
     }
     const fieldMatch = whenBody.match(/^([\s\S]*?)\bWHEN\b/i);
-    const field = fieldMatch ? tableauFormulaToSigma(fieldMatch[1].trim()) : '[?]';
+    const field = fieldMatch ? _tableauRecurse(fieldMatch[1].trim(), lits) : '[?]';
     const pairs = whenBody.replace(/^[\s\S]*?\bWHEN\b/i, '').split(/\bWHEN\b/i).filter(Boolean);
     let result = elseVal;
     for (let i = pairs.length - 1; i >= 0; i--) {
       const thenParts = pairs[i].split(/\bTHEN\b/i);
       if (thenParts.length < 2) continue;
-      result = 'If(' + field + ' = ' + tableauFormulaToSigma(thenParts[0].trim()) + ', ' + tableauFormulaToSigma(thenParts[1].trim()) + ', ' + result + ')';
+      result = 'If(' + field + ' = ' + _tableauRecurse(thenParts[0].trim(), lits) + ', ' + _tableauRecurse(thenParts[1].trim(), lits) + ', ' + result + ')';
     }
     return result;
   });
@@ -1533,11 +1544,30 @@ function tableauCaseToSigma(f: string): string {
 // apostrophe inside `[Manager's Approval]` is part of the identifier, not a
 // quote — and an unterminated `[` (or unterminated quote) is treated as an
 // ordinary character, not swallowed to end-of-string.
+//
+// tableauFormulaToSigma masks ONCE, on entry, for its ENTIRE body — every
+// pass (IN-list, IF/CASE lowering, the date/user-context functions, the
+// TABLEAU_FUNC_MAP loop, keyword-casing, bracket-casing) runs against masked
+// text, full stop. An earlier version of this fix masked in two separate
+// windows with a stretch of raw text running IN-list/IF/CASE/DATEPART/
+// USERNAME between them — reviewed and rejected: that stretch reproduced the
+// exact bug this fix exists to kill (`'Please choose IN (1,2,3)…'` corrupted;
+// `IF [x] = 'contains THEN keyword' THEN 'a' ELSE 'b' END` silently lost the
+// 'a' branch — not corruption, a WRONG ANSWER; `'See DATEPART(\'year\',
+// [Date]) info'` converted inside the quotes). Mask-once, with the two
+// recursing helpers (tableauIfToSigma/tableauCaseToSigma) explicitly
+// restoring-then-remasking around their own recursive calls, is the only
+// version proven closed against all of those.
 const _TABLEAU_LIT_SQ_RE = /'(?:[^'\\]|\\.)*'/g;
 const _TABLEAU_LIT_DQ_RE = /"(?:[^"\\]|\\.)*"/g;
+const _TABLEAU_SENTINEL_SRC = ' (\\d+)';
+const _TABLEAU_SENTINEL_RE = / (\d+)/g;
 
-function _maskTableauLiterals(s: string): { masked: string; lits: string[] } {
-  const lits: string[] = [];
+// `lits` is optional so the top-level call in tableauFormulaToSigma can start
+// a fresh array, while _tableauRecurse (below) passes the OUTER call's array
+// in to APPEND to it (continuing its index numbering) rather than starting a
+// colliding fresh one.
+function _maskTableauLiterals(s: string, lits: string[] = []): { masked: string; lits: string[] } {
   let out = '';
   let i = 0;
   while (i < s.length) {
@@ -1566,30 +1596,57 @@ function _maskTableauLiterals(s: string): { masked: string; lits: string[] } {
 }
 
 // Restores literals to their ORIGINAL raw Tableau text (quotes, backslash
-// escapes and all) — used between the two masked passes in
-// tableauFormulaToSigma so that IN-list/IF/CASE lowering (which recurse into
-// a FRESH tableauFormulaToSigma call per branch — handing a masked sentinel
-// into that call would leak this call's private `lits` index into an
-// unrelated call frame, the same cross-scope hazard _restoreRawLiterals
-// documents above) and the date/user-context functions (DATEPART/DATENAME/
-// DATETRUNC/DATEADD/DATEDIFF/DATEPARSE/ISMEMBEROF/USERATTRIBUTE/ISUSERNAME,
-// which need to read their OWN quoted argument) see genuine quotes again.
+// escapes and all). Used only by _tableauRecurse (below): tableauIfToSigma/
+// tableauCaseToSigma are the only passes that recurse into a FRESH
+// tableauFormulaToSigma call per branch, and that fresh call must see genuine
+// Tableau text, not a sentinel keyed into THIS call's private `lits` array
+// (the same cross-scope-index hazard _restoreRawLiterals documents above for
+// the SQL half's lookConvertCase).
 function _restoreRawTableauLiterals(s: string, lits: string[]): string {
-  return s.replace(/ (\d+)/g, (_m, i) => lits[Number(i)] ?? _m);
+  return s.replace(_TABLEAU_SENTINEL_RE, (_m, i) => lits[Number(i)] ?? _m);
 }
 
-// Finalizes a masked Tableau literal to Sigma's double-quoted form: unescape
-// Tableau's backslash escapes to recover the TRUE content, then re-escape for
-// Sigma's own double-quoted output (backslash first, then embedded double
-// quotes — the same escaping _unmaskLiterals applies for SQL's convention,
-// applied here to Tableau's).
+// Resolves a masked literal's TRUE content (quotes stripped, Tableau's
+// backslash escapes collapsed) from its sentinel index.
+function _tabLitInner(lits: string[], idxStr: string): string {
+  const raw = lits[Number(idxStr)];
+  return raw === undefined ? '' : raw.slice(1, -1).replace(/\\(.)/g, '$1');
+}
+
+// Escapes literal content for Sigma's own double-quoted output — backslash
+// first, then embedded double quotes (the same order _unmaskLiterals applies
+// for SQL's convention, applied here to Tableau's).
+function _tabEscapeForSigma(inner: string): string {
+  return inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+// Finalizes every remaining masked literal to Sigma's double-quoted form —
+// the single unmask that closes out tableauFormulaToSigma's mask-on-entry.
 function _unmaskTableauLiterals(s: string, lits: string[]): string {
-  return s.replace(/ (\d+)/g, (_m, i) => {
-    const raw = lits[Number(i)];
-    const inner = raw.slice(1, -1).replace(/\\(.)/g, '$1');
-    const escaped = inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    return `"${escaped}"`;
-  });
+  return s.replace(_TABLEAU_SENTINEL_RE, (_m, i) => `"${_tabEscapeForSigma(_tabLitInner(lits, i))}"`);
+}
+
+// Restores a masked slice to raw Tableau text, recursively converts it via a
+// FRESH tableauFormulaToSigma call (that call does its own complete
+// mask→process→unmask, fully self-contained), then re-masks the result INTO
+// the shared `lits` array (continuing its index numbering, so no collision
+// with sentinels the OUTER call already minted). Used by tableauIfToSigma/
+// tableauCaseToSigma, the only two passes that recurse into a fresh
+// top-level call per branch.
+//
+// Both hazards this closes are real, not hypothetical: handing the recursive
+// call a slice that still carries THIS call's sentinels would leak a foreign
+// lits index into an unrelated call frame and misresolve; handing the
+// recursive call's OUTPUT back to the outer pipeline UNmasked would just
+// relocate the original corruption to the branch-splice boundary — a nested
+// literal in a branch value would sail through the outer pipeline's
+// remaining passes (TABLEAU_FUNC_MAP, keyword-casing, bracket-casing)
+// unprotected. Re-masking the recursive result closes both.
+function _tableauRecurse(maskedSlice: string, lits: string[]): string {
+  const raw = _restoreRawTableauLiterals(maskedSlice, lits);
+  const converted = tableauFormulaToSigma(raw);
+  const { masked } = _maskTableauLiterals(converted, lits);
+  return masked;
 }
 
 /** Convert a Tableau calculated field formula to Sigma formula syntax */
@@ -1597,85 +1654,114 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   if (!formula || !formula.trim()) return '';
   // Decode numeric XML entities (fxp leaves &#10; literal) and strip //comments
   // BEFORE any pattern matching, so the rest of the translator sees clean text.
-  let f = stripLineComments(decodeXmlEntities(formula)).trim();
+  const raw0 = stripLineComments(decodeXmlEntities(formula)).trim();
+
+  // Mask ONCE, here, for the ENTIRE function body — see _maskTableauLiterals
+  // above. From this point on, nothing sees a live quote unless it
+  // deliberately restores one (tableauIfToSigma/tableauCaseToSigma's
+  // recursive branches, via _tableauRecurse — see there for why, and how the
+  // result gets re-masked before rejoining this pipeline). `raw0` is kept
+  // around only for the early bail-out paths just below (LOD/table-calc/
+  // COVAR), which show a human the ORIGINAL formula text in a comment —
+  // sentinels would be meaningless there.
+  const { masked, lits } = _maskTableauLiterals(raw0);
+  let f = masked;
 
   // LOD expressions
   if (/^\s*\{/.test(f)) {
-    if (warnings) warnings.push('⚠ LOD expression not converted: ' + f.slice(0, 60));
-    return '/* LOD: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+    if (warnings) warnings.push('⚠ LOD expression not converted: ' + raw0.slice(0, 60));
+    return '/* LOD: ' + raw0.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
   // Table calcs — WINPROBE-validated mappings to Sigma window functions.
   // CONTEXT CAVEAT: the emitted Sigma window functions are valid in CHART /
   // grouped-workbook-element context ONLY — they silently error in DM element
   // calc columns and workbook master calc columns. Never emit *Over functions
   // (SumOver/MaxOver/CountOver = 'Unknown function' in spec contexts).
+  //
+  // Matched against raw0 (NOT masked `f`): every pattern here is anchored
+  // (`^...$` — the ENTIRE trimmed formula must match), and a string literal
+  // always starts with a quote character, so an anchored `^RANK\(` -style
+  // pattern can never accidentally match into one regardless of whether the
+  // text is masked. tableauWindowToSigmaChart's RANK case needs a REAL quote
+  // to read its optional 'asc'/'desc' direction argument — masked text broke
+  // that (regression caught by tableau.window.test.ts's RANK-family suite:
+  // `RANK(SUM(x), 'asc')` fell through to the untranslated-comment path
+  // because the masked sentinel no longer looked like `'asc'`).
   {
-    const winChart = tableauWindowToSigmaChart(f);
+    const winChart = tableauWindowToSigmaChart(raw0);
     if (winChart) {
       if (warnings) warnings.push(
         `ℹ Table calc → ${winChart.formula} — CHART/grouped-element context ONLY: place in a grouped workbook element (group by the viz dimensions); window functions silently error in data-model calc columns and workbook master calc columns.`
         + (winChart.note ? ' ' + winChart.note : ''));
       return winChart.formula;
     }
-    const untrans = tableauWindowUntranslatable(f);
+    const untrans = tableauWindowUntranslatable(raw0);
     if (untrans) {
-      if (warnings) warnings.push(`⚠ Table calculation NOT converted — ${untrans}() has no Sigma equivalent. Untranslated fragment: ${f.slice(0, 120)}`);
-      return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+      if (warnings) warnings.push(`⚠ Table calculation NOT converted — ${untrans}() has no Sigma equivalent. Untranslated fragment: ${raw0.slice(0, 120)}`);
+      return '/* table calc: ' + raw0.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
     }
-    if (/^(WINDOW_|RUNNING_|FIRST\(|LAST\(|INDEX\(|RANK\b|RANK_|LOOKUP\(|TOTAL\s*\()/i.test(f)) {
+    if (/^(WINDOW_|RUNNING_|FIRST\(|LAST\(|INDEX\(|RANK\b|RANK_|LOOKUP\(|TOTAL\s*\()/i.test(raw0)) {
       // WINDOW_SUM(AGG([x])) with no offsets → GrandTotal(Agg([x])) — DM-safe
       // (exact when the chart groups by a single dimension set).
-      const gt = f.match(/^WINDOW_SUM\s*\(\s*(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\[[^\]]+\])\s*\)\s*\)$/i);
+      const gt = raw0.match(/^WINDOW_SUM\s*\(\s*(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\[[^\]]+\])\s*\)\s*\)$/i);
       if (gt) {
         const aggMap: Record<string, string> = { SUM: 'Sum', COUNT: 'Count', AVG: 'Avg', MIN: 'Min', MAX: 'Max' };
         return 'GrandTotal(' + (aggMap[gt[1].toUpperCase()] || gt[1]) + '(' + gt[2] + '))';
       }
       // Anchored table calc we couldn't map — flag loudly, never emit silently.
-      if (warnings) warnings.push(`⚠ Table calculation not converted. Untranslated fragment: ${f.slice(0, 120)}`);
-      return '/* table calc: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+      if (warnings) warnings.push(`⚠ Table calculation not converted. Untranslated fragment: ${raw0.slice(0, 120)}`);
+      return '/* table calc: ' + raw0.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
     }
   }
 
   // COVAR/COVARP have no Sigma equivalent — flag loudly, never emit silently
   // (Sigma has Corr but no covariance function; verified 2026-06-15).
+  // Matched against MASKED text: a literal that merely CONTAINS "COVAR("
+  // text is already hidden inside its own opaque sentinel by this point, so
+  // this can no longer false-bail-out on data (a bonus of mask-once — it
+  // used to scan raw text here).
   if (/\bCOVARP?\s*\(/i.test(f)) {
-    if (warnings) warnings.push(`⚠ COVAR/COVARP has no Sigma equivalent — not converted. Fragment: ${f.slice(0, 120)}`);
-    return '/* no Sigma equivalent: ' + f.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
+    if (warnings) warnings.push(`⚠ COVAR/COVARP has no Sigma equivalent — not converted. Fragment: ${raw0.slice(0, 120)}`);
+    return '/* no Sigma equivalent: ' + raw0.replace(/\/\*/g, '').replace(/\*\//g, '') + ' */';
   }
 
-  // Mask string literals before this naive function-name scan touches them —
-  // see _maskTableauLiterals above (the demonstrated bug: COUNT([x])'s regex
-  // has no idea "COUNT(" can appear inside a customer-facing string, e.g.
-  // 'See Count(Open Items) report'). Restored to RAW text immediately after,
-  // before IN-list/IF/CASE lowering (which recurse into a fresh
-  // tableauFormulaToSigma call) and the date/user-context functions below
-  // (which need genuine quotes to read their own literal argument).
-  {
-    const { masked, lits } = _maskTableauLiterals(f);
-    f = masked;
-    // ZN([x]) → Coalesce([x], 0)
-    f = f.replace(/\bZN\s*\(([^)]+)\)/gi, 'Coalesce($1, 0)');
-    f = f.replace(/\bIFNULL\s*\(/gi, 'Coalesce(').replace(/\bIFERROR\s*\(/gi, 'Coalesce(');
-    f = f.replace(/\bISNULL\s*\(/gi, 'IsNull(');
-    // COUNT([x]) → CountIf(IsNotNull([x]))
-    f = f.replace(/\bCOUNT\s*\(([^)]+)\)/gi, (m, arg) => 'CountIf(IsNotNull(' + arg.trim() + '))');
-    f = f.replace(/\bCOUNTD\s*\(/gi, 'CountDistinct(');
-    // ATTR([x]) → just [x]
-    f = f.replace(/\bATTR\s*\(([^)]+)\)/gi, '$1');
-    f = _restoreRawTableauLiterals(f, lits);
-  }
+  // ZN([x]) → Coalesce([x], 0)
+  f = f.replace(/\bZN\s*\(([^)]+)\)/gi, 'Coalesce($1, 0)');
+  f = f.replace(/\bIFNULL\s*\(/gi, 'Coalesce(').replace(/\bIFERROR\s*\(/gi, 'Coalesce(');
+  f = f.replace(/\bISNULL\s*\(/gi, 'IsNull(');
+  // COUNT([x]) → CountIf(IsNotNull([x]))
+  f = f.replace(/\bCOUNT\s*\(([^)]+)\)/gi, (m, arg) => 'CountIf(IsNotNull(' + arg.trim() + '))');
+  f = f.replace(/\bCOUNTD\s*\(/gi, 'CountDistinct(');
+  // ATTR([x]) → just [x]
+  f = f.replace(/\bATTR\s*\(([^)]+)\)/gi, '$1');
 
   // [Field] IN (…) → or-chain (Sigma has no IN operator). Run before If/CASE
   // lowering so an `If([X] in (…), …)` condition is already a boolean chain.
+  // Safe directly on masked text with NO changes to tableauInToSigma itself:
+  // a literal's own "IN (" text is already hidden inside ONE opaque sentinel
+  // (masking collapsed the whole literal before this ever runs), and a
+  // GENUINE `[Field] IN ('a','b')` list's own value literals are themselves
+  // separate sentinels — inert to its internal quote/paren-depth tracking,
+  // so they pass through as opaque atoms and resolve correctly at the final
+  // unmask below.
   f = tableauInToSigma(f);
 
-  f = tableauIfToSigma(f);
+  f = tableauIfToSigma(f, lits);
   f = f.replace(/\bIIF\s*\(/gi, 'If(');
-  f = tableauCaseToSigma(f);
+  f = tableauCaseToSigma(f, lits);
 
-  // DATEPART('year', [Date]) → Year([Date])
-  f = f.replace(/\bDATEPART\s*\(\s*'(\w+)'\s*,\s*([^)]+)\)/gi, (m, part, dateArg) => {
-    // 'week' has no dedicated Sigma fn — use DatePart("week", …) (see WEEK above).
+  // DATEPART('year', [Date]) → Year([Date]) — sentinel-aware: matches the
+  // MASKED form of the unit-name literal (never a live quote) and resolves
+  // its true content via `lits`. This is what makes both directions correct
+  // at once: a literal that merely CONTAINS the text "DATEPART('year', ...)"
+  // is, by this point, ALREADY one single opaque sentinel with no "DATEPART("
+  // substring exposed for this regex to find; a GENUINE DATEPART(...) call's
+  // own first argument is ALSO just a masked literal like any other, and
+  // resolves correctly through `lits`.
+  f = f.replace(new RegExp(`\\bDATEPART\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,\\s*([^)]+)\\)`, 'gi'), (m, litIdx, dateArg) => {
+    const part = _tabLitInner(lits, litIdx);
+    if (!/^\w+$/.test(part)) return m; // not a clean unit token — leave unconverted (matches the old '(\w+)'-anchored regex)
+    // 'week' has no dedicated Sigma fn — use DatePart("week", …) (see WEEK below).
     if (part.toLowerCase() === 'week') return 'DatePart("week", ' + dateArg.trim() + ')';
     const partMap: Record<string, string> = {
       year: 'Year', month: 'Month', day: 'Day', hour: 'Hour', minute: 'Minute',
@@ -1686,7 +1772,9 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   });
   // DATENAME('month', [Date]) → MonthName([Date]); 'weekday' → WeekdayName([Date]);
   // numeric units (year/quarter/day) have no name fn in Sigma → Text(<numeric part>).
-  f = f.replace(/\bDATENAME\s*\(\s*'(\w+)'\s*,\s*([^,)]+)(?:,[^)]*)?\)/gi, (m, part, dateArg) => {
+  f = f.replace(new RegExp(`\\bDATENAME\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,\\s*([^,)]+)(?:,[^)]*)?\\)`, 'gi'), (m, litIdx, dateArg) => {
+    const part = _tabLitInner(lits, litIdx);
+    if (!/^\w+$/.test(part)) return m;
     const arg = dateArg.trim();
     switch (part.toLowerCase()) {
       case 'month':                  return 'MonthName(' + arg + ')';
@@ -1701,26 +1789,35 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
       default:        return m;
     }
   });
-  f = f.replace(/\bDATETRUNC\s*\(\s*'([^']+)'\s*,/gi, 'DateTrunc("$1",');
+  f = f.replace(new RegExp(`\\bDATETRUNC\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,`, 'gi'),
+    (_m, litIdx) => `DateTrunc("${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}",`);
   // Tableau DATETRUNC('week', date, 'monday') carries a start-of-week 3rd arg that
   // Sigma's DateTrunc (unit, date) has no slot for — strip the weekday literal.
-  f = f.replace(/,\s*["'](?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)["']\s*\)/gi, ')');
-  f = f.replace(/\bDATEADD\s*\(\s*'([^']+)'\s*,/gi, 'DateAdd("$1",');
-  f = f.replace(/\bDATEDIFF\s*\(\s*'([^']+)'\s*,/gi, 'DateDiff("$1",');
+  f = f.replace(new RegExp(`,\\s*${_TABLEAU_SENTINEL_SRC}\\s*\\)`, 'gi'), (m, litIdx) => {
+    const val = _tabLitInner(lits, litIdx);
+    return /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i.test(val) ? ')' : m;
+  });
+  f = f.replace(new RegExp(`\\bDATEADD\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,`, 'gi'),
+    (_m, litIdx) => `DateAdd("${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}",`);
+  f = f.replace(new RegExp(`\\bDATEDIFF\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,`, 'gi'),
+    (_m, litIdx) => `DateDiff("${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}",`);
   // Tableau WEEK(date) = week-of-year number. Sigma has NO Week() function
   // (live query returned "Unknown function: Week", 2026-07-10) — the week number
   // comes from DatePart("week", date). Handle one level of nested parens so
-  // WEEK(MakeDate(...)) / WEEK([Date]) both rewrite cleanly.
+  // WEEK(MakeDate(...)) / WEEK([Date]) both rewrite cleanly. No quotes involved
+  // — safe on masked text unchanged.
   f = f.replace(/\bWEEK\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'DatePart("week", $1)');
 
   // STDEVP (population std dev) — Sigma has no population-stddev function;
   // population σ = Sqrt(population variance). Run before the STDEV map entry.
+  // No quotes involved — safe on masked text unchanged.
   f = f.replace(/\bSTDEVP\s*\(([^()]+(?:\([^()]*\)[^()]*)*)\)/gi, 'Sqrt(VariancePop($1))');
   // DATEPARSE('format', string) — Tableau orders args (format, string) and uses
   // Java date tokens; Sigma DateParse(text, format) reverses them and uses strftime.
-  f = f.replace(/\bDATEPARSE\s*\(\s*('[^']*'|"[^"]*")\s*,\s*([^()]+(?:\([^()]*\)[^()]*)*)\)/gi,
-    (_m, fmt, str) => {
-      const sf = fmt.slice(1, -1)
+  f = f.replace(new RegExp(`\\bDATEPARSE\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*,\\s*([^()]+(?:\\([^()]*\\)[^()]*)*)\\)`, 'gi'),
+    (_m, litIdx, str) => {
+      const fmtRaw = _tabLitInner(lits, litIdx);
+      const sf = fmtRaw
         .replace(/yyyy/g, '%Y').replace(/yy/g, '%y')
         .replace(/MMMM/g, '%B').replace(/MMM/g, '%b').replace(/MM/g, '%m')
         .replace(/dd/g, '%d').replace(/HH/g, '%H').replace(/hh/g, '%I')
@@ -1732,50 +1829,47 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   // User-context (row-level security) functions → Sigma equivalents.
   // USERNAME()→CurrentUserEmail(); ISMEMBEROF('g')→CurrentUserInTeam("g");
   // USERATTRIBUTE('a')→CurrentUserAttributeText("a"); ISUSERNAME('u')→email match.
-  // (Run before the single→double quote pass so the arg quoting is normalized here.)
+  // Sentinel-aware for the same reason as the DATEPART family above.
   f = f.replace(/\bUSERNAME\s*\(\s*\)/gi, 'CurrentUserEmail()');
-  f = f.replace(/\bISMEMBEROF\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserInTeam("$1")');
-  f = f.replace(/\bUSERATTRIBUTE\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, 'CurrentUserAttributeText("$1")');
-  f = f.replace(/\bISUSERNAME\s*\(\s*['"]([^'"]+)['"]\s*\)/gi, '(CurrentUserEmail() = "$1")');
+  f = f.replace(new RegExp(`\\bISMEMBEROF\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*\\)`, 'gi'),
+    (_m, litIdx) => `CurrentUserInTeam("${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}")`);
+  f = f.replace(new RegExp(`\\bUSERATTRIBUTE\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*\\)`, 'gi'),
+    (_m, litIdx) => `CurrentUserAttributeText("${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}")`);
+  f = f.replace(new RegExp(`\\bISUSERNAME\\s*\\(\\s*${_TABLEAU_SENTINEL_SRC}\\s*\\)`, 'gi'),
+    (_m, litIdx) => `(CurrentUserEmail() = "${_tabEscapeForSigma(_tabLitInner(lits, litIdx))}")`);
 
-  // Second masked pass: the func-map loop and the NOT/AND/OR/TRUE/FALSE/NULL
-  // keyword-casing below are exactly as naive as COUNT/ZN above — protect
-  // them the same way, then finalize (unmask) straight to Sigma's
-  // double-quoted form. This REPLACES the old `f.replace(/'([^']*)'/g,
-  // '"$1"')` single-quote collapse: that line never touched double-quoted
-  // Tableau literals at all (silently vulnerable to the identical corruption
-  // via Tableau's other legal quote style — see the double-quoted-literal
-  // test), and ran unmasked, so it — and the bracket-casing pass right after
-  // it — saw literal content as plain scannable text (a literal containing
-  // `[SALES]` was being read as a bare field ref and display-cased).
-  {
-    const { masked, lits } = _maskTableauLiterals(f);
-    f = masked;
+  // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
+  // resolves live (bead tt3z.3, verified 2026-07-10):
+  //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
+  //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
+  // One level of nested parens in the arg is handled. No quotes involved.
+  f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
+  f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
 
-    // Arg-rewrite mappings — Sigma has no direct equivalent, but a trivial rewrite
-    // resolves live (bead tt3z.3, verified 2026-07-10):
-    //   SQUARE(x) → Power(x, 2)      (no Sigma Square)
-    //   SPACE(n)  → Repeat(" ", n)   (no Sigma Space; Repeat resolves)
-    // One level of nested parens in the arg is handled.
-    f = f.replace(/\bSQUARE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Power($1, 2)');
-    f = f.replace(/\bSPACE\s*\(\s*([^()]*(?:\([^()]*\)[^()]*)*)\)/gi, 'Repeat(" ", $1)');
-
-    // Map remaining functions
-    for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
-      f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
-    }
-
-    f = f.replace(/\bNOT\b/g, 'Not').replace(/\bAND\b/g, 'and').replace(/\bOR\b/g, 'or');
-    f = f.replace(/\bTRUE\b/gi, 'True').replace(/\bFALSE\b/gi, 'False').replace(/\bNULL\b/gi, 'null');
-
-    // Convert physical column name references to display names
-    f = f.replace(/\[([A-Z][A-Z0-9_]{2,})\]/g, (match, colName) => {
-      if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
-      return '[' + sigmaDisplayName(colName) + ']';
-    });
-
-    f = _unmaskTableauLiterals(f, lits);
+  // Map remaining functions — safe on masked text: a literal containing any
+  // of these names (ZN/ROUND/AVG/…) is already one opaque sentinel by now.
+  for (const [tab, sig] of Object.entries(TABLEAU_FUNC_MAP)) {
+    f = f.replace(new RegExp('\\b' + tab + '\\s*\\(', 'gi'), sig + '(');
   }
+
+  // Keyword-casing — safe on masked text: a literal containing the plain
+  // English words "true"/"false"/"null"/"and"/"or" is already one opaque
+  // sentinel and is never re-cased.
+  f = f.replace(/\bNOT\b/g, 'Not').replace(/\bAND\b/g, 'and').replace(/\bOR\b/g, 'or');
+  f = f.replace(/\bTRUE\b/gi, 'True').replace(/\bFALSE\b/gi, 'False').replace(/\bNULL\b/gi, 'null');
+
+  // Convert physical column name references to display names — safe on
+  // masked text: an ALL-CAPS bracket-look-alike (e.g. [SALES]) inside a
+  // literal is hidden inside its sentinel, so only genuine field refs match.
+  f = f.replace(/\[([A-Z][A-Z0-9_]{2,})\]/g, (match, colName) => {
+    if (colName === colName.toLowerCase() || colName.includes(' ')) return match;
+    return '[' + sigmaDisplayName(colName) + ']';
+  });
+
+  // Finalize: resolve every remaining sentinel to Sigma's double-quoted form.
+  // This REPLACES the old `f.replace(/'([^']*)'/g, '"$1"')` single-quote
+  // collapse, which never touched double-quoted Tableau literals at all.
+  f = _unmaskTableauLiterals(f, lits);
 
   // Tableau text concat `+` → Sigma `&` (literal / text-function operands only;
   // the converter re-runs this with column-type info for ref-only chains).
@@ -1797,11 +1891,11 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
   // so identifiers inside them aren't flagged; table-calc tokens are already
   // reported just above, so skip them here to avoid duplicate warnings.
   if (warnings) {
-    const masked = f.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]/g, '[]');
+    const masked2 = f.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]/g, '[]');
     const unmapped = new Set<string>();
     const scan = /\b([A-Z][A-Z0-9_]+)\s*\(/g;
     let mm: RegExpExecArray | null;
-    while ((mm = scan.exec(masked)) !== null) {
+    while ((mm = scan.exec(masked2)) !== null) {
       const fn = mm[1];
       if (TABLEAU_TABLE_CALC_TOKEN_RE.test(fn + '(')) continue; // already flagged above
       unmapped.add(fn);
@@ -1815,6 +1909,7 @@ export function tableauFormulaToSigma(formula: string, warnings?: string[]): str
 
   return f.trim();
 }
+
 
 /** Check if a Tableau formula contains aggregate functions */
 export function tableauIsAggregate(formula: string): boolean {
