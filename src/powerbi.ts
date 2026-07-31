@@ -18,6 +18,7 @@ import {
   makeRlsSecurity, makeClsSecurity,
   type SigmaElement, type SigmaColumn, type ConversionResult, type SecurityRule,
 } from './sigma-ids.js';
+import { triageCrossTable, describeTriage, type Rel } from './powerbi-crosstable-triage.js';
 
 // ── Community article links for warnings ──────────────────────────────────────
 
@@ -2175,6 +2176,37 @@ export function convertPowerBIToSigma(
   const tableIdMap: Record<string, string> = {};
   const tableColMap: Record<string, Record<string, string>> = {};
   const allPbiToSigmaNames: Record<string, string> = {};
+  // ── Cross-table TRIAGE support ────────────────────────────────────────────
+  // `tableColMap` is filled INSIDE the table loop below, so at the moment table k
+  // drops a cross-table measure, tables k+1..N are not in it yet. Triage needs a
+  // whole-model view, so build one up front from the RAW model.
+  // Indexed by BOTH raw and display name: at the drop site refs have already been
+  // remapped to display names, but a column whose display name we derive slightly
+  // differently still resolves via its raw name. PR 1 only produces a MESSAGE, so an
+  // imperfect derivation degrades wording, never output. PR 2 must not rely on this.
+  // `Object.create(null)` — NOT `{}` — because a real model can and does contain a
+  // column literally named `toString`/`constructor`/`valueOf`/`hasOwnProperty`/etc.
+  // Against a `{}`-backed map, `triageColumnOwners['toString']` resolves to the
+  // inherited Function.prototype.toString, which is truthy, so the init guard below
+  // never fires and `.includes` is called on a function — throwing, and crashing a
+  // conversion that succeeds on `main`. A null-prototype object has no inherited
+  // members at all, so every key behaves like a plain data slot.
+  const triageColumnOwners: Record<string, string[]> = Object.create(null);
+  const _own = (key: string, table: string) => {
+    if (!key) return;
+    if (!triageColumnOwners[key]) triageColumnOwners[key] = [];
+    if (!triageColumnOwners[key].includes(table)) triageColumnOwners[key].push(table);
+  };
+  for (const _t of (model.tables || [])) {
+    if (_t.name?.startsWith('LocalDateTable_') || _t.name?.startsWith('DateTableTemplate_')) continue;
+    for (const _c of (_t.columns || [])) {
+      _own(_c.name, _t.name);
+      _own(sigmaDisplayName(String(_c.sourceColumn || _c.name || '').replace(/^\[|\]$/g, '')), _t.name);
+    }
+  }
+  const triageRels: Rel[] = (model.relationships || [])
+    .filter((r: any) => r.fromTable && r.toTable)
+    .map((r: any) => ({ from: r.fromTable, to: r.toTable }));
   // measure (PBI) name -> owning element id, for cross-table ratio detection
   // (beads-sigma-m1a). Includes measures later moved to the fact element.
   const measureToElementId: Record<string, string> = {};
@@ -2617,7 +2649,26 @@ export function convertPowerBIToSigma(
           const refs = (String(metrics[i].formula).match(/\[([^\]\/]+)\]/g) || []).map((r: string) => r.slice(1, -1));
           const bad = refs.find((r) => !colDisplays.has(r) && !metricNames.has(r));
           if (bad) {
-            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns).`);
+            // TMSL/BIM serializes a multi-line DAX expression as a string[] (one
+            // entry per line) — `String(anArray)` joins with a bare comma, not a
+            // newline, silently mangling multi-line DAX before isNeverHostable
+            // ever sees it. Coerce INSIDE the array branch so an array joins with
+            // '\n' (matching how this codebase joins the same shape elsewhere,
+            // e.g. powerbi.ts's own measureDaxMap construction), and only
+            // String()-coerce the non-array case.
+            const _rawDaxExpr = ((t.measures || []).find((mm: any) => mm.name === metrics[i].name) || {}).expression;
+            const _rawDax = Array.isArray(_rawDaxExpr) ? _rawDaxExpr.join('\n') : String(_rawDaxExpr || '');
+            const _triage = triageCrossTable({
+              metricName: metrics[i].name,
+              sigmaFormula: String(metrics[i].formula),
+              rawDax: _rawDax,
+              homeTable: tableName,
+              refs: [...new Set(refs)],
+              columnOwners: triageColumnOwners,
+              relationships: triageRels,
+              metricRefs: [...metricNames],
+            });
+            warnings.push(`⚠ "${metrics[i].name}": references "[${bad}]" which is not a column or metric on this element (cross-table measure) — dropped; recreate in a workbook element at the visual's grain (the joined "View" element has the dim columns). ${describeTriage(_triage)}`);
             metrics.splice(i, 1);
           }
         }
