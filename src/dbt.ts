@@ -479,6 +479,23 @@ export function convertDbtToSigma(
     el.metrics.push(metric);
   }
 
+  // Sigma formulas quote string literals with DOUBLE quotes ("like this").
+  // The cross-element detection/rewrite below scans a column's already-
+  // converted formula text for bare `[Name]` refs — without masking, a
+  // CASE-derived dimension whose branch value happens to contain
+  // bracket-look-alike text (e.g. "Small [X]") is read as a reference to a
+  // field named X, and a fully self-contained column gets misclassified as
+  // cross-element and relocated (or dropped). Mask "..." runs before
+  // scanning/rewriting, then restore the literal text afterward.
+  const maskFormulaStringLiterals = (formula: string): { masked: string; unmask: (s: string) => string } => {
+    const literals: string[] = [];
+    const masked = formula.replace(/"(?:[^"\\]|\\.)*"/g, (lit) => {
+      const idx = literals.push(lit) - 1;
+      return `@@LIT${idx}@@`;
+    });
+    return { masked, unmask: (s: string) => s.replace(/@@LIT(\d+)@@/g, (_m, i) => literals[Number(i)]) };
+  };
+
   // ── Pull cross-element calc cols off source elements (moved to derived) ─
   // Calc cols whose formula references a related-table column by display name
   // (e.g. order_fact.is_pro_segment refs customer_segment via foreign entity)
@@ -504,7 +521,7 @@ export function convertDbtToSigma(
     for (const c of (el.columns || [])) {
       if (!c.name || !c.formula) { keep.push(c); continue; }
       if (/^\[[^\]\/]+\/[^\]]+\]$/.test(c.formula)) { keep.push(c); continue; }
-      const refs = c.formula.match(/\[([^\]\/]+)\]/g) || [];
+      const refs = maskFormulaStringLiterals(c.formula).masked.match(/\[([^\]\/]+)\]/g) || [];
       const hasCross = refs.some(ref => {
         const n = ref.replace(/^\[|\]$/g, '');
         return !/^(true|false|null)$/i.test(n) && !localNames.has(n.toUpperCase());
@@ -557,10 +574,12 @@ export function convertDbtToSigma(
     }
     for (const c of calcs) {
       if (c.formula && Object.keys(relatedNameMap).length) {
-        c.formula = c.formula.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
+        const { masked, unmask } = maskFormulaStringLiterals(c.formula);
+        const rewrittenMasked = masked.replace(/\[([^\]\/]+)\]/g, (match: string, refName: string) => {
           const rewritten = relatedNameMap[refName];
           return rewritten ? `[${rewritten}]` : match;
         });
+        c.formula = unmask(rewrittenMasked);
       }
       (de.columns as any[]).push(c);
       (de.order as string[]).push(c.id);
