@@ -1003,11 +1003,21 @@ test('live Domo Beast Mode corpus: golden-value spot checks over representative 
   // corpus[11]: a CASE nested inside two COUNT(...) arguments, each of which is
   // itself a condition/branch of the outer CASE (the task-4b "corpus item 11"
   // shape, pinned here to an exact string rather than only structural checks).
+  //
+  // CORRECTED 2026-08-05 (bead beads-sigma-znvg). This golden previously pinned
+  // `DateDiff(Today(),[created_on])` — the BUG, frozen as expected output. That
+  // is not valid Sigma (DateDiff takes a datepart first) and it also had the
+  // operands backwards, so this assertion actively protected a defect that later
+  // compiled to type="error" on the live 36-card cold run. The corpus input is
+  // MySQL `DATEDIFF(current_date(), created_on)` = "days since created_on", whose
+  // Sigma equivalent is DateDiff("day", [created_on], Today()) — operands
+  // SWAPPED. Note this is exactly the case where a half-fix hides: adding the
+  // unit without swapping still compiles and silently negates every `<= 30`.
   assert.equal(
     convert(11),
-    'If(Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )) = 0, 0, ' +
-    'Count((If(([status] = "Closed") AND ((DateDiff(Today(),[created_on]) - 1) <= 30), [id], null) )) / ' +
-    'Count((If((DateDiff(Today(),[created_on]) - 1) <= 30, [id], null) )))'
+    'If(Count((If((DateDiff("day", [created_on], Today()) - 1) <= 30, [id], null) )) = 0, 0, ' +
+    'Count((If(([status] = "Closed") AND ((DateDiff("day", [created_on], Today()) - 1) <= 30), [id], null) )) / ' +
+    'Count((If((DateDiff("day", [created_on], Today()) - 1) <= 30, [id], null) )))'
   );
 
   // corpus[3] (task-4c-brief.md's own headline example): a CASE dividing the
