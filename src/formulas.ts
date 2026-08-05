@@ -297,6 +297,91 @@ export function lookIsComplexSql(sql: string): boolean {
   return false;
 }
 
+/**
+ * Split a call's argument list on TOP-LEVEL commas only — parens, quotes and
+ * bracket-form identifiers are opaque. `DATE_TRUNC('month',[c])` is one
+ * argument, not two.
+ */
+function _splitTopLevelArgs(s: string): string[] {
+  const args: string[] = [];
+  let depth = 0, quote = '', bracket = false, cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) { cur += c; if (c === quote) quote = ''; continue; }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '[') bracket = true;
+    else if (c === ']') bracket = false;
+    if (!bracket) {
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      else if (c === ',' && depth === 0) { args.push(cur); cur = ''; continue; }
+    }
+    cur += c;
+  }
+  args.push(cur);
+  return args;
+}
+
+/** MySQL 2-arg date-difference functions -> the Sigma datepart they imply. */
+const _MYSQL_DIFF_UNIT: Record<string, string> = { DATEDIFF: 'day', TIMEDIFF: 'second' };
+
+/**
+ * MySQL/Domo `DATEDIFF(end, start)` -> Sigma `DateDiff("day", start, end)`
+ * (and `TIMEDIFF` -> `"second"`). Bead beads-sigma-znvg.
+ *
+ * MySQL's DATEDIFF(expr1, expr2) is expr1 - expr2, i.e. (END, START). Sigma's
+ * is DateDiff(datepart, start, end) — (START, END) plus an explicit unit. Before
+ * this, LOOK_FUNC_MAP renamed DATEDIFF -> DateDiff by BARE NAME (pass 1 below),
+ * so the arity was never corrected and the operands were never swapped:
+ * `datediff(current_date(),[Date])` became `DateDiff(Today(),[Date])`. That is
+ * not valid Sigma and produced 9 of the 15 type="error" columns on
+ * domo-to-sigma's live 36-card cold run.
+ *
+ * SWAPPING IS THE POINT, not just the arity. `DateDiff("day", Today(), [Date])`
+ * compiles cleanly and returns the NEGATION of "days since [Date]", so every
+ * `>= 7` / `< 28` / `<= 30` window predicate built on it silently inverts and
+ * the KPI is wrong with no error anywhere — strictly worse than the loud
+ * type=error this replaces. domo-to-sigma's refs/beast-mode-to-sigma.md already
+ * specified the rule ("mind arg order: BM is (end, start)").
+ *
+ * A 3-argument call is ALREADY in Sigma's (unit, start, end) order — left in
+ * source order, never swapped, or currently-correct formulas would break. Any
+ * other arity, and an unbalanced call, are left exactly as found; arguments are
+ * still descended into either way, so nested calls convert.
+ *
+ * Runs on literal-MASKED text (see lookConvertExpression), so a quoted string
+ * can never be mistaken for a call, and before the CASE pass so a DATEDIFF
+ * inside a CASE span is rewritten too.
+ */
+function _rewriteMysqlDateDiff(expr: string): string {
+  const NAME = /\b(DATEDIFF|TIMEDIFF)\s*\(/i;
+  let out = '', rest = expr;
+  for (;;) {
+    const m = NAME.exec(rest);
+    if (!m) { out += rest; break; }
+    const open = m.index + m[0].length - 1;          // index of '('
+    let depth = 0, close = -1;
+    for (let i = open; i < rest.length; i++) {
+      if (rest[i] === '(') depth++;
+      else if (rest[i] === ')') { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close === -1) { out += rest; break; }        // unbalanced — leave verbatim
+    const inner = rest.slice(open + 1, close);
+    const args = _splitTopLevelArgs(inner);
+    out += rest.slice(0, m.index);
+    if (args.length === 2) {
+      const unit = _MYSQL_DIFF_UNIT[m[1].toUpperCase()];
+      const end = _rewriteMysqlDateDiff(args[0]).trim();
+      const start = _rewriteMysqlDateDiff(args[1]).trim();
+      out += `DateDiff("${unit}", ${start}, ${end})`;
+    } else {
+      out += `${rest.slice(m.index, open + 1)}${_rewriteMysqlDateDiff(inner)})`;
+    }
+    rest = rest.slice(close + 1);
+  }
+  return out;
+}
+
 /** Map common SQL function names to Sigma equivalents */
 const LOOK_FUNC_MAP: Record<string, string> = {
   'MONTH': 'Month', 'YEAR': 'Year', 'DAY': 'Day', 'HOUR': 'Hour',
@@ -970,6 +1055,14 @@ export function lookConvertExpression(expr: string): string {
   const cd = _maskCountDistinct(expr);
   const { masked, lits } = _maskLiterals(cd.masked);
   expr = masked;
+
+  // MySQL 2-arg DATEDIFF/TIMEDIFF -> Sigma's (unit, start, end). Bead
+  // beads-sigma-znvg. Placed here deliberately: AFTER the literal mask (a quoted
+  // string can never be mistaken for a call) and BEFORE both the CASE pass and
+  // pass 1's bare-name rename — the CASE pass would otherwise carry a DATEDIFF
+  // inside a WHEN span out of reach, and pass 1 is what used to rename DATEDIFF
+  // to DateDiff while leaving the arity and operand order wrong.
+  expr = _rewriteMysqlDateDiff(expr);
 
   // Convert any embedded "CASE ... END" span, not only a CASE that is the
   // WHOLE expression (lookSqlToSigmaRules' anchored pattern 4 already owns
