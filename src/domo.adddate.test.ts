@@ -138,13 +138,44 @@ test('zmnt: SUBDATE of a compound amount is WRAPPED, not sign-prefixed', () => {
     `a compound amount must be negated as a whole, got: ${out}`);
 });
 
-test('zmnt: ADDTIME/SUBTIME use seconds, per the skill reference', () => {
-  const add = convert('ADDTIME([started_at], 90)');
-  assert.match(add, /DateAdd\(\s*"second"\s*,\s*90\s*,\s*\[started_at\]\s*\)/i,
-    `ADDTIME(t, n) -> DateAdd("second", n, [t]), got: ${add}`);
-  const sub = convert('SUBTIME([started_at], 90)');
-  assert.match(sub, /DateAdd\(\s*"second"\s*,\s*-90\s*,\s*\[started_at\]\s*\)/i,
-    `SUBTIME(t, n) -> DateAdd("second", -n, [t]), got: ${sub}`);
+test('zmnt: ADDTIME/SUBTIME are REFUSED, and stay visible in the unknown-function report', () => {
+  // An earlier cut of this fix mapped these to DateAdd("second", n, t), copying
+  // domo-to-sigma's refs/beast-mode-to-sigma.md:211-212. That reference is wrong
+  // about MySQL and the mapping was a silent-wrong-number bug:
+  //   * expr2 is a TIME EXPRESSION. The documented common form is a quoted
+  //     literal — ADDTIME([t], '01:30:00') — which produced
+  //     DateAdd("second", "01:30:00", [t]): a string in a numeric slot.
+  //   * a bare integer is not seconds either. MySQL parses unquoted numeric
+  //     time elapsed-time-style (manual's own example: 1112 -> '00:11:12',
+  //     672s). So ADDTIME([t], 3600) means 2160s, not 3600s.
+  // Neither appears in the 81-formula live corpus, so mapping them bought
+  // nothing. Left unmapped they still reach the operator via
+  // lookUnknownFunctions; mapped, they converted silently AND vanished from
+  // that report — strictly worse. Refuse, exactly as for MICROSECOND below.
+  for (const sql of ["ADDTIME([t], '01:30:00')", 'ADDTIME([t], 3600)', 'SUBTIME([t], 90)']) {
+    const out = convert(sql);
+    assert.ok(!/DateAdd\(/i.test(out),
+      `${sql} must NOT be converted — MySQL's expr2 is a TIME expr, not seconds. Got: ${out}`);
+  }
+  assert.deepEqual(lookUnknownFunctions('ADDTIME([t], 3600)'), ['ADDTIME'],
+    'and it must remain visible in the unknown-function report');
+  assert.deepEqual(lookUnknownFunctions('SUBTIME([t], 90)'), ['SUBTIME']);
+});
+
+test('zmnt: an apostrophe inside a bracketed identifier does not defeat the rewrite', () => {
+  // _splitTopLevelArgs used to test for a quote BEFORE resolving bracket state,
+  // so `[Manager's Approval]` opened a quote that never closed and swallowed the
+  // argument-separating comma — the call was then silently left unconverted.
+  // Same not-bracket-atomic class as bead beads-sigma-k8hv. The sibling
+  // _rewriteMysqlDateDiff (from #122) shares the splitter and was equally
+  // affected, so this guards both.
+  const out = convert("ADDDATE([Manager's Approval], 7)");
+  assert.match(out, /DateAdd\(\s*"day"\s*,\s*7\s*,\s*\[Manager's Approval\]\s*\)/i,
+    `the bracketed name must stay atomic and the call must still convert, got: ${out}`);
+
+  const dd = convert("DATEDIFF(current_date(), [Manager's Approval])");
+  assert.match(dd, /DateDiff\(\s*"day"\s*,\s*\[Manager's Approval\]\s*,\s*Today\(\)\s*\)/i,
+    `#122's DATEDIFF rewrite shares the splitter and must also survive, got: ${dd}`);
 });
 
 test('zmnt: the INTERVAL form supplies the unit', () => {
@@ -199,7 +230,7 @@ test('zmnt: the unknown-function oracle stops crying wolf over the whole family'
   // recommendation is to promote it to a hard failure, which standing false
   // positives would make impossible.
   for (const sql of [
-    'ADDDATE([d],1)', 'SUBDATE([d],1)', 'ADDTIME([t],1)', 'SUBTIME([t],1)',
+    'ADDDATE([d],1)', 'SUBDATE([d],1)',
     'DATE_ADD([d], INTERVAL 1 DAY)', 'DATE_SUB([d], INTERVAL 1 DAY)',
     'TIMEDIFF([a],[b])',
   ]) {

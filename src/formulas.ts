@@ -308,10 +308,19 @@ function _splitTopLevelArgs(s: string): string[] {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) { cur += c; if (c === quote) quote = ''; continue; }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
-    if (c === '[') bracket = true;
-    else if (c === ']') bracket = false;
+    // A `[...]` span is ATOMIC — bracket state is resolved BEFORE the quote
+    // check, never after. An apostrophe inside a bracketed identifier
+    // (`[Manager's Approval]`) is part of the NAME, not a string delimiter;
+    // testing for a quote first opened a quote state that never closed, so
+    // every remaining character — including the top-level comma this function
+    // exists to find — was swallowed into one merged argument, and the call was
+    // silently left unconverted. `_maskLiterals` below already takes exactly
+    // this stance for exactly this reason, and this is the same recurring
+    // not-bracket-atomic defect class as bead beads-sigma-k8hv.
+    if (c === '[') { bracket = true; cur += c; continue; }
+    if (c === ']') { bracket = false; cur += c; continue; }
     if (!bracket) {
+      if (c === "'" || c === '"') { quote = c; cur += c; continue; }
       if (c === '(') depth++;
       else if (c === ')') depth--;
       else if (c === ',' && depth === 0) { args.push(cur); cur = ''; continue; }
@@ -389,13 +398,34 @@ function _rewriteMysqlDateDiff(expr: string): string {
  * overrides it (see _MYSQL_INTERVAL_UNIT).
  */
 const _MYSQL_ADD_SPEC: Record<string, { unit: string; negate: boolean }> = {
-  ADDDATE:  { unit: 'day',    negate: false },
-  SUBDATE:  { unit: 'day',    negate: true  },
-  ADDTIME:  { unit: 'second', negate: false },
-  SUBTIME:  { unit: 'second', negate: true  },
-  DATE_ADD: { unit: 'day',    negate: false },
-  DATE_SUB: { unit: 'day',    negate: true  },
+  ADDDATE:  { unit: 'day', negate: false },
+  SUBDATE:  { unit: 'day', negate: true  },
+  DATE_ADD: { unit: 'day', negate: false },
+  DATE_SUB: { unit: 'day', negate: true  },
 };
+
+// ADDTIME / SUBTIME are DELIBERATELY ABSENT, and must stay absent.
+//
+// They look like they belong here — domo-to-sigma's own
+// refs/beast-mode-to-sigma.md even lists `ADDTIME(t, secs)` ->
+// `DateAdd("second", secs, [t])` — but that reference is wrong about MySQL.
+// MySQL's ADDTIME(expr1, expr2)/SUBTIME(expr1, expr2) take expr2 as a TIME
+// EXPRESSION, not a count of seconds:
+//   * the documented, common form is a quoted TIME literal —
+//     ADDTIME([t], '01:30:00') — which would land a STRING in DateAdd's
+//     numeric amount slot;
+//   * even a bare integer is not seconds. MySQL parses an unquoted numeric
+//     time elapsed-time-style, rightmost two digits being seconds: the manual's
+//     own example is 1112 -> '00:11:12' (672s, not 1112s). So ADDTIME([t], 3600)
+//     means 00:36:00 (2160s) in MySQL, and emitting DateAdd("second", 3600, ...)
+//     would be wrong by 40 minutes with no error anywhere.
+// Converting either would be guessing, and guessing here is strictly WORSE than
+// leaving them alone: unmapped, they fall through to pass 1's title-case and are
+// reported by lookUnknownFunctions, so an operator sees them. Mapped, they would
+// convert silently AND disappear from that report. Neither appears anywhere in
+// the 81-formula live corpus this work was measured against, so adding them
+// bought nothing and risked exactly the silent-wrong-number class this bead
+// exists to kill. Same call as the unmappable INTERVAL units below: refuse.
 
 /** MySQL INTERVAL unit keyword -> Sigma datepart. Unlisted units are refused. */
 const _MYSQL_INTERVAL_UNIT: Record<string, string> = {
@@ -455,7 +485,7 @@ function _negateAmount(amount: string): string {
  * same reasons documented on _rewriteMysqlDateDiff.
  */
 function _rewriteMysqlDateAdd(expr: string): string {
-  const NAME = /\b(ADDDATE|SUBDATE|ADDTIME|SUBTIME|DATE_ADD|DATE_SUB)\s*\(/i;
+  const NAME = /\b(ADDDATE|SUBDATE|DATE_ADD|DATE_SUB)\s*\(/i;
   let out = '', rest = expr;
   for (;;) {
     const m = NAME.exec(rest);
