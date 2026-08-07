@@ -308,10 +308,19 @@ function _splitTopLevelArgs(s: string): string[] {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) { cur += c; if (c === quote) quote = ''; continue; }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
-    if (c === '[') bracket = true;
-    else if (c === ']') bracket = false;
+    // A `[...]` span is ATOMIC — bracket state is resolved BEFORE the quote
+    // check, never after. An apostrophe inside a bracketed identifier
+    // (`[Manager's Approval]`) is part of the NAME, not a string delimiter;
+    // testing for a quote first opened a quote state that never closed, so
+    // every remaining character — including the top-level comma this function
+    // exists to find — was swallowed into one merged argument, and the call was
+    // silently left unconverted. `_maskLiterals` below already takes exactly
+    // this stance for exactly this reason, and this is the same recurring
+    // not-bracket-atomic defect class as bead beads-sigma-k8hv.
+    if (c === '[') { bracket = true; cur += c; continue; }
+    if (c === ']') { bracket = false; cur += c; continue; }
     if (!bracket) {
+      if (c === "'" || c === '"') { quote = c; cur += c; continue; }
       if (c === '(') depth++;
       else if (c === ')') depth--;
       else if (c === ',' && depth === 0) { args.push(cur); cur = ''; continue; }
@@ -376,6 +385,142 @@ function _rewriteMysqlDateDiff(expr: string): string {
       out += `DateDiff("${unit}", ${start}, ${end})`;
     } else {
       out += `${rest.slice(m.index, open + 1)}${_rewriteMysqlDateDiff(inner)})`;
+    }
+    rest = rest.slice(close + 1);
+  }
+  return out;
+}
+
+/**
+ * MySQL date/time-ADDITION functions -> the Sigma datepart they imply, and
+ * whether the amount is added or subtracted. The `unit` here is the default for
+ * the 2-arg numeric form; an explicit `INTERVAL n <unit>` second argument
+ * overrides it (see _MYSQL_INTERVAL_UNIT).
+ */
+const _MYSQL_ADD_SPEC: Record<string, { unit: string; negate: boolean }> = {
+  ADDDATE:  { unit: 'day', negate: false },
+  SUBDATE:  { unit: 'day', negate: true  },
+  DATE_ADD: { unit: 'day', negate: false },
+  DATE_SUB: { unit: 'day', negate: true  },
+};
+
+// ADDTIME / SUBTIME are DELIBERATELY ABSENT, and must stay absent.
+//
+// They look like they belong here — domo-to-sigma's own
+// refs/beast-mode-to-sigma.md even lists `ADDTIME(t, secs)` ->
+// `DateAdd("second", secs, [t])` — but that reference is wrong about MySQL.
+// MySQL's ADDTIME(expr1, expr2)/SUBTIME(expr1, expr2) take expr2 as a TIME
+// EXPRESSION, not a count of seconds:
+//   * the documented, common form is a quoted TIME literal —
+//     ADDTIME([t], '01:30:00') — which would land a STRING in DateAdd's
+//     numeric amount slot;
+//   * even a bare integer is not seconds. MySQL parses an unquoted numeric
+//     time elapsed-time-style, rightmost two digits being seconds: the manual's
+//     own example is 1112 -> '00:11:12' (672s, not 1112s). So ADDTIME([t], 3600)
+//     means 00:36:00 (2160s) in MySQL, and emitting DateAdd("second", 3600, ...)
+//     would be wrong by 40 minutes with no error anywhere.
+// Converting either would be guessing, and guessing here is strictly WORSE than
+// leaving them alone: unmapped, they fall through to pass 1's title-case and are
+// reported by lookUnknownFunctions, so an operator sees them. Mapped, they would
+// convert silently AND disappear from that report. Neither appears anywhere in
+// the 81-formula live corpus this work was measured against, so adding them
+// bought nothing and risked exactly the silent-wrong-number class this bead
+// exists to kill. Same call as the unmappable INTERVAL units below: refuse.
+
+/** MySQL INTERVAL unit keyword -> Sigma datepart. Unlisted units are refused. */
+const _MYSQL_INTERVAL_UNIT: Record<string, string> = {
+  SECOND: 'second', MINUTE: 'minute', HOUR: 'hour', DAY: 'day',
+  WEEK: 'week', MONTH: 'month', QUARTER: 'quarter', YEAR: 'year',
+};
+
+/**
+ * Negate an already-converted amount expression, textually but safely.
+ * A bare numeric literal flips sign in place (`1` -> `-1`, `-1` -> `1`) so the
+ * common case stays readable; anything else is wrapped, because `-a - b` and
+ * `-(a - b)` are different numbers.
+ */
+function _negateAmount(amount: string): string {
+  const t = amount.trim();
+  const num = t.match(/^([+-]?)(\d+(?:\.\d+)?)$/);
+  if (num) return num[1] === '-' ? num[2] : `-${num[2]}`;
+  return `-(${t})`;
+}
+
+/**
+ * MySQL/Domo `ADDDATE(date, n)` -> Sigma `DateAdd("day", n, date)`, plus the
+ * rest of that family. Bead beads-sigma-zmnt.
+ *
+ * Exactly the same defect CLASS as _rewriteMysqlDateDiff above, surfacing
+ * through the same mechanism: none of these names is in LOOK_FUNC_MAP, so pass
+ * 1 fell through to _naiveTitleCase and emitted `Adddate(Today(), -1)` — a
+ * function Sigma does not have. MEASURED on domo-to-sigma's live 36-card cold
+ * run (~/domo-coldrun-v4/discovery/formulas.json): 27 ADDDATE call sites across
+ * 7 Beast Modes, all emitted as `Adddate(`, and the converter's OWN
+ * lookUnknownFunctions already returned ["ADDDATE"] for them — but only as a
+ * warning, so nothing failed and the run carried them live.
+ *
+ * TWO THINGS CHANGE, not one. MySQL's is `(date, amount)`; Sigma's is
+ * `(datepart, amount, date)` — so the date operand moves from FIRST to LAST and
+ * a unit is prepended. Getting only the spelling right would put the date where
+ * Sigma expects the amount.
+ *
+ * NOTE the deliberate asymmetry with T-SQL/Snowflake `DATEADD`, which is
+ * ALREADY `(unit, n, date)` and is correctly handled by LOOK_FUNC_MAP's plain
+ * bare-name rename. It is not touched here, and must not be: rewriting it would
+ * break formulas that are currently correct.
+ *
+ * SUBDATE/SUBTIME/DATE_SUB negate the amount rather than mapping to a separate
+ * Sigma function — Sigma has no DateSub.
+ *
+ * Two argument shapes are accepted, both MySQL-legal:
+ *   f(date, n)                  -> DateAdd("<default unit>", n, date)
+ *   f(date, INTERVAL n <unit>)  -> DateAdd("<unit>", n, date)
+ * Only the 2-arg form of these functions exists in MySQL. Any other arity, an
+ * unbalanced call, or an INTERVAL naming a unit Sigma has no datepart for is
+ * left EXACTLY as found — it then still reaches lookUnknownFunctions and is
+ * reported, which is the honest outcome. Arguments are descended into either
+ * way, so nested calls convert.
+ *
+ * Runs on literal-MASKED text and before pass 1's bare-name rename, for the
+ * same reasons documented on _rewriteMysqlDateDiff.
+ */
+function _rewriteMysqlDateAdd(expr: string): string {
+  const NAME = /\b(ADDDATE|SUBDATE|DATE_ADD|DATE_SUB)\s*\(/i;
+  let out = '', rest = expr;
+  for (;;) {
+    const m = NAME.exec(rest);
+    if (!m) { out += rest; break; }
+    const open = m.index + m[0].length - 1;          // index of '('
+    let depth = 0, close = -1;
+    for (let i = open; i < rest.length; i++) {
+      if (rest[i] === '(') depth++;
+      else if (rest[i] === ')') { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close === -1) { out += rest; break; }        // unbalanced — leave verbatim
+    const inner = rest.slice(open + 1, close);
+    const args = _splitTopLevelArgs(inner);
+    out += rest.slice(0, m.index);
+
+    const spec = _MYSQL_ADD_SPEC[m[1].toUpperCase()];
+    let unit = spec.unit;
+    let amount: string | null = null;
+    if (args.length === 2) {
+      const iv = args[1].trim().match(/^INTERVAL\s+(.+?)\s+([A-Za-z_]+)\s*$/i);
+      if (iv) {
+        const mapped = _MYSQL_INTERVAL_UNIT[iv[2].toUpperCase()];
+        // An unmappable INTERVAL unit (MICROSECOND, DAY_HOUR, …) leaves `amount`
+        // null so the call falls through untouched and stays reportable.
+        if (mapped) { unit = mapped; amount = _rewriteMysqlDateAdd(iv[1]).trim(); }
+      } else {
+        amount = _rewriteMysqlDateAdd(args[1]).trim();
+      }
+    }
+
+    if (amount !== null) {
+      const date = _rewriteMysqlDateAdd(args[0]).trim();
+      out += `DateAdd("${unit}", ${spec.negate ? _negateAmount(amount) : amount}, ${date})`;
+    } else {
+      out += `${rest.slice(m.index, open + 1)}${_rewriteMysqlDateAdd(inner)})`;
     }
     rest = rest.slice(close + 1);
   }
@@ -1064,6 +1209,14 @@ export function lookConvertExpression(expr: string): string {
   // to DateDiff while leaving the arity and operand order wrong.
   expr = _rewriteMysqlDateDiff(expr);
 
+  // MySQL ADDDATE/SUBDATE/ADDTIME/SUBTIME/DATE_ADD/DATE_SUB -> Sigma's
+  // DateAdd(unit, amount, date). Bead beads-sigma-zmnt — same placement and the
+  // same reasons as the DATEDIFF rewrite above. Order between the two does not
+  // matter: both split arguments paren-aware and recurse, so a DATEDIFF wrapping
+  // an ADDDATE (the live `% Change - Pageviews` shape, which carries BOTH bugs)
+  // converts fully either way.
+  expr = _rewriteMysqlDateAdd(expr);
+
   // Convert any embedded "CASE ... END" span, not only a CASE that is the
   // WHOLE expression (lookSqlToSigmaRules' anchored pattern 4 already owns
   // that case). A CASE wrapped in arithmetic or an aggregate — `100 * (CASE
@@ -1219,16 +1372,33 @@ function _sigmaPassthrough(): Set<string> {
 
 /**
  * Names that step 1 of lookConvertExpression would title-case WITHOUT a real mapping
- * — i.e. names Sigma almost certainly does not have (`AddDate` → `Adddate`). The
- * conversion still returns a formula; this is what lets the caller say so out loud
+ * — i.e. names Sigma almost certainly does not have (`Levenshtein` → `Levenshtein`).
+ * The conversion still returns a formula; this is what lets the caller say so out loud
  * instead of shipping a silently-broken column (see converter-silent-fallback.test.ts).
  * Scans the RAW input (masked for literals only, same idiom as everywhere else in this
  * file), not the converted output — every candidate is a name immediately followed by
  * '(', mirroring pass 1's own name-before-paren regex exactly so this reports precisely
  * the set pass 1 would (mis)handle.
+ *
+ * "Precisely the set pass 1 would mishandle" is why the MySQL date rewrites run here
+ * too (beads-sigma-znvg / beads-sigma-zmnt). They fire BEFORE pass 1 in
+ * lookConvertExpression, so a call they consume never reaches pass 1 and must not be
+ * reported. Scanning the raw text instead over-reported all seven of their names —
+ * ADDDATE, SUBDATE, ADDTIME, SUBTIME, DATE_ADD, DATE_SUB and (since #122) TIMEDIFF —
+ * as "no Sigma mapping" while the converter was in fact translating them correctly.
+ * That is not a cosmetic wart: domo-to-sigma's convert-beast-modes.rb:562 surfaces
+ * this list to operators, and bead zmnt's own recommendation is to PROMOTE that
+ * warning to a hard failure. Seven standing false positives would make the warning
+ * un-promotable and train operators to ignore it.
+ *
+ * Rewriting rather than name-listing keeps the report CALL-accurate, not merely
+ * name-accurate: `DATE_ADD([d], INTERVAL 5 MICROSECOND)` has no Sigma datepart, so the
+ * rewrite deliberately declines it, it really does reach pass 1, and it is still
+ * reported here — which a blanket skip-list would have silently swallowed.
  */
 export function lookUnknownFunctions(sql: string): string[] {
-  const { masked } = _maskLiterals(sql);
+  const { masked: rawMasked } = _maskLiterals(sql);
+  const masked = _rewriteMysqlDateAdd(_rewriteMysqlDateDiff(rawMasked));
   const passthrough = _sigmaPassthrough();
   const seen = new Set<string>();
   for (const m of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g)) {

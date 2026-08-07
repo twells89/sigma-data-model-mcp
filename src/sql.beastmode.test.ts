@@ -751,8 +751,15 @@ test('300 levels of CASE-inside-arithmetic-inside-CASE terminates without stack 
 // (converter-silent-fallback.test.ts / lanq.1/.3 defect class).
 
 test('unmapped functions are reported, not silently invented (A7)', () => {
-  // 'Adddate' is not a Sigma function; emitting it silently ships a broken column.
-  assert.deepEqual(lookUnknownFunctions('AddDate(CURRENT_DATE(), -1)'), ['ADDDATE']);
+  // Example CHANGED by bead beads-sigma-zmnt: this used to be
+  // `AddDate(CURRENT_DATE(), -1)` -> ['ADDDATE'], which was correct when written
+  // (ADDDATE really was unmapped and really did emit the non-existent
+  // `Adddate(`). ADDDATE is now REWRITTEN to Sigma's DateAdd before pass 1 ever
+  // sees it, so it is no longer a member of this class and asserting it here
+  // would pin a false positive. STARTSWITH exercises the identical fallback —
+  // Sigma's real spelling is `StartsWith`, which naive title-case can only ever
+  // render as `Startswith`. See domo.adddate.test.ts for ADDDATE's own coverage.
+  assert.deepEqual(lookUnknownFunctions('StartsWith([Name], "A")'), ['STARTSWITH']);
 });
 
 test('mapped functions and keywords are not reported as unknown (A7)', () => {
@@ -793,13 +800,27 @@ test('passthrough names whose title-case matches Sigma exactly (Number/Date/Text
   assert.deepEqual(lookUnknownFunctions('MEDIAN([Amount])'), []);
 });
 
-// Real corpus example (74-formula live Domo bm-corpus.json — the only distinct
-// warned name across the whole corpus is ADDDATE, found in 6 formulas): a
-// "days ago" bucketing CASE using AddDate(Current_Date(), -1). Confirms the
-// warning fires on real production input, not just a synthetic example.
-test('a real corpus formula using AddDate(Current_Date(), -1) is flagged (A7 corpus pin)', () => {
+// Real corpus example (74-formula live Domo bm-corpus.json — at the time this was
+// written the ONLY distinct warned name across the whole corpus was ADDDATE, in 6
+// formulas). The pin is KEPT because the input is real production text, but its
+// expectation is INVERTED by bead beads-sigma-zmnt: this exact formula is now fully
+// translated, so the honest corpus fact is that the warning list is empty and the
+// output is real Sigma. Deleting the pin would have thrown away the corpus grounding;
+// leaving it asserting ['ADDDATE'] would have pinned a false positive.
+//
+// It also happens to be the shape that carries BOTH date bugs at once — znvg's
+// DATEDIFF arity/order (#122) and zmnt's ADDDATE — so it is the tightest available
+// end-to-end regression guard for the pair.
+test('the real AddDate(Current_Date(),-1) corpus formula now converts clean (A7 corpus pin, inverted by zmnt)', () => {
   const sql = "DateDiff(AddDate(Current_Date(),-1),[Date])";
-  assert.deepEqual(lookUnknownFunctions(sql), ['ADDDATE']);
+  assert.deepEqual(lookUnknownFunctions(sql), [],
+    'ADDDATE is rewritten before pass 1 and must no longer be reported');
+  const out = lookConvertExpression(sql);
+  assert.match(out, /DateAdd\(\s*"day"\s*,\s*-1\s*,\s*Today\(\)\s*\)/i,
+    `zmnt: ADDDATE(date, n) -> DateAdd("day", n, date), got: ${out}`);
+  assert.match(out, /DateDiff\(\s*"day"\s*,\s*\[Date\]\s*,\s*DateAdd\(/i,
+    `znvg: MySQL DATEDIFF is (end, start), so [Date] must come first, got: ${out}`);
+  assert.ok(!/Adddate\(/i.test(out), `no Adddate( may survive, got: ${out}`);
 });
 
 // ── task-5 round-1 review finding 1: hand-written allowlist false-positived on
@@ -831,10 +852,13 @@ test('real Sigma functions not in the 74-formula corpus (NOW/TODAY/SWITCH/POWER/
 // (so this is not a behavior change for them) — pinned here as evidence the
 // derivation catches this whole class uniformly, not just the two cases found by
 // hand.
-test('the title-case predicate still warns for every multi-word-mismatch case, not just DATEPART/DATETRUNC/ADDDATE (A7 round-1 finding 1)', () => {
+// (The ADDDATE row was dropped here by bead beads-sigma-zmnt — it is now rewritten
+// to Sigma's DateAdd before pass 1, so it is no longer a member of this class. The
+// other five rows are untouched, which is what keeps this a real check that the
+// predicate itself was not weakened to accommodate that change.)
+test('the title-case predicate still warns for every multi-word-mismatch case, not just DATEPART/DATETRUNC (A7 round-1 finding 1)', () => {
   assert.deepEqual(lookUnknownFunctions('DATEPART(CreatedDate)'), ['DATEPART']);
   assert.deepEqual(lookUnknownFunctions('DATETRUNC(CreatedDate)'), ['DATETRUNC']);
-  assert.deepEqual(lookUnknownFunctions('AddDate(CURRENT_DATE(), -1)'), ['ADDDATE']);
   assert.deepEqual(lookUnknownFunctions('STARTSWITH([X], "a")'), ['STARTSWITH']);
   assert.deepEqual(lookUnknownFunctions('MAKEDATE(2024, 1)'), ['MAKEDATE']);
   assert.deepEqual(lookUnknownFunctions('STDEV([X])'), ['STDEV']);
