@@ -835,15 +835,124 @@ export function lookConvertCase(expr: string): string | null {
 
   let result: string | null = elseVal !== null ? convertLeaf(elseVal, true) : 'null';
   if (result === null) return null;
+
+  // Convert every branch BEFORE assembling, so a flat Switch can be considered
+  // (see _flattenToSwitch). Deliberately iterating in the same reverse order the
+  // assembly loop always used, so the sequence of convertLeaf calls — and hence
+  // any output that depends on it — is byte-for-byte what it was before.
+  const conv: { cond: string; val: string }[] = new Array(branches.length);
   for (let i = branches.length - 1; i >= 0; i--) {
     const sigmaCond = convertLeaf(branches[i].cond, false);
     const sigmaVal = convertLeaf(branches[i].val, true);
     if (sigmaCond === null || sigmaVal === null) return null;
-    result = `If(${sigmaCond}, ${sigmaVal}, ${result})`;
+    conv[i] = { cond: sigmaCond, val: sigmaVal };
+  }
+
+  const flat = _flattenToSwitch(conv, result);
+  if (flat !== null) return _isBalanced(flat) ? flat : null;
+
+  for (let i = conv.length - 1; i >= 0; i--) {
+    result = `If(${conv[i].cond}, ${conv[i].val}, ${result})`;
   }
 
   if (!_isBalanced(result)) return null;                             // requirement 4 backstop
   return result;
+}
+
+/**
+ * Branch count at or above which a same-subject CASE chain is emitted as a flat
+ * Switch instead of nested Ifs. Bead beads-sigma-znvg (group 2).
+ *
+ * MEASURED live 2026-08-07 against a real Sigma data model (POST
+ * /v2/dataModels/spec, types read back from GET /v2/dataModels/{id}/columns):
+ *
+ *     If nested  5..49 deep  -> type=text     (compiles)
+ *     If nested 50+   deep   -> type=error    (dead column, renders nothing)
+ *
+ * It is DEPTH, not length: one If carrying a 5,998-character literal compiles
+ * fine. It is not paren depth either — bare parens nest past 100 happily — and
+ * it is not one uniform constant across functions (Coalesce survives 50 and
+ * fails by 60). The single actionable, reproducible fact is the If cliff at 50.
+ *
+ * 45 rather than 49 on purpose: the cliff is on TOTAL expression nesting, and
+ * each branch contributes its own inner depth on top of the chain (the live
+ * `State` formula is 50 Ifs but measures 51 deep because every condition wraps
+ * an In()). 45 leaves headroom for that without disturbing the far more common
+ * short chains — a 50-way US-state mapping is essentially the only shape in the
+ * wild that reaches it.
+ *
+ * This threshold means the rewrite only ever fires on chains that are at or near
+ * the point of being DEAD ANYWAY, so it cannot change the result of a formula
+ * that works today.
+ */
+const _SWITCH_MIN_BRANCHES = 45;
+
+/** A Sigma literal — double-quoted string or plain number. Nothing else is a safe Switch match. */
+const _SWITCH_LITERAL_RE = /^(?:"(?:[^"]|"")*"|-?\d+(?:\.\d+)?)$/;
+
+/**
+ * Collapse a long same-subject equality/IN chain into Sigma's flat `Switch`.
+ * Returns null (leave it as nested Ifs) unless every single branch qualifies.
+ *
+ * `CASE WHEN s = 'AK' THEN 'West' WHEN s IN ('AL','Alabama') THEN 'South' ... ELSE d END`
+ *   -> `Switch(s, "AK", "West", "AL", "South", "Alabama", "South", ..., d)`
+ *
+ * This is exactly Oracle DECODE semantics, which LOOK_FUNC_MAP already maps to
+ * Switch. An IN branch expands to one match/result pair per member, all pointing
+ * at the same result. Nested Ifs take the FIRST matching branch and so does
+ * Switch, so a duplicated match value behaves identically either way.
+ *
+ * VALIDATED, not assumed: both real formulas that motivated this — `US Regions`
+ * (51 equality branches) and `State` (50 In() branches, 110 expanded pairs) —
+ * were POSTed live in both shapes. Nested: type=error. Switch: type=text. Flat
+ * Switch was separately measured to accept 51, 60, 100 and 120 branches.
+ *
+ * REFUSES rather than guesses. Every branch must test the SAME subject with
+ * `=` or `In(...)` against LITERALS only. One branch comparing a different
+ * column, using `>=`/`LIKE`, or matching against another column, and the whole
+ * chain stays nested — a partial rewrite would silently change which branch
+ * wins. A chain that is both too deep AND unflattenable is left alone here and
+ * is meant to be caught downstream as a loud failure, not smuggled through:
+ * emitting a >=50-deep If produces a type=error column with no error raised
+ * anywhere upstream, which is the failure mode this whole bead exists to kill.
+ */
+function _flattenToSwitch(conv: { cond: string; val: string }[], elseVal: string): string | null {
+  if (conv.length < _SWITCH_MIN_BRANCHES) return null;
+
+  let subject: string | null = null;
+  const pairs: string[] = [];
+
+  for (const { cond, val } of conv) {
+    let subj: string | null = null;
+    let matches: string[] | null = null;
+
+    // `<subject> = <literal>`. The lazy head plus the trailing-operator guard
+    // stops `[A] >= "x"` being read as subject `[A] >` — which would then agree
+    // with itself across branches and silently invert the comparison.
+    const eq = /^(.+?)\s*=\s*(.+)$/.exec(cond);
+    if (eq && !/[<>!=]$/.test(eq[1].trim()) && _SWITCH_LITERAL_RE.test(eq[2].trim())) {
+      subj = eq[1].trim();
+      matches = [eq[2].trim()];
+    } else {
+      const inm = /^In\(([\s\S]*)\)$/i.exec(cond.trim());
+      if (inm) {
+        const args = _splitTopLevelArgs(inm[1]);
+        if (args.length >= 2) {
+          subj = args[0].trim();
+          matches = args.slice(1).map((a) => a.trim());
+        }
+      }
+    }
+
+    if (subj === null || matches === null || matches.length === 0) return null;
+    if (!matches.every((m) => _SWITCH_LITERAL_RE.test(m))) return null;
+    if (subject === null) subject = subj;
+    else if (subject !== subj) return null;
+    for (const m of matches) pairs.push(`${m}, ${val}`);
+  }
+
+  if (subject === null) return null;
+  return `Switch(${subject}, ${pairs.join(', ')}, ${elseVal})`;
 }
 
 /** Convert arithmetic/comparison SQL expression to Sigma formula */
