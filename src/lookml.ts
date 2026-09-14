@@ -550,10 +550,16 @@ function lookFindColId(elementResult: ElementResult, colName: string): string | 
 function lookParseFilterExpr(expr: string, columnId: string): Record<string, any> | null {
   expr = (expr || '').trim();
 
-  if (/^NULL$/i.test(expr))
+  // Looker writes null/empty filters several ways: NULL, IS NULL, NOT NULL,
+  // IS NOT NULL, -NULL, and the EMPTY family (empty string OR null).
+  if (/^(?:IS\s+)?NULL$/i.test(expr))
     return { id: sigmaShortId(), columnId, kind: 'list', mode: 'include', values: [null] };
-  if (/^NOT\s+NULL$/i.test(expr))
+  if (/^(?:(?:IS\s+)?NOT\s+NULL|-NULL)$/i.test(expr))
     return { id: sigmaShortId(), columnId, kind: 'list', mode: 'exclude', values: [null] };
+  if (/^EMPTY$/i.test(expr))
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'include', values: [null, ''] };
+  if (/^(?:(?:IS\s+)?NOT\s+EMPTY|-EMPTY)$/i.test(expr))
+    return { id: sigmaShortId(), columnId, kind: 'list', mode: 'exclude', values: [null, ''] };
 
   // Date relative expressions — unsupported
   if (/^\d+\s+(second|minute|hour|day|week|month|quarter|year)s?$/i.test(expr)) return null;
@@ -564,14 +570,19 @@ function lookParseFilterExpr(expr: string, columnId: string): Record<string, any
   if (/^[><!]=?/.test(expr)) return null;
   if (/^[\[(]/.test(expr)) return null;
 
+  // A mixed value list can carry NULL/EMPTY tokens alongside literals
+  // ("a,NULL,b"); expand those to the real values rather than the words.
+  const expandTokens = (v: string): (string | null)[] =>
+    /^NULL$/i.test(v) ? [null] : /^EMPTY$/i.test(v) ? [null, ''] : [v];
+
   // Negation: -value or -value1,-value2
   if (expr.startsWith('-')) {
-    const vals = expr.slice(1).split(/\s*,\s*-?\s*/).map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean);
+    const vals = expr.slice(1).split(/\s*,\s*-?\s*/).map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean).flatMap(expandTokens);
     return { id: sigmaShortId(), columnId, kind: 'list', mode: 'exclude', values: vals };
   }
 
   // Simple string value(s)
-  const vals = expr.split(',').map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean);
+  const vals = expr.split(',').map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean).flatMap(expandTokens);
   if (vals.length > 0)
     return { id: sigmaShortId(), columnId, kind: 'list', mode: 'include', values: vals };
 
@@ -771,6 +782,102 @@ function lookResolveParamSubst(sql: string, paramDefaults: Map<string, string>):
     return full;
   });
   return { sql: out, resolved: changed };
+}
+
+/**
+ * Collect workbook-local LookML `parameter:` fields whose branches resolve
+ * DETERMINISTICALLY, so the workbook builder can rebuild the dynamic behaviour
+ * as a real Sigma control instead of the converter silently freezing the
+ * parameter at its default branch.
+ *
+ * For each allowed_value we re-resolve the field's `sql` with that value bound,
+ * and keep the branch only when nothing unresolved remains. `${TABLE}` is
+ * explicitly allowed through — it is a physical-table placeholder the emitter
+ * substitutes later, not an unresolved parameter — while any other leftover
+ * `{% %}`, `{{ }}` or `${ref}` rejects the branch. `deterministic` is true only
+ * when EVERY allowed value produced a clean branch.
+ */
+function lookCollectDynamicParameters(views: Record<string, any>): any[] {
+  const out: any[] = [];
+
+  for (const [viewName, view] of Object.entries(views)) {
+    const params = view.parameter ? (Array.isArray(view.parameter) ? view.parameter : [view.parameter]) : [];
+
+    const defaults = new Map<string, string>();
+    for (const p of params) {
+      if (p?._name && p.default_value != null) defaults.set(p._name.toLowerCase(), String(p.default_value));
+    }
+
+    const fields: { kind: string; field: any }[] = [];
+    for (const [kind, raw] of [
+      ['dimension', view.dimension],
+      ['dimension_group', view.dimension_group],
+      ['measure', view.measure],
+    ] as [string, any][]) {
+      const entries = raw ? (Array.isArray(raw) ? raw : [raw]) : [];
+      for (const field of entries) {
+        if (field?._name && typeof field.sql === 'string') fields.push({ kind, field });
+      }
+    }
+
+    for (const p of params) {
+      if (!p?._name) continue;
+
+      const allowedRaw = p.allowed_value ? (Array.isArray(p.allowed_value) ? p.allowed_value : [p.allowed_value]) : [];
+      const allowedValues = allowedRaw
+        .map((entry: any) => ({
+          label: String(entry?.label ?? entry?.value ?? entry?._name ?? ''),
+          value: String(entry?.value ?? entry?._name ?? ''),
+        }))
+        .filter((entry: any) => entry.value);
+
+      const affectedFields: any[] = [];
+      for (const { kind, field } of fields) {
+        const sourceSql: string = field.sql;
+        const escaped = p._name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const liquidRef = new RegExp(`\\b${escaped}(?:\\._parameter_value)?\\b`, 'i');
+        const substRef = new RegExp(`\\$\\{${escaped}\\}`, 'i');
+        if (!liquidRef.test(sourceSql) && !substRef.test(sourceSql)) continue;
+
+        const branches: Record<string, string> = {};
+        for (const allowed of allowedValues) {
+          const values = new Map(defaults);
+          values.set(p._name.toLowerCase(), allowed.value);
+
+          const liquid = lookResolveLiquidIf(sourceSql, values);
+          let branchSql = liquid.resolved ? liquid.sql : sourceSql;
+          const substituted = lookResolveParamSubst(branchSql, values);
+          if (substituted.resolved) branchSql = substituted.sql;
+
+          if (!/\{%|\{\{|\$\{(?!TABLE\})[A-Za-z_][A-Za-z0-9_]*\}/i.test(branchSql)) {
+            branches[allowed.value] = branchSql.replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        affectedFields.push({
+          field: `${viewName}.${field._name}`,
+          label: field.label || sigmaDisplayName(field._name),
+          kind,
+          sourceSql,
+          branches,
+          deterministic: allowedValues.length > 0 && Object.keys(branches).length === allowedValues.length,
+        });
+      }
+
+      if (affectedFields.length) {
+        out.push({
+          view: viewName,
+          name: p._name,
+          type: p.type || 'string',
+          defaultValue: p.default_value != null ? String(p.default_value) : allowedValues[0]?.value,
+          allowedValues,
+          affectedFields,
+        });
+      }
+    }
+  }
+
+  return out;
 }
 
 function lookConvertView(
@@ -1733,6 +1840,11 @@ export function convertLookMLToSigma(
     }
   }
 
+  // Workbook-local parameters whose branches resolve deterministically —
+  // reported so the workbook builder can rebuild them as real Sigma controls
+  // instead of the converter silently freezing each one at its default branch.
+  const dynamicParameters = lookCollectDynamicParameters(views);
+
   // Determine which explore to convert
   let exploreName = options.exploreName;
   const exploreNames = Object.keys(explores);
@@ -1761,6 +1873,7 @@ export function convertLookMLToSigma(
     return {
       model,
       warnings,
+      ...(dynamicParameters.length ? { dynamicParameters } : {}),
       ...(security.length ? { security } : {}),
       stats: {
         views: viewNames.length,
@@ -2206,6 +2319,7 @@ export function convertLookMLToSigma(
   return {
     model: sigmaModel,
     warnings,
+    ...(dynamicParameters.length ? { dynamicParameters } : {}),
     ...(security.length ? { security } : {}),
     stats: {
       views: Object.keys(views).length,

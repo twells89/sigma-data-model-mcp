@@ -441,6 +441,12 @@ export interface ConversionResult {
   warnings: string[];
   stats: Record<string, number>;
   security?: SecurityRule[];      // detected RLS/CLS — reported, NOT injected into `model`
+  /**
+   * Source-tool parameters whose branches resolve deterministically — reported
+   * for the workbook builder to rebuild as real controls, NOT injected into
+   * `model`. (LookML `parameter:` today; same contract for any source format.)
+   */
+  dynamicParameters?: any[];
   workbookPatterns?: WorkbookPattern[];  // window/inter-record calcs — reported for the workbook builder, NOT injected
 }
 
