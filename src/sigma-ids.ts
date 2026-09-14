@@ -354,6 +354,14 @@ export interface SigmaElement {
   columns: SigmaColumn[];
   metrics?: SigmaMetric[];
   relationships?: SigmaRelationship[];
+  /**
+   * [Private beta — semantic aggregates] Column IDs that uniquely identify a
+   * row in this element. The compiler uses this to track the table's grain and
+   * aggregate to it before display, which is what makes aggregation through a
+   * fan-out relationship correct. An array, so composite keys are supported.
+   * Inert when the org lacks the flag, so emitting it is always safe.
+   */
+  uniqueKeys?: string[];
   order: string[];
   [key: string]: any;
 }
@@ -433,6 +441,12 @@ export interface ConversionResult {
   warnings: string[];
   stats: Record<string, number>;
   security?: SecurityRule[];      // detected RLS/CLS — reported, NOT injected into `model`
+  /**
+   * Source-tool parameters whose branches resolve deterministically — reported
+   * for the workbook builder to rebuild as real controls, NOT injected into
+   * `model`. (LookML `parameter:` today; same contract for any source format.)
+   */
+  dynamicParameters?: any[];
   workbookPatterns?: WorkbookPattern[];  // window/inter-record calcs — reported for the workbook builder, NOT injected
 }
 

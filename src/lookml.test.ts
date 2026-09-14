@@ -14,7 +14,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { convertLookMLToSigma } from './lookml.js';
+import { convertLookMLToSigma, parseLookML } from './lookml.js';
 
 const LOOKML_DIR = '/Users/tjwells/Desktop/Converter Files/Looker/';
 
@@ -821,5 +821,190 @@ describe('layered: measure translation guards — residual infix operator surviv
     assert.ok(!metricByName('Usa Flag'), `broken LIKE metric was emitted: ${JSON.stringify(view.metrics)}`);
     const w = warnings.find((w: string) => /"usa_flag".*untranslatable fragment/is.test(w));
     assert.ok(w, warnings.join('\n'));
+  });
+});
+
+/**
+ * W1 — composite join keys.
+ *
+ * A LookML sql_on routinely ANDs several ${a.b} = ${c.d} pairs together. The
+ * historical extractor used String.match() without /g, so it captured only the
+ * FIRST pair and emitted a single-key relationship — with no warning, because
+ * the "unparsable sql_on" branch only fired when nothing matched at all.
+ *
+ * That silently under-constrains the join: the spec still POSTs, the columns
+ * still resolve, and the query still runs — it just fans out and returns wrong
+ * values. Verified live against CSA.TJ: the single-key variant returned NULL
+ * ("multiple values") for a column pulled through the relationship where the
+ * composite variant returned the correct value.
+ */
+describe('W1: composite join keys → one relationship with N key pairs', () => {
+  const files = [
+    {
+      name: 'sales.view.lkml',
+      content: `
+        view: sales {
+          sql_table_name: EDW.F_SALE ;;
+          dimension: chain_id { type: number sql: \${TABLE}.CHAIN_ID ;; }
+          dimension: nhin_store_id { type: number sql: \${TABLE}.NHIN_STORE_ID ;; }
+          dimension: source_system_id { type: number sql: \${TABLE}.SOURCE_SYSTEM_ID ;; }
+          dimension: rx_info_id { type: number sql: \${TABLE}.RX_INFO_ID ;; }
+        }`,
+    },
+    {
+      name: 'rx_info.view.lkml',
+      content: `
+        view: rx_info {
+          sql_table_name: EDW.D_RX_INFO ;;
+          dimension: rx_info_id { primary_key: yes type: number sql: \${TABLE}.RX_INFO_ID ;; }
+          dimension: chain_id { type: number sql: \${TABLE}.CHAIN_ID ;; }
+          dimension: nhin_store_id { type: number sql: \${TABLE}.NHIN_STORE_ID ;; }
+          dimension: source_system_id { type: number sql: \${TABLE}.SOURCE_SYSTEM_ID ;; }
+          dimension: prescriber { type: string sql: \${TABLE}.PRESCRIBER ;; }
+        }`,
+    },
+    {
+      name: 'm.model.lkml',
+      content: `
+        connection: "c"
+        explore: sales {
+          join: rx_info {
+            type: left_outer
+            relationship: many_to_one
+            sql_on: \${sales.rx_info_id} = \${rx_info.rx_info_id}
+              AND \${sales.chain_id} = \${rx_info.chain_id}
+              AND \${sales.nhin_store_id} = \${rx_info.nhin_store_id}
+              AND \${rx_info.source_system_id} = \${sales.source_system_id}
+              AND \${rx_info.source_system_id} = 4
+              AND {% condition sales.chain_id %} rx_info.chain_id {% endcondition %} ;;
+          }
+        }`,
+    },
+  ];
+
+  const res = convertLookMLToSigma(files, { connectionId: 'c', exploreName: 'sales', joinStrategy: 'relationships' });
+  const rels = res.model.pages
+    .flatMap((p: any) => p.elements)
+    .flatMap((e: any) => e.relationships || []);
+
+  test('emits ONE relationship, not one per key', () => {
+    assert.equal(rels.length, 1, JSON.stringify(rels, null, 2));
+  });
+
+  test('captures all four composite key pairs', () => {
+    assert.equal(rels[0].keys.length, 4, JSON.stringify(rels[0].keys, null, 2));
+  });
+
+  test('Liquid {% condition %} does not leak in as a phantom key', () => {
+    const cols = rels[0].keys.map((k: any) => `${k.sourceColumnId}->${k.targetColumnId}`).join(' ');
+    assert.ok(!/condition|endcondition/i.test(cols), cols);
+  });
+
+  test('literal predicate (= 4) is surfaced, never silently dropped', () => {
+    const w = res.warnings.find((x: string) => /literal predicate/i.test(x));
+    assert.ok(w, res.warnings.join('\n'));
+    assert.ok(/source_system_id = 4/.test(w!), w);
+  });
+
+  test('cardinality still maps to N:1', () => {
+    assert.equal(rels[0].relationshipType, 'N:1');
+  });
+});
+
+/**
+ * W2 — unique keys (table grain) for semantic aggregates.
+ *
+ * Sigma's semantic-aggregates compiler uses element-level `uniqueKeys` to know a
+ * table's grain and aggregate to it before display. LookML states the same fact
+ * as `primary_key: yes`, which the converter previously never read.
+ *
+ * Two deliberate non-goals, both load-bearing:
+ *  - `sql_distinct_key` is NOT mapped into uniqueKeys. It is a MEASURE-level
+ *    de-dup grain that routinely spans joined views (e.g. ${calendar.type}),
+ *    while uniqueKeys lists columns ON the element. Writing a cross-view grain
+ *    there would declare the WRONG grain — under semantic aggregates that
+ *    produces wrong numbers, the very failure this metadata prevents.
+ *  - A view with no primary_key must warn loudly rather than silently emit no
+ *    grain.
+ *
+ * Also covers the parser defect found here: `sql_distinct_key` was missing from
+ * the `;;`-block pre-extraction list, so every value was truncated to its first
+ * token (a bare "${TABLE}").
+ */
+describe('W2: primary_key → uniqueKeys, sql_distinct_key reported not mapped', () => {
+  const files = [
+    {
+      name: 'chain.view.lkml',
+      content: `
+        view: chain {
+          sql_table_name: EDW.D_CHAIN ;;
+          dimension: chain_id { primary_key: yes type: number sql: \${TABLE}.CHAIN_ID ;; }
+          dimension: fiscal_chain_id { primary_key: yes type: number sql: \${TABLE}.FISCAL_CHAIN_ID ;; }
+          dimension: chain_name { type: string sql: \${TABLE}.CHAIN_NAME ;; }
+        }`,
+    },
+    {
+      name: 'sales.view.lkml',
+      content: `
+        view: sales {
+          sql_table_name: EDW.F_SALE ;;
+          dimension: rx_tx_id { primary_key: yes type: number sql: \${TABLE}.RX_TX_ID ;; }
+          dimension: chain_id { type: number sql: \${TABLE}.CHAIN_ID ;; }
+          measure: sum_budget_price {
+            type: sum_distinct
+            sql: \${TABLE}.PRICE ;;
+            sql_distinct_key: \${TABLE}.chain_id ||'@'|| \${report_calendar_global.type} ;;
+          }
+        }`,
+    },
+    {
+      name: 'timeframes.view.lkml',
+      content: `
+        view: timeframes {
+          sql_table_name: EDW.D_FISCAL_DATE ;;
+          dimension: calendar_date { type: date sql: \${TABLE}.CALENDAR_DATE ;; }
+        }`,
+    },
+  ];
+
+  const res = convertLookMLToSigma(files, { connectionId: 'c', joinStrategy: 'relationships' });
+  const els = res.model.pages.flatMap((p: any) => p.elements);
+  const byName = (n: string) => els.find((e: any) => (e.name || '') === n);
+
+  test('parser no longer truncates sql_distinct_key to its first token', () => {
+    const parsed = parseLookML(files[1].content);
+    const view = parsed.views[0];
+    const ms = Array.isArray(view.measure) ? view.measure[0] : view.measure;
+    assert.match(ms.sql_distinct_key, /report_calendar_global\.type/, ms.sql_distinct_key);
+  });
+
+  test('composite primary_key → uniqueKeys array with both columns', () => {
+    const el = byName('Chain');
+    assert.ok(el, els.map((e: any) => e.name).join(','));
+    assert.equal(el.uniqueKeys?.length, 2, JSON.stringify(el.uniqueKeys));
+    assert.ok(el.uniqueKeys.every((k: string) => /CHAIN_ID|FISCAL_CHAIN_ID/.test(k)), JSON.stringify(el.uniqueKeys));
+  });
+
+  test('single primary_key → one uniqueKey', () => {
+    assert.deepEqual(byName('Sales')?.uniqueKeys?.length, 1);
+  });
+
+  test('cross-view sql_distinct_key is NOT written into uniqueKeys', () => {
+    // Only RX_TX_ID (the declared primary_key) may appear — never the
+    // joined-view grain columns from sql_distinct_key.
+    const uk = byName('Sales')?.uniqueKeys || [];
+    assert.ok(uk.every((k: string) => /RX_TX_ID/.test(k)), JSON.stringify(uk));
+  });
+
+  test('cross-view sql_distinct_key is reported, naming the spanned view', () => {
+    const w = res.warnings.find((x: string) => /sql_distinct_key.*spanning/i.test(x));
+    assert.ok(w, res.warnings.join('\n'));
+    assert.match(w!, /report_calendar_global/);
+  });
+
+  test('a view with no primary_key warns that grain is undeclared', () => {
+    assert.equal(byName('Timeframes')?.uniqueKeys, undefined);
+    const w = res.warnings.find((x: string) => /"timeframes".*no `primary_key/i.test(x));
+    assert.ok(w, res.warnings.join('\n'));
   });
 });
