@@ -176,7 +176,11 @@ export function parseLookML(text: string): LookMLParseResult {
   // Pre-extract raw sql: ... ;; blocks
   const sqlPlaceholders: Record<string, string> = {};
   let phIdx = 0;
-  text = text.replace(/\b(sql_trigger_value|sql_table_name|sql_where|sql_start|sql_end|sql_on|html|sql)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
+  // NOTE: longer keys must precede their prefixes in this alternation.
+  // `sql_distinct_key` in particular was missing, so it was never pre-extracted
+  // and the tokenizer truncated every value to its first token (a bare
+  // "${TABLE}") — silently discarding the symmetric-aggregate grain.
+  text = text.replace(/\b(sql_distinct_key|sql_trigger_value|sql_table_name|sql_where|sql_start|sql_end|sql_on|html|sql)\s*:([\s\S]*?);;/g, (match, keyName, sqlContent) => {
     const key = `__SQLPH${phIdx++}__`;
     sqlPlaceholders[key] = sqlContent.trim();
     return `${keyName}: "${key}" ;;`;
@@ -199,7 +203,8 @@ export function parseLookML(text: string): LookMLParseResult {
   ]);
 
   const SQL_KEYS = new Set(['sql', 'sql_on', 'sql_where', 'sql_table_name',
-    'sql_trigger_value', 'html', 'label_from_parameter', 'sql_start', 'sql_end']);
+    'sql_trigger_value', 'html', 'label_from_parameter', 'sql_start', 'sql_end',
+    'sql_distinct_key']);
 
   function parseBlock(): any {
     const obj: any = {};
@@ -1640,6 +1645,51 @@ function lookConvertView(
     }
   });
 
+  // ── Unique keys (table grain) ──────────────────────────────────────────────
+  // Sigma's semantic-aggregates compiler uses element-level `uniqueKeys` to know
+  // a table's grain and aggregate to it before display — that is what makes
+  // aggregation through a fan-out relationship correct. LookML declares the same
+  // fact as `primary_key: yes` on one or more dimensions, so that is the sound
+  // mapping. (The field is inert without the org flag, so emitting is safe.)
+  const pkDims = dims.filter((d: any) => d && d._name && /^(yes|true)$/i.test(String(d.primary_key ?? '')));
+  if (pkDims.length) {
+    const ukIds: string[] = [];
+    const unresolved: string[] = [];
+    for (const d of pkDims) {
+      const id = colIdMap[d._name.toUpperCase()];
+      if (id) { if (!ukIds.includes(id)) ukIds.push(id); }
+      else unresolved.push(d._name);
+    }
+    if (ukIds.length) element.uniqueKeys = ukIds;
+    if (unresolved.length) {
+      warnings.push(`⚠ View "${viewName}": primary_key dimension(s) ${unresolved.join(', ')} did not resolve to a column — uniqueKeys is incomplete, so fan-out safety on this table is not guaranteed. Set the unique key manually in Sigma.`);
+    }
+  } else {
+    warnings.push(`⚠ View "${viewName}": no \`primary_key: yes\` dimension, so the table's grain is undeclared and no uniqueKeys could be emitted. Aggregations reaching this table through a relationship may fan out. Declare the unique key on the element in Sigma.`);
+  }
+
+  // `sql_distinct_key` is Looker's symmetric-aggregate hint. It is deliberately
+  // NOT mapped into uniqueKeys: it is a MEASURE-level de-dup grain and routinely
+  // spans joined views (e.g. ${calendar.type}), whereas uniqueKeys is a list of
+  // columns ON THIS element. Writing a cross-view grain into uniqueKeys would
+  // declare the wrong grain — under semantic aggregates that yields wrong
+  // numbers, the exact failure mode this metadata exists to prevent. Report it
+  // so the grain can be confirmed by hand.
+  const sdkMeasures = measures.filter((m: any) => m && m.sql_distinct_key);
+  if (sdkMeasures.length) {
+    const spanning = new Set<string>();
+    for (const m of sdkMeasures) {
+      for (const ref of String(m.sql_distinct_key).matchAll(/\$\{([A-Za-z_0-9]+)\.[A-Za-z_0-9]+\}/g)) {
+        if (ref[1] !== 'TABLE' && ref[1] !== viewName) spanning.add(ref[1]);
+      }
+    }
+    if (spanning.size) {
+      warnings.push(`ℹ View "${viewName}": ${sdkMeasures.length} measure(s) use \`sql_distinct_key\` at a grain spanning other view(s) (${[...spanning].join(', ')}) — a join-expanded de-dup that element-level uniqueKeys cannot express. These measures were converted as ordinary aggregates; re-verify them against the relationship grain, and note that removing the fan-out at its source may make the de-dup unnecessary.`);
+    } else {
+      warnings.push(`ℹ View "${viewName}": ${sdkMeasures.length} measure(s) use \`sql_distinct_key\` over local columns only — confirm it matches the emitted uniqueKeys.`);
+    }
+  }
+
   if (element.metrics!.length === 0) delete element.metrics;
   return { element, elementId, colIdMap };
 }
@@ -1750,14 +1800,38 @@ export function convertLookMLToSigma(
     const rel = (j.relationship || 'many_to_one').toLowerCase();
     const jType = (j.type || 'left_outer').toLowerCase().replace('_join', '').replace(' ', '_');
 
-    const sqlOn = j.sql_on || '';
-    const keyMatch = sqlOn.match(/\$\{(\w+)\.(\w+)\}\s*=\s*\$\{(\w+)\.(\w+)\}/);
-    const keys = keyMatch ? [{
-      leftView: keyMatch[1], leftCol: keyMatch[2].toUpperCase(),
-      rightView: keyMatch[3], rightCol: keyMatch[4].toUpperCase()
-    }] : [];
+    const sqlOnRaw = j.sql_on || '';
 
-    if (!keyMatch && sqlOn) {
+    // Liquid {% condition x %} ... {% endcondition %} blocks inject the running
+    // filter state into the join predicate. They are not join keys and their
+    // inner text ("store.chain_id") would otherwise be mis-read as one. Strip
+    // them (and any stray tags) before key extraction.
+    const sqlOn = sqlOnRaw
+      .replace(/\{%\s*condition[\s\S]*?\{%\s*endcondition\s*%\}/gi, ' ')
+      .replace(/\{%[\s\S]*?%\}/g, ' ')
+      .replace(/\{\{[\s\S]*?\}\}/g, ' ');
+
+    // A LookML sql_on routinely ANDs together several ${a.b} = ${c.d} pairs —
+    // a composite/multi-column key. Sigma relationships take an ARRAY of key
+    // pairs, so capture every one. Matching only the first (the historical
+    // behaviour) silently emitted an under-constrained join that still POSTs,
+    // still queries, and quietly fans out.
+    const keys = [...sqlOn.matchAll(/\$\{(\w+)\.(\w+)\}\s*=\s*\$\{(\w+)\.(\w+)\}/g)].map(m => ({
+      leftView: m[1], leftCol: m[2].toUpperCase(),
+      rightView: m[3], rightCol: m[4].toUpperCase()
+    }));
+
+    // Literal predicates (${view.col} = 5, ${view.col} = 'X') are join-time
+    // scoping, not keys. Sigma relationships carry no predicate, so they cannot
+    // be reproduced on the relationship — surface them rather than dropping
+    // them silently.
+    const literalPreds = [...sqlOn.matchAll(/\$\{(\w+)\.(\w+)\}\s*=\s*('[^']*'|-?\d+(?:\.\d+)?)/g)]
+      .map(m => `${m[1]}.${m[2]} = ${m[3]}`);
+    if (literalPreds.length) {
+      warnings.push(`ℹ Join "${alias}": sql_on carries ${literalPreds.length} literal predicate(s) that a Sigma relationship cannot express — ${literalPreds.join(', ')}. Apply as an element filter on the joined table if the scoping matters.`);
+    }
+
+    if (!keys.length && sqlOnRaw) {
       const isRangeJoin = /\$\{[^}]+\}\s*[><!]|[><!]=?\s*\$\{/.test(sqlOn);
       if (isRangeJoin) {
         warnings.push(`⚠ Join "${alias}": uses range-based sql_on (>=, <=, >, <) which cannot be expressed as a Sigma relationship. Recreate this as a filtered join or custom SQL after import.`);
@@ -1818,6 +1892,11 @@ export function convertLookMLToSigma(
     }
     const isTargetView = (name: string) => name === j.alias || name === j.viewName;
 
+    // Resolve every key pair up front, grouped by the element that owns the FK.
+    // A composite key becomes ONE relationship carrying N key pairs — not N
+    // single-key relationships, which is what a per-key emit would produce.
+    const bySource = new Map<string, { srcRes: ElementResult; pairs: { sourceColumnId: string; targetColumnId: string }[] }>();
+
     j.keys.forEach((k: any) => {
       // Identify which side of the equality is this join's target view; the
       // other side owns the FK and becomes the relationship source.
@@ -1848,12 +1927,29 @@ export function convertLookMLToSigma(
         return;
       }
 
-      const pairKey = `${targetRes.elementId}|${tgtColId}`;
-      if (usedTargetCols.has(pairKey)) {
-        warnings.push(`ℹ Role-playing join "${j.alias}" shares a physical table — add manually in Sigma.`);
+      const grp = bySource.get(srcRes.elementId) || { srcRes, pairs: [] };
+      if (!grp.pairs.some(p => p.sourceColumnId === srcColId && p.targetColumnId === tgtColId)) {
+        grp.pairs.push({ sourceColumnId: srcColId, targetColumnId: tgtColId });
+      }
+      bySource.set(srcRes.elementId, grp);
+    });
+
+    if (j.keys.length && !bySource.size) {
+      warnings.push(`⚠ Relationship "${j.alias}": no key pair could be resolved to real columns — add join keys manually in Sigma's ERD view.`);
+    }
+
+    bySource.forEach(({ srcRes, pairs }) => {
+      // Dedup on the FULL relationship signature. Role-playing joins (the same
+      // physical table joined under several aliases on DIFFERENT source columns)
+      // have distinct signatures and are legitimately separate relationships;
+      // only a genuine duplicate is skipped.
+      const sig = `${srcRes.elementId}|${targetRes.elementId}|` +
+        pairs.map(p => `${p.sourceColumnId}>${p.targetColumnId}`).sort().join(',');
+      if (usedTargetCols.has(sig)) {
+        warnings.push(`ℹ Join "${j.alias}": duplicate of an existing relationship on the same key set — skipped.`);
         return;
       }
-      usedTargetCols.add(pairKey);
+      usedTargetCols.add(sig);
 
       // Map the LookML relationship cardinality to the closest Sigma type.
       // Sigma supports N:1 / 1:1 / 1:N — there is no native many_to_many. For
@@ -1876,7 +1972,7 @@ export function convertLookMLToSigma(
       srcEl.relationships.push({
         id: sigmaShortId(),
         targetElementId: targetRes.elementId,
-        keys: [{ sourceColumnId: srcColId, targetColumnId: tgtColId }],
+        keys: pairs,
         name: j.alias,
         relationshipType: relType
       });

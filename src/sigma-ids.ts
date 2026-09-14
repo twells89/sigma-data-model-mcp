@@ -354,6 +354,14 @@ export interface SigmaElement {
   columns: SigmaColumn[];
   metrics?: SigmaMetric[];
   relationships?: SigmaRelationship[];
+  /**
+   * [Private beta — semantic aggregates] Column IDs that uniquely identify a
+   * row in this element. The compiler uses this to track the table's grain and
+   * aggregate to it before display, which is what makes aggregation through a
+   * fan-out relationship correct. An array, so composite keys are supported.
+   * Inert when the org lacks the flag, so emitting it is always safe.
+   */
+  uniqueKeys?: string[];
   order: string[];
   [key: string]: any;
 }
