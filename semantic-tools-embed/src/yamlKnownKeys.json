@@ -1,0 +1,18 @@
+{
+  "_comment": "Keys the pinned upstream YAML reader (packages/snowflake-semantic-view/src/readYaml.ts) READS, per object level. scripts/yaml-key-drift.mjs derives the same sets from readYaml.ts and fails the build/check when they differ, so this table cannot rot when the PIN moves. `benign` = keys upstream does NOT read but which carry no conversion-relevant information (Sigma infers column types/granularity from the warehouse); NOT drift-checked, maintained by hand. Anything in neither list is reported as UNRECOGNIZED_YAML_KEY.",
+  "read": {
+    "root": ["name", "tables", "variables", "metrics", "relationships", "description", "tags", "max_staleness", "custom_instructions", "module_custom_instructions", "verified_queries"],
+    "table": ["name", "base_table", "primary_key", "unique_keys", "synonyms", "description", "tags", "facts", "dimensions", "time_dimensions", "metrics"],
+    "base_table": ["table", "database", "schema"],
+    "primary_key": ["columns"],
+    "unique_key": ["columns"],
+    "object": ["name", "expr", "access_modifier", "labels", "using_relationships", "non_additive_dimensions", "synonyms", "description", "tags", "cortex_search_service", "sample_values", "is_enum"],
+    "non_additive_dimension": ["dimension"],
+    "relationship": ["left_table", "right_table", "relationship_columns", "name"],
+    "relationship_column": ["type", "right_range", "left_column", "right_column"],
+    "right_range": ["start_column", "end_column"]
+  },
+  "benign": {
+    "object": ["data_type", "time_granularity"]
+  }
+}

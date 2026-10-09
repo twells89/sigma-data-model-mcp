@@ -1,0 +1,12 @@
+{
+  "description": "CREATE SEMANTIC VIEW DDL (upstream semantic-tools fixture 02-star-schema: lineitem/orders/customer star over SNOWFLAKE_SAMPLE_DATA.TPCH_SF1 (table refs repointed from upstream TPCH.SF1 so the default CSA connection can read them)) through the bundled engine. Fully qualified, so database/schema are passed but unused.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 3,
+    "minRelationships": 2,
+    "minMetrics": 3,
+    "noErrorColumns": true
+  }
+}

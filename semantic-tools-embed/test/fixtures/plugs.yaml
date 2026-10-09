@@ -1,0 +1,375 @@
+name: PLUGS_SEMANTIC_VIEW
+description: 'This semantic view represents a comprehensive retail analytics system focused on electronics sales data. The central fact table (F_POINT_OF_SALE) is connected to a dimension table (D_PRODUCT) and a second fact table (F_SALES) through established relationships: products via PRODUCT_KEY, and sales transactions via ORDER_NUMBER. The sales transactions fact table (F_SALES) is turn connected to two additional dimension tables: customers via CUST_KEY, and stores via STORE_KEY. The relationships create a star schema design that enables multi-dimensional analysis of sales performance across customer demographics, product categories, store locations, and time periods. The view supports complex business intelligence queries combining transactional data with dimensional attributes for comprehensive retail analytics.'
+tables:
+  - name: D_CUSTOMER
+    base_table:
+      database: SE_DEMO_DB
+      schema: PLUGS_ELECTRONICS
+      table: D_CUSTOMER
+    dimensions:
+      - name: AGE_GROUP
+        description: Customer age group (one of 18-35, 36-55, or 56+)
+        expr: AGE_GROUP
+        data_type: VARCHAR(255)
+      - name: CIVIL_STATUS
+        description: Customer civil status (one of single, married, divorced, or widowed)
+        expr: CIVIL_STATUS
+        data_type: VARCHAR(255)
+      - name: CUST_ADDRESS
+        description: Customer street address
+        expr: CUST_ADDRESS
+        data_type: VARCHAR(255)
+      - name: CUST_AGE
+        description: Customer age
+        expr: CUST_AGE
+        data_type: NUMBER(38,0)
+      - name: CUST_CITY
+        description: Customer city
+        expr: CUST_CITY
+        data_type: VARCHAR(255)
+      - name: CUST_COUNTY
+        description: Customer county
+        expr: CUST_COUNTY
+        data_type: VARCHAR(255)
+      - name: CUST_GENDER
+        description: Customer gender
+        expr: CUST_GENDER
+        data_type: VARCHAR(255)
+      - name: CUST_JSON_FIELD
+        description: JSON field containing customer details
+        expr: CUST_JSON_FIELD
+        data_type: OBJECT
+      - name: CUST_KEY
+        description: Unique number associated with a customer
+        expr: CUST_KEY
+        data_type: NUMBER(38,0)
+      - name: CUST_NAME
+        description: Customer name
+        expr: CUST_NAME
+        data_type: VARCHAR(255)
+      - name: CUST_REGION
+        description: Customer region
+        expr: CUST_REGION
+        data_type: VARCHAR(255)
+      - name: CUST_STATE
+        description: Customer state
+        expr: CUST_STATE
+        data_type: VARCHAR(255)
+      - name: CUST_TYPE
+        description: Customer type (either individual or company)
+        expr: CUST_TYPE
+        data_type: VARCHAR(255)
+      - name: CUST_ZIP_CODE
+        description: Customer zip code
+        expr: CUST_ZIP_CODE
+        data_type: VARCHAR(255)
+      - name: LOYALTY_PROGRAM
+        description: Boolean column denoting whether the customer is a store loyalty program member (1) or not (0)
+        expr: LOYALTY_PROGRAM
+        data_type: VARCHAR(255)
+      - name: UPDATED_BY
+        expr: UPDATED_BY
+        data_type: VARCHAR(255)
+    time_dimensions:
+      - name: CUST_SINCE
+        description: Date the customer first made a purchase
+        expr: CUST_SINCE
+        data_type: DATE
+      - name: UPDATED_AT
+        expr: UPDATED_AT
+        data_type: TIMESTAMP_NTZ(9)
+    primary_key:
+      columns:
+        - CUST_KEY
+  - name: D_PRODUCT
+    base_table:
+      database: SE_DEMO_DB
+      schema: PLUGS_ELECTRONICS
+      table: D_PRODUCT
+    dimensions:
+      - name: PRICE
+        description: Unit price for a product
+        expr: PRICE
+        data_type: FLOAT
+      - name: PRODUCT_DESCRIPTION
+        description: Product description
+        expr: PRODUCT_DESCRIPTION
+        data_type: VARCHAR(255)
+      - name: PRODUCT_FAMILY
+        description: Product family
+        expr: PRODUCT_FAMILY
+        data_type: VARCHAR(255)
+      - name: PRODUCT_GROUP
+        description: Product group
+        expr: PRODUCT_GROUP
+        data_type: VARCHAR(255)
+      - name: PRODUCT_KEY
+        description: Unique number associated with a product
+        expr: PRODUCT_KEY
+        data_type: NUMBER(38,0)
+      - name: PRODUCT_LINE
+        description: Product line
+        expr: PRODUCT_LINE
+        data_type: VARCHAR(255)
+      - name: PRODUCT_NAME
+        description: Product name
+        expr: PRODUCT_NAME
+        data_type: VARCHAR(255)
+      - name: PRODUCT_NOTES
+        expr: PRODUCT_NOTES
+        data_type: VARCHAR(255)
+      - name: PRODUCT_STATUS
+        expr: PRODUCT_STATUS
+        data_type: VARCHAR(255)
+      - name: PRODUCT_TYPE
+        description: Product type
+        expr: PRODUCT_TYPE
+        data_type: VARCHAR(255)
+      - name: PROPOSED_PRICE
+        expr: PROPOSED_PRICE
+        data_type: FLOAT
+      - name: SKU_NUMBER
+        description: Unique alphanumeric stock keeping unit code that identifies a product and helps track inventory
+        expr: SKU_NUMBER
+        data_type: VARCHAR(255)
+      - name: UPDATED_BY
+        expr: UPDATED_BY
+        data_type: VARCHAR(255)
+    time_dimensions:
+      - name: UPDATED_AT
+        expr: UPDATED_AT
+        data_type: TIMESTAMP_NTZ(9)
+    primary_key:
+      columns:
+        - PRODUCT_KEY
+  - name: D_STORE
+    base_table:
+      database: SE_DEMO_DB
+      schema: PLUGS_ELECTRONICS
+      table: D_STORE
+    dimensions:
+      - name: LATITUDE
+        description: Store latitude
+        expr: LATITUDE
+        data_type: FLOAT
+      - name: LONGITUDE
+        description: Store longitude
+        expr: LONGITUDE
+        data_type: FLOAT
+      - name: MONTHLY_RENT_COST
+        description: Monthly rent cost in USD
+        expr: MONTHLY_RENT_COST
+        data_type: NUMBER(38,0)
+      - name: NUMBER_OF_EMPLOYEES
+        description: Number of store employees
+        expr: NUMBER_OF_EMPLOYEES
+        data_type: NUMBER(38,0)
+      - name: ONLINE_ORDERING
+        description: Type of online ordering available
+        expr: ONLINE_ORDERING
+        data_type: VARCHAR(32)
+      - name: SELLING_SQUARE_FOOTAGE
+        description: Square footage allocated for selling space
+        expr: SELLING_SQUARE_FOOTAGE
+        data_type: NUMBER(38,0)
+      - name: STORE_ADDRESS
+        description: Store street address
+        expr: STORE_ADDRESS
+        data_type: VARCHAR(255)
+      - name: STORE_CITY
+        description: Store city
+        expr: STORE_CITY
+        data_type: VARCHAR(255)
+      - name: STORE_COUNTY
+        description: Store county
+        expr: STORE_COUNTY
+        data_type: VARCHAR(255)
+      - name: STORE_JSON_FIELD
+        description: JSON field containing store details
+        expr: STORE_JSON_FIELD
+        data_type: OBJECT
+      - name: STORE_KEY
+        description: Unique number associated with a store
+        expr: STORE_KEY
+        data_type: NUMBER(38,0)
+      - name: STORE_NAME
+        description: Store name
+        expr: STORE_NAME
+        data_type: VARCHAR(255)
+      - name: STORE_REGION
+        description: Store region
+        expr: STORE_REGION
+        data_type: VARCHAR(255)
+      - name: STORE_SIZE
+        description: Store size (one of small, medium, or large)
+        expr: STORE_SIZE
+        data_type: VARCHAR(255)
+      - name: STORE_STATE
+        description: Store state
+        expr: STORE_STATE
+        data_type: VARCHAR(255)
+      - name: STORE_ZIP_CODE
+        description: Store zip code
+        expr: STORE_ZIP_CODE
+        data_type: VARCHAR(255)
+      - name: TOTAL_SQUARE_FOOTAGE
+        description: Total store square footage
+        expr: TOTAL_SQUARE_FOOTAGE
+        data_type: NUMBER(38,0)
+    time_dimensions:
+      - name: LAST_LAYOUT_UPDATE
+        description: Date the store layout was last updated
+        expr: LAST_LAYOUT_UPDATE
+        data_type: DATE
+      - name: STORE_OPEN_DATE
+        description: Date the store first opened for business
+        expr: STORE_OPEN_DATE
+        data_type: DATE
+    primary_key:
+      columns:
+        - STORE_KEY
+  - name: F_POINT_OF_SALE
+    base_table:
+      database: SE_DEMO_DB
+      schema: PLUGS_ELECTRONICS
+      table: F_POINT_OF_SALE
+    dimensions:
+      - name: ORDER_COST
+        synonyms:
+          - order_disbursement
+          - order_expenditure
+          - order_expense
+          - order_outlay
+          - order_spend
+        description: The total cost of the order, including all items, taxes, and fees, at the point of sale.
+        expr: SALES_QUANTITY*COST_AMOUNT
+        data_type: FLOAT
+      - name: ORDER_NUMBER
+        description: Unique number associated with an order
+        expr: ORDER_NUMBER
+        data_type: NUMBER(38,0)
+      - name: ORDER_REVENUE
+        synonyms:
+          - order_amount
+          - order_sales
+          - order_total
+          - sales_revenue
+          - total_order_value
+        description: The total revenue generated by an order at the point of sale.
+        expr: SALES_QUANTITY*SALES_AMOUNT
+        data_type: FLOAT
+      - name: PRODUCT_KEY
+        description: Unique number associated with a product
+        expr: PRODUCT_KEY
+        data_type: NUMBER(38,0)
+      - name: SALES_QUANTITY
+        description: Quantity of products ordered
+        expr: SALES_QUANTITY
+        data_type: NUMBER(38,0)
+      - name: UNIT_COST
+        synonyms:
+          - cost_per_item
+          - cost_per_unit
+          - item_cost
+        description: The cost of a single unit of an item at the point of sale, typically representing the cost at which the item was purchased from a supplier.
+        expr: COST_AMOUNT
+        data_type: FLOAT
+      - name: UNIT_PRICE
+        synonyms:
+          - item_price
+          - price_per_item
+          - price_per_unit
+        description: The sales price of a single unit of a product or service at the point of sale. This represents the price at which the product was sold to a customer.
+        expr: SALES_AMOUNT
+        data_type: FLOAT
+    metrics:
+      - name: PROFIT
+        synonyms:
+          - earnings
+          - gain
+          - income
+          - net_earnings
+          - revenue
+        description: The profit made from a sale, calculated as the difference between the sale amount and the cost of the item or service sold.
+        expr: SUM(SALES_QUANTITY*(SALES_AMOUNT-COST_AMOUNT))
+        access_modifier: public_access
+      - name: PROFIT_MARGIN
+        synonyms:
+          - gross_profit_percentage
+          - margin_rate
+          - net_profit_percentage
+          - profit_percentage
+          - return_on_sales
+        description: The percentage of revenue that is profit, calculated by dividing the profit by the revenue and multiplying by 100, indicating the amount of money a company retains from each dollar of sales after accounting for the cost of goods sold.
+        expr: 100*(SUM(SALES_QUANTITY*(SALES_AMOUNT-COST_AMOUNT))/sum(SALES_QUANTITY*SALES_AMOUNT))
+        access_modifier: public_access
+      - name: REVENUE
+        synonyms:
+          - earnings
+          - income
+          - revenue_generated
+          - sales_revenue
+          - total_revenue
+          - total_sales
+        description: The total amount of money earned from sales.
+        expr: SUM(SALES_QUANTITY*SALES_AMOUNT)
+        access_modifier: public_access
+  - name: F_SALES
+    base_table:
+      database: SE_DEMO_DB
+      schema: PLUGS_ELECTRONICS
+      table: F_SALES
+    dimensions:
+      - name: CUST_KEY
+        description: Unique number associated with a customer
+        expr: CUST_KEY
+        data_type: NUMBER(38,0)
+      - name: ORDER_NUMBER
+        description: Unique number associated with an order
+        expr: ORDER_NUMBER
+        data_type: NUMBER(38,0)
+      - name: PURCHASE_METHOD
+        description: Purchase method (one of cash, credit, or debit)
+        expr: PURCHASE_METHOD
+        data_type: VARCHAR(255)
+      - name: STORE_KEY
+        description: Unique number associated with a store
+        expr: STORE_KEY
+        data_type: NUMBER(38,0)
+      - name: TRANSACTION_TYPE
+        description: Type of transaction (either purchase or refund)
+        expr: TRANSACTION_TYPE
+        data_type: VARCHAR(255)
+    time_dimensions:
+      - name: DATE
+        description: Order date
+        expr: DATE
+        data_type: TIMESTAMP_NTZ(9)
+    primary_key:
+      columns:
+        - ORDER_NUMBER
+relationships:
+  - name: POINT_OF_SALE_TO_PRODUCT
+    left_table: F_POINT_OF_SALE
+    right_table: D_PRODUCT
+    relationship_columns:
+      - left_column: PRODUCT_KEY
+        right_column: PRODUCT_KEY
+  - name: POINT_OF_SALE_TO_SALES
+    left_table: F_POINT_OF_SALE
+    right_table: F_SALES
+    relationship_columns:
+      - left_column: ORDER_NUMBER
+        right_column: ORDER_NUMBER
+  - name: SALES_TO_CUSTOMER
+    left_table: F_SALES
+    right_table: D_CUSTOMER
+    relationship_columns:
+      - left_column: CUST_KEY
+        right_column: CUST_KEY
+  - name: SALES_TO_STORE
+    left_table: F_SALES
+    right_table: D_STORE
+    relationship_columns:
+      - left_column: STORE_KEY
+        right_column: STORE_KEY

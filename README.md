@@ -41,7 +41,7 @@ That's it — no cloning, no building. Just connect and start converting.
 | Tool | Description |
 |------|-------------|
 | `convert_dbt_to_sigma` | dbt semantic model YAML → Sigma data model JSON |
-| `convert_snowflake_to_sigma` | Snowflake Cortex Analyst semantic view YAML → Sigma JSON |
+| `convert_snowflake_to_sigma` | Snowflake semantic view (YAML or `CREATE SEMANTIC VIEW` DDL) → Sigma JSON, via the bundled semantic-tools engine |
 | `convert_lookml_to_sigma` | LookML project files (views + explores) → Sigma JSON |
 | `convert_powerbi_to_sigma` | Power BI model (.bim / TOM JSON) → Sigma JSON |
 | `convert_tableau_to_sigma` | Tableau workbook/data source (.twb/.tds XML) → Sigma JSON |
@@ -90,12 +90,22 @@ Converts dbt semantic model YAML into Sigma JSON. Handles `entities` (primary/un
 - `schema` — Override schema name
 
 ### convert_snowflake_to_sigma
-Converts Snowflake Cortex Analyst semantic view YAML. Handles tables with dimensions, time_dimensions, facts (auto-generates Sum metrics), inline and top-level relationships, indicator column detection, and duplicate path deduplication.
+Converts a Snowflake semantic view — native YAML or `CREATE SEMANTIC VIEW` DDL (fetch it with `SELECT GET_DDL('SEMANTIC_VIEW', 'DB.SCHEMA.NAME')`) — using the bundled [semantic-tools](https://github.com/sigmacomputing/semantic-tools) engine (`vendor/semantic-tools`, rebuilt with `npm run build:semantic-tools`); behaviour matches its CLI. Metrics come only from the view's own definitions (nothing is invented). Constructs that would return different numbers than Snowflake (e.g. `SEMI_ADDITIVE_METRIC`, `ASOF_RELATIONSHIP`) are **refused**: no data model is returned and `findings` explains why, unless `best_effort` is set.
 
 **Parameters:**
-- `yaml_content` (required) — Snowflake semantic view YAML
-- `connection_id` — Sigma connection UUID
-- `auto_metrics` — Auto-generate Sum() metrics for facts (default: true)
+- `source` — YAML or DDL (`yaml_content` is an alias; provide exactly one)
+- `connection_id` — Sigma connection UUID (empty → `<CONNECTION_ID>` placeholder + warning)
+- `database` / `schema` — only needed when the view has unqualified table names (the result's `needs` says so)
+- `column_types` — `{"DB.SCHEMA.TABLE": {"COL": "TIMESTAMP_TZ"}}`, enables time-zone checks
+- `best_effort` — emit refused constructs anyway; differences are reported
+- `synonyms_in_description`, `infer_number_formats` — optional enrichments
+- `auto_metrics` — deprecated and ignored
+
+**Returns:** `{ sigmaDataModel, refused, allRefused, refusedViews, bestEffortWouldConvert, needs, findings, stats, warnings, results, engine }`. `sigmaDataModel` is present only for single-view input. With several views (e.g. several `CREATE SEMANTIC VIEW` statements) every converted model is in `results[].sigmaDataModel`, `results[].stats` holds each view's counts, and top-level `stats` is the sum over the converted views. `refused` is true when **any** view was refused (see `refusedViews`); `allRefused` is true when none converted.
+
+With `infer_number_formats`, a same-unit quotient is a percent only for currency ÷ currency, or when the item's own name has a percent word (rate, pct, percent, percentage, ratio, share): `Sum(quantity) / CountDistinct(order_id)` gets no format. A bare `rate`/`ratio`/`share` column with samples above 1 (`hourly_rate`, `shipping_rate`) is not a percentage; only `pct`/`percent`/`percentage` mean percent points, and a rate beside a currency word (`fee`, `price`, `cost`) is currency.
+
+Local CLI: `sigma-convert snowflake --file view.sql --db DB --schema SCHEMA [--best-effort]`. For several views the output carries `results[]` (`{ viewName, ok, sigmaDataModel, stats, findings }` per view) instead of a top-level `sigmaDataModel`; the exit code is 1 when **any** view was refused.
 
 ### convert_lookml_to_sigma
 Converts a full LookML project into a Sigma data model. Includes a complete LookML parser. Handles explores, sql_on join keys, derived_table → Custom SQL, dimension/measure conversion, and role-playing dimension deduplication.
