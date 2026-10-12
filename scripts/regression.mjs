@@ -153,7 +153,9 @@ async function loadConverters() {
   const oac = await import(join(BUILD_DIR, 'oac.js'));
   const quicksight = await import(join(BUILD_DIR, 'quicksight.js'));
   const bobj = await import(join(BUILD_DIR, 'bobj.js'));
+  const snowflake = await import(join(BUILD_DIR, 'snowflake.js'));
   return {
+    snowflake: snowflake.convertSnowflakeSemanticView || snowflake.default?.convertSnowflakeSemanticView,
     bobj: bobj.convertBobjToSigma || bobj.default?.convertBobjToSigma,
     tableau: tableau.convertTableauToSigma || tableau.default?.convertTableauToSigma,
     lookml: lookml.convertLookMLToSigma || lookml.default?.convertLookMLToSigma,
@@ -222,6 +224,12 @@ function checkAsserts(asserts, summary) {
   }
   if (asserts?.minRelationships != null && summary.relationships < asserts.minRelationships) {
     issues.push(`relationships ${summary.relationships} < expected min ${asserts.minRelationships}`);
+  }
+  if (asserts?.minMetrics != null && summary.metrics < asserts.minMetrics) {
+    issues.push(`metrics ${summary.metrics} < expected min ${asserts.minMetrics}`);
+  }
+  if (asserts?.maxMetrics != null && summary.metrics > asserts.maxMetrics) {
+    issues.push(`metrics ${summary.metrics} > expected max ${asserts.maxMetrics}`);
   }
   if (asserts?.minHelperElements != null && summary.helperElements < asserts.minHelperElements) {
     issues.push(`helper elements ${summary.helperElements} < expected min ${asserts.minHelperElements}`);
@@ -330,7 +338,11 @@ async function runFixture(fx, converters) {
   } catch (e) {
     return { id: fx.id, ok: false, reason: `converter threw: ${e.message}` };
   }
-  if (!result?.model) return { id: fx.id, ok: false, reason: 'converter returned no model' };
+  if (!result?.model) {
+    // snowflake (semantic-tools engine) refuses instead of emitting a model: surface why.
+    const why = result?.refused ? ` (refused: ${(result.findings || []).filter(f => f.severity === 'error').map(f => f.code).join(', ') || 'see findings'})` : '';
+    return { id: fx.id, ok: false, reason: 'converter returned no model' + why };
+  }
 
   const summary = shapeSummary(result.model, result);
   log(`shape: elements=${summary.elements} cols=${summary.columns} rels=${summary.relationships} helpers=${summary.helperElements} security=${summary.security}`);

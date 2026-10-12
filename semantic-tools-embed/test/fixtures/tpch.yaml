@@ -1,0 +1,131 @@
+name: TPCH_SALES
+description: Orders, line items and customers from the Snowflake TPC-H sample data
+tables:
+  - name: LINEITEM
+    description: Order lines, one row per part shipped
+    base_table:
+      database: SNOWFLAKE_SAMPLE_DATA
+      schema: TPCH_SF1
+      table: LINEITEM
+    primary_key:
+      columns:
+        - L_ORDERKEY
+        - L_LINENUMBER
+    dimensions:
+      - name: L_ORDERKEY
+        expr: L_ORDERKEY
+        data_type: NUMBER(38,0)
+      - name: L_LINENUMBER
+        expr: L_LINENUMBER
+        data_type: NUMBER(38,0)
+      - name: RETURN_FLAG
+        synonyms:
+          - returned
+        description: R = returned, A = accepted, N = not yet known
+        expr: L_RETURNFLAG
+        data_type: VARCHAR(1)
+      - name: SHIP_MODE
+        expr: L_SHIPMODE
+        data_type: VARCHAR(10)
+    time_dimensions:
+      - name: SHIP_DATE
+        expr: L_SHIPDATE
+        data_type: DATE
+    facts:
+      - name: QUANTITY
+        expr: L_QUANTITY
+        data_type: NUMBER(12,2)
+      - name: EXTENDED_PRICE
+        expr: L_EXTENDEDPRICE
+        data_type: NUMBER(12,2)
+      - name: DISCOUNT
+        expr: L_DISCOUNT
+        data_type: NUMBER(12,2)
+      - name: NET_PRICE
+        description: Extended price after discount
+        expr: L_EXTENDEDPRICE * (1 - L_DISCOUNT)
+        data_type: NUMBER(18,4)
+    metrics:
+      - name: TOTAL_REVENUE
+        description: Revenue net of discount
+        expr: SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))
+      - name: AVERAGE_DISCOUNT
+        expr: AVG(L_DISCOUNT)
+      - name: ORDER_COUNT
+        expr: COUNT(DISTINCT L_ORDERKEY)
+  - name: ORDERS
+    description: One row per order
+    base_table:
+      database: SNOWFLAKE_SAMPLE_DATA
+      schema: TPCH_SF1
+      table: ORDERS
+    primary_key:
+      columns:
+        - O_ORDERKEY
+    dimensions:
+      - name: O_ORDERKEY
+        expr: O_ORDERKEY
+        data_type: NUMBER(38,0)
+      - name: O_CUSTKEY
+        expr: O_CUSTKEY
+        data_type: NUMBER(38,0)
+      - name: ORDER_STATUS
+        description: F = fulfilled, O = open, P = partial
+        expr: O_ORDERSTATUS
+        data_type: VARCHAR(1)
+      - name: ORDER_PRIORITY
+        expr: O_ORDERPRIORITY
+        data_type: VARCHAR(15)
+      - name: CUSTOMER_SEGMENT
+        description: Market segment of the customer who placed the order
+        expr: CUSTOMER.C_MKTSEGMENT
+        data_type: VARCHAR(10)
+    time_dimensions:
+      - name: ORDER_DATE
+        expr: O_ORDERDATE
+        data_type: DATE
+    facts:
+      - name: ORDER_TOTAL
+        expr: O_TOTALPRICE
+        data_type: NUMBER(12,2)
+    metrics:
+      - name: TOTAL_ORDER_VALUE
+        expr: SUM(O_TOTALPRICE)
+      - name: CUSTOMERS_WITH_ORDERS
+        expr: COUNT(DISTINCT O_CUSTKEY)
+  - name: CUSTOMER
+    description: One row per customer
+    base_table:
+      database: SNOWFLAKE_SAMPLE_DATA
+      schema: TPCH_SF1
+      table: CUSTOMER
+    primary_key:
+      columns:
+        - C_CUSTKEY
+    dimensions:
+      - name: C_CUSTKEY
+        expr: C_CUSTKEY
+        data_type: NUMBER(38,0)
+      - name: CUSTOMER_NAME
+        expr: C_NAME
+        data_type: VARCHAR(25)
+      - name: MARKET_SEGMENT
+        expr: C_MKTSEGMENT
+        data_type: VARCHAR(10)
+    facts:
+      - name: ACCOUNT_BALANCE
+        expr: C_ACCTBAL
+        data_type: NUMBER(12,2)
+relationships:
+  - name: LINEITEM_TO_ORDERS
+    left_table: LINEITEM
+    right_table: ORDERS
+    relationship_columns:
+      - left_column: L_ORDERKEY
+        right_column: O_ORDERKEY
+  - name: ORDERS_TO_CUSTOMER
+    left_table: ORDERS
+    right_table: CUSTOMER
+    relationship_columns:
+      - left_column: O_CUSTKEY
+        right_column: C_CUSTKEY

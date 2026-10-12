@@ -186,7 +186,9 @@ test('dbt: a dimension CASE with a residual LIKE is dropped+warned, not shipped 
   assert.ok(warned(r.warnings, /"orders\.like_flag".*skipped/i), r.warnings.join('\n'));
 });
 
-test('snowflake: a dimension AND a time_dimension CASE with a residual LIKE are both dropped+warned, not shipped broken; a clean CASE and plain arithmetic dimension still convert (final review, Important 3)', () => {
+test('snowflake (semantic-tools engine): a dimension AND a time_dimension CASE with LIKE are translated correctly (Like()), never shipped as raw SQL and never silently dropped; clean CASE and arithmetic dimensions still convert', () => {
+  // The old regex converter dropped+warned on a residual LIKE. The semantic-tools engine translates it
+  // (LIKE -> Like()) or, for anything it cannot translate, raises an explicit finding. Silent drop is the failure.
   const yamlText = `name: orders_view
 tables:
   - name: orders
@@ -198,12 +200,40 @@ tables:
     time_dimensions:
       - {name: like_flag_td, expr: "CASE WHEN LOWER(COUNTRY) LIKE 'usa' THEN 1 ELSE 0 END"}
     facts:
-      - {name: amount}`;
+      - {name: amount, expr: AMOUNT}
+    metrics:
+      - {name: total_amount, expr: "SUM(AMOUNT)"}`;
   const r = convertSnowflakeSemanticView(yamlText, { connectionId: 'test-conn' });
+  assert.equal(r.refused, false, r.warnings.join('\n'));
   const cols = columnsOf(r.model);
   assert.ok(cols.some(c => c.name === 'Is Usa' && /^If\(\[Country\] = "usa", 1, 0\)$/.test(c.formula)), JSON.stringify(cols));
   assert.ok(cols.some(c => c.name === 'Net Amount' && c.formula === '[Gross] - [Discount]'), JSON.stringify(cols));
-  assert.ok(!cols.some(c => c.name === 'Like Flag' || c.name === 'Like Flag Td'), `broken LIKE column was emitted: ${JSON.stringify(cols)}`);
-  assert.ok(warned(r.warnings, /"orders\.LIKE_FLAG".*skipped/i), r.warnings.join('\n'));
-  assert.ok(warned(r.warnings, /"orders\.LIKE_FLAG_TD".*skipped/i), r.warnings.join('\n'));
+  // LIKE is translated to Sigma's Like(), in both the dimension and the time_dimension
+  for (const name of ['Like Flag', 'Like Flag Td']) {
+    const c = cols.find(x => x.name === name);
+    assert.ok(c, `${name} was silently dropped: ${JSON.stringify(cols)}`);
+    assert.equal(c!.formula, 'If(Like(Lower([Country]), "usa"), 1, 0)');
+  }
+  // no formula anywhere keeps a raw SQL LIKE / CASE keyword
+  for (const c of cols) assert.ok(!/\bLIKE\b(?!\()|\bCASE\b/i.test(c.formula.replace(/"[^"]*"/g, '')), `raw SQL left in formula: ${c.formula}`);
+  assert.deepEqual(metricsOf(r.model).map(m => m.name), ['Total Amount']);
+});
+
+test('snowflake (semantic-tools engine): an untranslatable dimension is an explicit finding, not a silent drop or a shipped placeholder', () => {
+  const yamlText = `name: v
+tables:
+  - name: orders
+    base_table: {database: ANALYTICS, schema: PUBLIC, table: ORDERS}
+    dimensions:
+      - {name: ok_dim, expr: "UPPER(COUNTRY)"}
+      - {name: bad_dim, expr: "TOTALLY_UNKNOWN_FN(COUNTRY)"}
+    metrics:
+      - {name: total_amount, expr: "SUM(AMOUNT)"}`;
+  const r = convertSnowflakeSemanticView(yamlText, { connectionId: 'test-conn' });
+  const cols = columnsOf(r.model);
+  assert.ok(cols.some(c => c.name === 'Ok Dim'), JSON.stringify(cols));
+  assert.ok(!cols.some(c => c.name === 'Bad Dim'), `untranslatable dimension shipped: ${JSON.stringify(cols)}`);
+  const f = r.findings.find(x => x.code === 'EXPRESSION_NOT_REPRESENTABLE' && x.object.name === 'bad_dim');
+  assert.ok(f, `bad_dim vanished silently: ${r.warnings.join(' | ')}`);
+  assert.ok(warned(r.warnings, /EXPRESSION_NOT_REPRESENTABLE:.*bad_dim/), r.warnings.join('\n'));
 });

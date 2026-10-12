@@ -1,0 +1,405 @@
+name: RETAIL_ANALYTICS_SEMANTIC_VIEW
+description: Retail analytics semantic model covering orders, customers,
+  products, stores, dates and promotions
+tables:
+  - name: ORDER_FACT
+    description: Core order transaction fact table
+    base_table:
+      database: CSA
+      schema: TJ
+      table: ORDER_FACT
+    primary_key:
+      columns:
+        - ORDER_ID
+        - ORDER_LINE
+    dimensions:
+      - name: ORDER_ID
+        expr: ORDER_ID
+        data_type: TEXT
+        description: Unique order identifier
+      - name: ORDER_LINE
+        expr: ORDER_LINE
+        data_type: NUMBER(38,0)
+      - name: CUSTOMER_KEY
+        expr: CUSTOMER_KEY
+        data_type: NUMBER(38,0)
+        description: FK to CUSTOMER_DIM
+      - name: PRODUCT_KEY
+        expr: PRODUCT_KEY
+        data_type: NUMBER(38,0)
+        description: FK to PRODUCT_DIM
+      - name: ORDER_STORE_KEY
+        expr: ORDER_STORE_KEY
+        data_type: NUMBER(38,0)
+        description: FK to STORE_DIM
+      - name: SHIP_STORE_KEY
+        expr: SHIP_STORE_KEY
+        data_type: NUMBER(38,0)
+        description: FK to STORE_DIM (ship store)
+      - name: PROMO_KEY
+        expr: PROMO_KEY
+        data_type: NUMBER(38,0)
+        description: FK to PROMO_DIM
+      - name: ORDER_DATE_KEY
+        expr: ORDER_DATE_KEY
+        data_type: NUMBER(38,0)
+        description: FK to DATE_DIM
+      - name: SHIP_DATE_KEY
+        expr: SHIP_DATE_KEY
+        data_type: NUMBER(38,0)
+      - name: ORDER_CHANNEL
+        expr: ORDER_CHANNEL
+        data_type: VARCHAR(255)
+      - name: SHIP_METHOD
+        expr: SHIP_METHOD
+        data_type: VARCHAR(255)
+      - name: ORDER_STATUS
+        expr: ORDER_STATUS
+        data_type: VARCHAR(255)
+      - name: DAYS_TO_SHIP
+        expr: DAYS_TO_SHIP
+        data_type: NUMBER(38,0)
+      - name: GROSS_MARGIN_PCT
+        expr: ROUND(GROSS_PROFIT / NULLIF(GROSS_REVENUE, 0) * 100, 2)
+        data_type: NUMBER(38,2)
+        description: Gross margin percentage per transaction
+    time_dimensions:
+      - name: ORDER_DATE
+        expr: ORDER_DATE_KEY
+        data_type: DATE
+        time_granularity: day
+    facts:
+      - name: QUANTITY_ORDERED
+        expr: QUANTITY_ORDERED
+        data_type: NUMBER(38,0)
+      - name: QUANTITY_RETURNED
+        expr: QUANTITY_RETURNED
+        data_type: NUMBER(38,0)
+      - name: UNIT_PRICE
+        expr: UNIT_PRICE
+        data_type: NUMBER(38,12)
+      - name: UNIT_COST
+        expr: UNIT_COST
+        data_type: NUMBER(38,12)
+      - name: DISCOUNT_AMOUNT
+        expr: DISCOUNT_AMOUNT
+        data_type: NUMBER(38,12)
+      - name: SHIPPING_AMOUNT
+        expr: SHIPPING_AMOUNT
+        data_type: NUMBER(38,12)
+      - name: TAX_AMOUNT
+        expr: TAX_AMOUNT
+        data_type: NUMBER(38,12)
+      - name: GROSS_REVENUE
+        expr: GROSS_REVENUE
+        data_type: NUMBER(38,12)
+      - name: NET_REVENUE
+        expr: NET_REVENUE
+        data_type: NUMBER(38,12)
+      - name: GROSS_PROFIT
+        expr: GROSS_PROFIT
+        data_type: NUMBER(38,12)
+      - name: NET_PROFIT
+        expr: NET_PROFIT
+        data_type: NUMBER(38,12)
+  - name: CUSTOMER_DIM
+    description: Customer demographics and lifetime value
+    base_table:
+      database: CSA
+      schema: TJ
+      table: CUSTOMER_DIM
+    primary_key:
+      columns:
+        - CUSTOMER_KEY
+    dimensions:
+      - name: CUSTOMER_KEY
+        expr: CUSTOMER_KEY
+        data_type: NUMBER(38,0)
+      - name: CUSTOMER_ID
+        expr: CUSTOMER_ID
+        data_type: TEXT
+      - name: FIRST_NAME
+        expr: FIRST_NAME
+        data_type: TEXT
+      - name: LAST_NAME
+        expr: LAST_NAME
+        data_type: TEXT
+      - name: EMAIL
+        expr: EMAIL
+        data_type: TEXT
+      - name: PHONE
+        expr: PHONE
+        data_type: TEXT
+      - name: CITY
+        expr: CITY
+        data_type: TEXT
+      - name: STATE
+        expr: STATE
+        data_type: TEXT
+      - name: ZIP_CODE
+        expr: ZIP_CODE
+        data_type: TEXT
+      - name: REGION
+        expr: REGION
+        data_type: TEXT
+      - name: CUSTOMER_SEGMENT
+        expr: CUSTOMER_SEGMENT
+        data_type: TEXT
+      - name: LOYALTY_TIER
+        expr: LOYALTY_TIER
+        data_type: TEXT
+      - name: ACQUISITION_CHANNEL
+        expr: ACQUISITION_CHANNEL
+        data_type: TEXT
+    time_dimensions:
+      - name: FIRST_ORDER_DATE
+        expr: FIRST_ORDER_DATE
+        data_type: DATE
+        time_granularity: day
+    facts:
+      - name: LIFETIME_ORDER_COUNT
+        expr: LIFETIME_ORDER_COUNT
+        data_type: NUMBER(38,0)
+      - name: LIFETIME_REVENUE
+        expr: LIFETIME_REVENUE
+        data_type: NUMBER(38,12)
+  - name: PRODUCT_DIM
+    description: Product catalog with pricing and categorization
+    base_table:
+      database: CSA
+      schema: TJ
+      table: PRODUCT_DIM
+    primary_key:
+      columns:
+        - PRODUCT_KEY
+    dimensions:
+      - name: PRODUCT_KEY
+        expr: PRODUCT_KEY
+        data_type: NUMBER(38,0)
+      - name: PRODUCT_ID
+        expr: PRODUCT_ID
+        data_type: TEXT
+      - name: PRODUCT_NAME
+        expr: PRODUCT_NAME
+        data_type: TEXT
+      - name: CATEGORY
+        expr: CATEGORY
+        data_type: TEXT
+      - name: SUBCATEGORY
+        expr: SUBCATEGORY
+        data_type: TEXT
+      - name: BRAND
+        expr: BRAND
+        data_type: TEXT
+      - name: WEIGHT_LBS
+        expr: WEIGHT_LBS
+        data_type: NUMBER(38,12)
+      - name: LIST_MARGIN_PCT
+        expr: ROUND((UNIT_PRICE - UNIT_COST) / NULLIF(UNIT_PRICE, 0) * 100, 1)
+        data_type: NUMBER(38,2)
+        description: Margin at full list price
+    time_dimensions:
+      - name: LAUNCH_DATE
+        expr: LAUNCH_DATE
+        data_type: DATE
+        time_granularity: day
+    facts:
+      - name: UNIT_COST
+        expr: UNIT_COST
+        data_type: NUMBER(38,12)
+      - name: UNIT_PRICE
+        expr: UNIT_PRICE
+        data_type: NUMBER(38,12)
+  - name: STORE_DIM
+    description: Store locations, attributes and financials
+    base_table:
+      database: CSA
+      schema: TJ
+      table: STORE_DIM
+    primary_key:
+      columns:
+        - STORE_KEY
+    dimensions:
+      - name: STORE_KEY
+        expr: STORE_KEY
+        data_type: NUMBER(38,0)
+      - name: STORE_ID
+        expr: STORE_ID
+        data_type: TEXT
+      - name: STORE_NAME
+        expr: STORE_NAME
+        data_type: TEXT
+      - name: STORE_TYPE
+        expr: STORE_TYPE
+        data_type: TEXT
+      - name: CITY
+        expr: CITY
+        data_type: TEXT
+      - name: STATE
+        expr: STATE
+        data_type: TEXT
+      - name: REGION
+        expr: REGION
+        data_type: TEXT
+      - name: DISTRICT
+        expr: DISTRICT
+        data_type: TEXT
+      - name: MANAGER_NAME
+        expr: MANAGER_NAME
+        data_type: TEXT
+      - name: SQUARE_FOOTAGE
+        expr: SQUARE_FOOTAGE
+        data_type: NUMBER(38,0)
+      - name: ANNUAL_LEASE_COST
+        expr: ANNUAL_LEASE_COST
+        data_type: NUMBER(38,12)
+      - name: LEASE_COST_PER_SQFT
+        expr: ROUND(ANNUAL_LEASE_COST / NULLIF(SQUARE_FOOTAGE, 0), 2)
+        data_type: NUMBER(38,2)
+        description: Annual lease cost per square foot
+    time_dimensions:
+      - name: OPEN_DATE
+        expr: OPEN_DATE
+        data_type: DATE
+        time_granularity: day
+      - name: CLOSE_DATE
+        expr: CLOSE_DATE
+        data_type: DATE
+        time_granularity: day
+    facts:
+      - name: SQUARE_FOOTAGE_FACT
+        expr: SQUARE_FOOTAGE
+        data_type: NUMBER(38,0)
+      - name: ANNUAL_LEASE_COST_FACT
+        expr: ANNUAL_LEASE_COST
+        data_type: NUMBER(38,12)
+  - name: DATE_DIM
+    description: Calendar date dimension with fiscal periods
+    base_table:
+      database: CSA
+      schema: TJ
+      table: DATE_DIM
+    primary_key:
+      columns:
+        - DATE_KEY
+    dimensions:
+      - name: DATE_KEY
+        expr: DATE_KEY
+        data_type: NUMBER(38,0)
+      - name: DAY_OF_WEEK
+        expr: DAY_OF_WEEK
+        data_type: TEXT
+      - name: DAY_OF_MONTH
+        expr: DAY_OF_MONTH
+        data_type: NUMBER(38,0)
+      - name: WEEK_OF_YEAR
+        expr: WEEK_OF_YEAR
+        data_type: NUMBER(38,0)
+      - name: MONTH_NUMBER
+        expr: MONTH_NUMBER
+        data_type: NUMBER(38,0)
+      - name: MONTH_NAME
+        expr: MONTH_NAME
+        data_type: TEXT
+      - name: QUARTER
+        expr: QUARTER
+        data_type: NUMBER(38,0)
+      - name: YEAR
+        expr: YEAR
+        data_type: NUMBER(38,0)
+      - name: FISCAL_PERIOD
+        expr: FISCAL_PERIOD
+        data_type: TEXT
+      - name: RETAIL_SEASON
+        expr: CASE WHEN MONTH(FULL_DATE) IN (11, 12) THEN 'Holiday' WHEN
+          MONTH(FULL_DATE) IN (6, 7, 8) THEN 'Summer' WHEN MONTH(FULL_DATE) IN
+          (3, 4, 5) THEN 'Spring' ELSE 'Winter' END
+        data_type: TEXT
+        description: Retail season grouping
+    time_dimensions:
+      - name: FULL_DATE
+        expr: FULL_DATE
+        data_type: DATE
+        time_granularity: day
+  - name: PROMO_DIM
+    description: Promotions and discount catalog
+    base_table:
+      database: CSA
+      schema: TJ
+      table: PROMO_DIM
+    primary_key:
+      columns:
+        - PROMO_KEY
+    dimensions:
+      - name: PROMO_KEY
+        expr: PROMO_KEY
+        data_type: NUMBER(38,0)
+      - name: PROMO_ID
+        expr: PROMO_ID
+        data_type: TEXT
+      - name: PROMO_NAME
+        expr: PROMO_NAME
+        data_type: TEXT
+      - name: PROMO_TYPE
+        expr: PROMO_TYPE
+        data_type: TEXT
+      - name: CHANNEL
+        expr: CHANNEL
+        data_type: TEXT
+      - name: DISCOUNT_PCT
+        expr: DISCOUNT_PCT
+        data_type: NUMBER(38,12)
+      - name: MIN_ORDER_AMOUNT
+        expr: MIN_ORDER_AMOUNT
+        data_type: NUMBER(38,12)
+      - name: TARGET_SEGMENT
+        expr: TARGET_SEGMENT
+        data_type: TEXT
+      - name: PROMO_DURATION_DAYS
+        expr: DATEDIFF('day', START_DATE, END_DATE)
+        data_type: NUMBER(38,0)
+        description: Length of promotion in days
+    time_dimensions:
+      - name: START_DATE
+        expr: START_DATE
+        data_type: DATE
+        time_granularity: day
+      - name: END_DATE
+        expr: END_DATE
+        data_type: DATE
+        time_granularity: day
+    facts:
+      - name: PROMO_COST
+        expr: PROMO_COST
+        data_type: NUMBER(38,12)
+relationships:
+  - name: orders_to_customers
+    left_table: ORDER_FACT
+    right_table: CUSTOMER_DIM
+    relationship_columns:
+      - left_column: CUSTOMER_KEY
+        right_column: CUSTOMER_KEY
+  - name: orders_to_products
+    left_table: ORDER_FACT
+    right_table: PRODUCT_DIM
+    relationship_columns:
+      - left_column: PRODUCT_KEY
+        right_column: PRODUCT_KEY
+  - name: orders_to_stores
+    left_table: ORDER_FACT
+    right_table: STORE_DIM
+    relationship_columns:
+      - left_column: ORDER_STORE_KEY
+        right_column: STORE_KEY
+  - name: orders_to_dates
+    left_table: ORDER_FACT
+    right_table: DATE_DIM
+    relationship_columns:
+      - left_column: ORDER_DATE_KEY
+        right_column: DATE_KEY
+  - name: orders_to_promos
+    left_table: ORDER_FACT
+    right_table: PROMO_DIM
+    relationship_columns:
+      - left_column: PROMO_KEY
+        right_column: PROMO_KEY

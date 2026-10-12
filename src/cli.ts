@@ -36,7 +36,8 @@ import { convertBobjToSigma } from './bobj.js';
 
 type Kind = 'text' | 'files' | 'json' | 'sql';
 // Most converters return a data `model`; cognos-report returns a `workbook`.
-type Result = { model?: any; workbook?: any; warnings: string[]; stats?: any };
+// The snowflake converter also reports refusals: `refused` / `findings` / `needs` (see SnowflakeConversionResult).
+type Result = { model?: any; workbook?: any; warnings: string[]; stats?: any; refused?: boolean; allRefused?: boolean; refusedViews?: string[]; findings?: any[]; needs?: any; bestEffortWouldConvert?: boolean; results?: { ok: boolean; viewName: string; model?: any; stats?: any; findings?: any[] }[] };
 interface Entry { kind: Kind; run: (input: any, opts: any) => Result; note?: string; }
 
 // One entry per converter. `kind` says how --file(s) become the first arg:
@@ -74,6 +75,8 @@ function usage(): never {
     `Sources:\n  ${sources}\n\n` +
     `Notes:\n  --file repeats for multi-file formats (lookml, cube, omni, quicksight).\n` +
     `  --opts merges extra converter options as JSON (e.g. auto_metrics, exploreName, tableMap, physicalMap, dataModelId).\n` +
+    `  --best-effort (snowflake) emits constructs that would otherwise be refused; exit code 1 when ANY view is refused.\n` +
+    `  Several views in one snowflake file: output carries results[] (one {viewName, ok, sigmaDataModel, stats, findings} per view; stats is the sum).\n` +
     `  Output is { sigmaDataModel, stats, warnings } JSON; warnings also print to stderr.\n`,
   );
   process.exit(2);
@@ -81,7 +84,7 @@ function usage(): never {
 
 function parseArgs(argv: string[]) {
   const files: string[] = [];
-  const opts: Record<string, string> = {};
+  const opts: Record<string, string | boolean> = {};
   let source = '';
   let out = '';
   let jsonOpts: any = {};
@@ -92,6 +95,7 @@ function parseArgs(argv: string[]) {
     else if (a === '--connection') opts.connectionId = argv[++i];
     else if (a === '--db' || a === '--database') opts.database = argv[++i];
     else if (a === '--schema') opts.schema = argv[++i];
+    else if (a === '--best-effort') opts.bestEffort = true;
     else if (a === '--out' || a === '-o') out = argv[++i];
     else if (a === '--opts') { try { jsonOpts = JSON.parse(argv[++i]); } catch { throw new Error('--opts must be valid JSON'); } }
     else if (!a.startsWith('-') && !source) source = a;
@@ -121,13 +125,32 @@ function main() {
 
   const input = buildInput(entry.kind, files);
   const result = entry.run(input, options);
+  // Multi-view snowflake input: every view's model lives in results[] (top-level sigmaDataModel would silently describe only the first).
+  const multi = (result.results?.length ?? 0) > 1;
+  const artifact = multi ? undefined : (result.model ?? result.workbook);
   const artifactKey = result.model ? 'sigmaDataModel' : 'sigmaWorkbook';
-  const payload = JSON.stringify({ [artifactKey]: result.model ?? result.workbook, stats: result.stats, warnings: result.warnings }, null, 2);
+  // A refused snowflake conversion has no model: emit the refusal report instead of a null artifact.
+  const refusal = result.refused !== undefined
+    ? {
+        refused: result.refused, allRefused: result.allRefused, refusedViews: result.refusedViews,
+        bestEffortWouldConvert: result.bestEffortWouldConvert, needs: result.needs, findings: result.findings,
+        ...(multi && { results: (result.results ?? []).map((r: any) => ({ viewName: r.viewName, ok: r.ok, ...(r.model && { sigmaDataModel: r.model }), ...(r.stats && { stats: r.stats }), findings: r.findings })) }),
+      }
+    : {};
+  const payload = JSON.stringify({ ...(artifact !== undefined && { [artifactKey]: artifact }), stats: result.stats, warnings: result.warnings, ...refusal }, null, 2);
   if (out) { writeFileSync(out, payload); process.stderr.write(`Wrote ${out}\n`); }
   else process.stdout.write(payload + '\n');
 
   const ws = result.warnings || [];
   if (ws.length) { process.stderr.write(`\n${ws.length} warning(s):\n`); for (const w of ws) process.stderr.write(`  - ${w}\n`); }
+
+  // Non-zero exit when the converter refused (snowflake: nothing converted, or any view in a multi-view input refused).
+  const failedViews = (result.results || []).filter(r => !r.ok).map(r => r.viewName || '(unnamed)');
+  if (result.refused || failedViews.length) {
+    const hint = result.needs ? ' Supply --db/--schema.' : result.bestEffortWouldConvert ? ' --best-effort would convert it (differences are reported).' : '';
+    process.stderr.write(`\nRefused: ${failedViews.length ? failedViews.join(', ') : 'input'} did not convert.${hint}\n`);
+    process.exitCode = 1;
+  }
 }
 
 try { main(); }

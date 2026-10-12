@@ -31,6 +31,7 @@ Each fixture is a directory containing:
     "asserts": {
       "minElements": 4,
       "minRelationships": 2,
+      "minMetrics": 1,
       "minHelperElements": 1,
       "noErrorColumns": true
     }

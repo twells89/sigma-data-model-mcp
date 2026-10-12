@@ -1,0 +1,15 @@
+{
+  "commit": "360eb6af316deed841d78d879583c966239bf8be",
+  "ports": [
+    {
+      "file": "packages/cli/src/registry.ts",
+      "symbol": "detectFromByContent",
+      "sha256": "22342e564b7fe011e412a67febce4f1f756a833bba8e53215e2ce417cdc5c900"
+    },
+    {
+      "file": "packages/cli/src/main.ts",
+      "symbol": "unqualifiedReferences",
+      "sha256": "c42bfb3d67e703fb9a5dd0bc506438c3688f1ae8be5be0df63b8ed75cf02e08f"
+    }
+  ]
+}

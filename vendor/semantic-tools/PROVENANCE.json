@@ -1,0 +1,14 @@
+{
+  "semanticToolsRepo": "https://github.com/sigmacomputing/semantic-tools.git",
+  "semanticToolsCommit": "360eb6af316deed841d78d879583c966239bf8be",
+  "embedVersion": "1.2.2",
+  "builtWith": {
+    "esbuild": "0.27.7",
+    "yaml": "2.9.0"
+  },
+  "sourceSha256": "95ebac12027bcbd02135e46f6befe7e42303a295a2940374e98cd8e7968368d3",
+  "sha256": {
+    "semantic-tools-embed.mjs": "ee33019dd48e2c4702b67c14c42709a9454a1962e0ac7c5178c905b1feb21e22",
+    "semantic-tools-embed.iife.min.js": "42d6e3dd46568ad2e89d257889d97ea76ddf064af2c448d6da54f35c08415dda"
+  }
+}

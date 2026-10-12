@@ -1,0 +1,12 @@
+{
+  "description": "Snowflake semantic view YAML over CSA.TJ retail star (6 tables, 5 top-level relationships, facts but no metrics) through the bundled semantic-tools engine. Spec-compliant copy of the legacy fixture whose in-table relationships the engine flags as UNRECOGNIZED_YAML_KEY. No metrics are defined, so none may be emitted (the retired converter auto-generated Sum() per fact).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 6,
+    "minRelationships": 5,
+    "maxMetrics": 0,
+    "noErrorColumns": true
+  }
+}

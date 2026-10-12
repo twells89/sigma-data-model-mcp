@@ -85,28 +85,86 @@ create a data model, or PUT to /v2/dataModels/{id}/spec to update one.`,
 
   server.tool(
     'convert_snowflake_to_sigma',
-    `Convert Snowflake Semantic View YAML to Sigma Computing data model JSON.
+    `Convert a Snowflake semantic view to a Sigma Computing data model spec.
 
-Accepts Snowflake Cortex Analyst semantic view YAML definitions. Handles tables
-with dimensions, time_dimensions, facts, primary keys, inline relationships,
-and top-level relationships. Facts auto-generate Sum() metrics.`,
+Input: Snowflake semantic view YAML, or CREATE SEMANTIC VIEW DDL (pass it as
+\`source\`; \`yaml_content\` is an alias). To fetch the DDL, run in Snowflake:
+  SELECT GET_DDL('SEMANTIC_VIEW', 'DB.SCHEMA.NAME')
+
+Engine: the semantic-tools converter (same behaviour as its CLI). It never
+invents metrics: metrics come only from the view's own definitions. It REFUSES
+constructs that would return different numbers in Sigma than in Snowflake
+(for example SEMI_ADDITIVE_METRIC, ASOF_RELATIONSHIP, range joins, window
+metrics, a view with no metrics) and reports them as findings, returning no
+data model (refused: true). Pass best_effort: true to emit them anyway; the
+differences are then reported. \`bestEffortWouldConvert\` tells you if that would help.
+
+Columns that read through a relationship (cross-table references) are placed on a derived
+"<table> (joined)" element, the only place Sigma resolves them (CROSS_TABLE_REFERENCES_MOVED
+finding); cross_table_references: 'engine' keeps the raw engine output.
+
+database / schema are needed ONLY when the view has unqualified table names;
+the result's \`needs\` says what to supply. Optionally pass column_types
+(e.g. {"DB.SCHEMA.TABLE": {"COL": "TIMESTAMP_TZ"}}) so time-zone-dependent
+checks can run; without it a COLUMN_TYPES_SKIPPED warning is returned.
+
+Returns { sigmaDataModel (single-view input only), refused, allRefused, refusedViews,
+bestEffortWouldConvert, needs, findings, stats, warnings, results, engine }.
+With SEVERAL views, every converted model is in results[].sigmaDataModel (there is no
+top-level sigmaDataModel), results[].stats holds each view's counts, and top-level stats is
+the SUM over the converted views. \`refused\` is true when ANY view was refused (a partial
+result is still a refusal: see refusedViews); \`allRefused\` is true when none converted.`,
     {
-      yaml_content: z.string().describe('The Snowflake semantic view YAML content'),
-      connection_id: z.string().describe('Sigma connection UUID; pass empty string to omit'),
-      auto_metrics: z.boolean().describe('Auto-generate Sum() metrics for fact columns (pass true unless you want to skip metrics)'),
+      source: z.string().optional().describe('Snowflake semantic view YAML or CREATE SEMANTIC VIEW DDL (may contain several statements)'),
+      yaml_content: z.string().optional().describe('Alias for `source` (kept for backward compatibility). Provide exactly one of source / yaml_content.'),
+      connection_id: z.string().optional().describe('Sigma connection UUID; omit or pass empty string to leave a placeholder you fill in later'),
+      database: z.string().optional().describe('Snowflake database for unqualified table references (only needed if the result reports `needs`)'),
+      schema: z.string().optional().describe('Snowflake schema for unqualified table references (only needed if the result reports `needs`)'),
+      column_types: z.record(z.record(z.string())).optional().describe("Column types per table, e.g. {'DB.SCHEMA.TABLE': {COL: 'TIMESTAMP_TZ'}}; enables time-zone checks"),
+      best_effort: z.boolean().optional().describe('Emit constructs that would otherwise be refused (differences are reported as overridden errors)'),
+      synonyms_in_description: z.boolean().optional().describe('Append "Also known as: ..." synonyms to element/column/metric descriptions (default true; Sigma has no synonyms field). Pass false to drop them.'),
+      infer_number_formats: z.boolean().optional().describe('Add number formats (currency, integer, percent) to metrics and calculated columns, but only where the evidence supports it: column type (YAML data_type or column_types), sample_values, word-level name tokens, propagated through the formula (e.g. Avg of a 0-1 rate is a percent, Avg of an unlabelled "discount" gets no format). Items left unformatted are listed in FORMATS_NOT_INFERRED; add sample_values / data_type / column_types to the source for better results. Default false.'),
+      cross_table_references: z.enum(['derived', 'engine']).optional().describe("'derived' (default): columns/metrics that read through a relationship (e.g. a dimension defined on another table) are placed on a derived '<table> (joined)' element, the only place Sigma resolves them; a CROSS_TABLE_REFERENCES_MOVED finding lists them. 'engine': raw semantic-tools output (those columns stay on the owning element and Sigma will reject them)."),
+      auto_metrics: z.boolean().optional().describe('DEPRECATED and ignored: metrics now come only from the semantic view'),
     },
-    async ({ yaml_content, connection_id, auto_metrics }) => {
+    async ({ source, yaml_content, connection_id, database, schema, column_types, best_effort, synonyms_in_description, infer_number_formats, cross_table_references, auto_metrics }) => {
       try {
-        const result = convertSnowflakeSemanticView(yaml_content, {
+        const given = [source, yaml_content].filter(v => typeof v === 'string' && v.trim() !== '');
+        if (given.length !== 1) {
+          throw new Error('Provide exactly one non-empty `source` (or its alias `yaml_content`): Snowflake semantic view YAML or CREATE SEMANTIC VIEW DDL.');
+        }
+        const result = convertSnowflakeSemanticView(given[0] as string, {
           connectionId: connection_id || undefined,
+          database,
+          schema,
+          columnTypes: column_types,
+          bestEffort: best_effort,
+          synonymsInDescription: synonyms_in_description,
+          inferNumberFormats: infer_number_formats,
+          crossTableReferences: cross_table_references,
           autoMetrics: auto_metrics,
         });
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({ sigmaDataModel: result.model, stats: result.stats, warnings: result.warnings }, null, 2),
-          }],
+        const single = result.results.length === 1;
+        const payload = {
+          ...(single && result.model && { sigmaDataModel: result.model }),
+          refused: result.refused,
+          allRefused: result.allRefused,
+          refusedViews: result.refusedViews,
+          bestEffortWouldConvert: result.bestEffortWouldConvert,
+          needs: result.needs ?? null,
+          findings: result.findings,
+          stats: result.stats,
+          warnings: result.warnings,
+          results: result.results.map(r => ({
+            viewName: r.viewName,
+            ok: r.ok,
+            ...(!single && r.model && { sigmaDataModel: r.model }),
+            ...(r.stats && { stats: r.stats }),
+            findings: r.findings,
+          })),
+          engine: result.engine,
         };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }] };
       } catch (e: any) {
         return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
       }
@@ -1373,13 +1431,20 @@ Steps:
         role: 'user' as const,
         content: {
           type: 'text' as const,
-          text: `I need to convert a Snowflake Cortex Analyst semantic view to a Sigma data model.
+          text: `I need to convert a Snowflake semantic view to a Sigma data model.
 
 Steps:
-1. Read the Snowflake semantic view YAML
-2. Use the convert_snowflake_to_sigma tool
-3. Facts auto-generate Sum() metrics (disable with auto_metrics: false)
-4. Review warnings, then save to Sigma via the API`,
+1. Get the semantic view definition: the YAML, or the DDL via
+   SELECT GET_DDL('SEMANTIC_VIEW', 'DB.SCHEMA.NAME') in Snowflake
+2. Call the convert_snowflake_to_sigma tool with it as \`source\` (connection_id if known)
+3. Metrics come only from the view's own definitions; nothing is auto-generated
+   (auto_metrics is deprecated and ignored)
+4. If the result has refused: true, read the findings: the converter refuses constructs
+   that would return different numbers than Snowflake. Only retry with best_effort: true
+   if the user accepts the reported differences
+5. If the result has \`needs\`, ask for the database/schema and call again; optionally pass
+   column_types so TIMESTAMP_TZ checks can run
+6. Review warnings, then save sigmaDataModel to Sigma via POST /v2/dataModels/spec with folderId`,
         },
       }],
     })

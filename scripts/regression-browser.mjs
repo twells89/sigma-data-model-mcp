@@ -84,7 +84,8 @@ const FMT_TO_KEY = {
   thoughtspot: 'thoughtspot',
   quicksight:  'quicksight',
   bobj:        'bobj',
-  // Not yet covered by fixtures: contract (atlan), snow, sql, ssas
+  snowflake:   'snow',
+  // Not yet covered by fixtures: contract (atlan), sql, ssas
 };
 
 // ── Sigma API helpers (mirrors regression.mjs) ────────────────────────────
@@ -198,6 +199,12 @@ function shapeSummary(model) {
 
 function checkAsserts(asserts, summary) {
   const issues = [];
+  if (asserts?.minMetrics != null && summary.metrics < asserts.minMetrics) {
+    issues.push(`metrics ${summary.metrics} < expected min ${asserts.minMetrics}`);
+  }
+  if (asserts?.maxMetrics != null && summary.metrics > asserts.maxMetrics) {
+    issues.push(`metrics ${summary.metrics} > expected max ${asserts.maxMetrics}`);
+  }
   if (asserts?.minElements != null && summary.elements < asserts.minElements) {
     issues.push(`elements ${summary.elements} < expected min ${asserts.minElements}`);
   }
@@ -675,6 +682,39 @@ async function drivePrep(page, fx, opts) {
   return readOutput(page, 'prepJsonOutput');
 }
 
+// Drive Snowflake semantic view (YAML or CREATE SEMANTIC VIEW DDL): paste into #snowYamlInput,
+// set connection / database / schema (+ optional synonyms / number formats / column types /
+// best-effort from convertOptions), run, read #snowJsonOutput. The panel output is the spec
+// with a top-level `name` (the raw view name) added — the same shape the MCP tool returns.
+async function driveSnow(page, fx, opts) {
+  const text = await readFile(fx.inputFile, 'utf-8');
+  const result = await page.evaluate(async (txt, connId, o) => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; return el; };
+    if (typeof snowClearFiles === 'function') snowClearFiles();
+    set('snowYamlInput', txt);
+    const sel = document.getElementById('snowConnectionId');
+    if (sel) {
+      if (![...sel.options].some(x => x.value === connId)) {
+        const opt = document.createElement('option');
+        opt.value = connId; opt.textContent = connId;
+        sel.appendChild(opt);
+      }
+      sel.value = connId;
+    }
+    set('snowDatabase', o.database || '');
+    set('snowSchema', o.schema || '');
+    const syn = document.getElementById('snowSynonyms'); if (syn) syn.checked = !!o.synonymsInDescription;
+    const nf = document.getElementById('snowNumberFormats'); if (nf) nf.checked = !!o.inferNumberFormats;
+    set('snowColumnTypes', o.columnTypes ? JSON.stringify(o.columnTypes) : '');
+    try {
+      runSnowConversion(o.bestEffort ? { bestEffort: true } : undefined);
+    } catch (e) { return { ok: false, error: 'run: ' + e.message }; }
+    return { ok: true };
+  }, text, opts.connectionId || '<CONNECTION_ID>', opts);
+  if (!result.ok) return result;
+  return readOutput(page, 'snowJsonOutput');
+}
+
 // Read the output textarea, parse JSON.
 async function readOutput(page, outputId) {
   const v = await page.evaluate((id) => document.getElementById(id)?.value || '', outputId);
@@ -701,6 +741,7 @@ const DRIVERS = {
   thoughtspot: driveThoughtSpot,
   quicksight:  driveQuickSight,
   bobj:        driveBobj,
+  snowflake:   driveSnow,
 };
 
 // ── Per-fixture runner ────────────────────────────────────────────────────
