@@ -37,6 +37,12 @@ export interface SnowflakeConvertOptions {
    * element (the only place Sigma resolves them). 'engine': raw semantic-tools output.
    */
   crossTableReferences?: 'derived' | 'engine';
+  /**
+   * Only with `bestEffort`. 'bound' (default): each metric pinned with USING (METRIC_JOIN_PATH_SELECTOR, which best effort would
+   * otherwise emit as a plain metric identical to the unpinned one) moves to a `<FACT> (via <relationship>)` derived element that
+   * joins only through the pinned relationship(s). 'engine': raw semantic-tools output.
+   */
+  usingPaths?: 'bound' | 'engine';
   /** @deprecated Accepted and ignored: metrics now come only from the view's own definitions. */
   autoMetrics?: boolean;
 }
@@ -120,6 +126,7 @@ export function convertSnowflakeSemanticView(
     ...(options.synonymsInDescription !== false && { synonymsInDescription: true }),
     ...(options.inferNumberFormats && { inferNumberFormats: true }),
     crossTableReferences: options.crossTableReferences === 'engine' ? 'engine' : 'derived',
+    usingPaths: options.usingPaths === 'engine' ? 'engine' : 'bound',
   });
 
   const multi = run.results.length > 1;

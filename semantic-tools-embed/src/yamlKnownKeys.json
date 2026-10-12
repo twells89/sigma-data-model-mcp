@@ -1,5 +1,5 @@
 {
-  "_comment": "Keys the pinned upstream YAML reader (packages/snowflake-semantic-view/src/readYaml.ts) READS, per object level. scripts/yaml-key-drift.mjs derives the same sets from readYaml.ts and fails the build/check when they differ, so this table cannot rot when the PIN moves. `benign` = keys upstream does NOT read but which carry no conversion-relevant information (Sigma infers column types/granularity from the warehouse); NOT drift-checked, maintained by hand. Anything in neither list is reported as UNRECOGNIZED_YAML_KEY.",
+  "_comment": "Keys the pinned upstream YAML reader (packages/snowflake-semantic-view/src/readYaml.ts) READS, per object level. scripts/yaml-key-drift.mjs derives the same sets from readYaml.ts and fails the build/check when they differ, so this table cannot rot when the PIN moves. `benign` = keys upstream does NOT read but which carry no conversion-relevant information (Sigma infers column types/granularity from the warehouse; `unique` and `relationship_type` are what SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW adds and the engine re-derives cardinality from the keys; `join_type: inner` is reported separately as JOIN_TYPE_INNER); NOT drift-checked, maintained by hand. Anything in neither list is reported as UNRECOGNIZED_YAML_KEY.",
   "read": {
     "root": ["name", "tables", "variables", "metrics", "relationships", "description", "tags", "max_staleness", "custom_instructions", "module_custom_instructions", "verified_queries"],
     "table": ["name", "base_table", "primary_key", "unique_keys", "synonyms", "description", "tags", "facts", "dimensions", "time_dimensions", "metrics"],
@@ -13,6 +13,7 @@
     "right_range": ["start_column", "end_column"]
   },
   "benign": {
-    "object": ["data_type", "time_granularity"]
+    "object": ["data_type", "time_granularity", "unique"],
+    "relationship": ["relationship_type", "join_type"]
   }
 }

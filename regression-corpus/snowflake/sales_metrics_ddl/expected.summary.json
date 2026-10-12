@@ -1,0 +1,13 @@
+{
+  "description": "CREATE SEMANTIC VIEW DDL over the CSA.TJ retail star (CSA.TJ.ORDER_FACT, CUSTOMER_DIM, PRODUCT_DIM, STORE_DIM, DATE_DIM, PROMO_DIM; 5 relationships, 14 metrics, no USING-pinned metrics) from a real SYSTEM$GET_DDL-style export. Fully qualified, so database/schema are not needed. Guards the plain DDL path on a many-metric view.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 6,
+    "minRelationships": 5,
+    "minMetrics": 14,
+    "maxMetrics": 14,
+    "noErrorColumns": true
+  }
+}

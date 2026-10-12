@@ -1,0 +1,13 @@
+{
+  "description": "CREATE SEMANTIC VIEW DDL over the CSA.TJ workforce tables (CSA.TJ.EMPLOYEES, TIME_ENTRIES, ABSENCE_RECORDS, SAFETY_INCIDENTS, LABOR_COSTS; 3 relationships into EMPLOYEES, 14 metrics, synonyms and comments). Fully qualified. EXPRESSION_PASSTHROUGH is expected (informational).",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a"
+  },
+  "asserts": {
+    "minElements": 5,
+    "minRelationships": 3,
+    "minMetrics": 14,
+    "maxMetrics": 14,
+    "noErrorColumns": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "description": "RETAIL_ANALYTICS_SV over CSA.TJ (ORDER_FACT, CUSTOMER_DIM, PRODUCT_DIM, STORE_DIM, DATE_DIM, PROMO_DIM) with role-playing date/store relationships and 10 metrics pinned with USING (<relationship>). Without bestEffort the engine REFUSES it (METRIC_JOIN_PATH_SELECTOR x10), so bestEffort is required. Best effort binds each pinned metric to a '<FACT> (via <relationship>)' derived element joined only through that relationship (usingPaths 'bound'): 6 warehouse elements + 5 via-elements = 11, 8 relationships, 21 metrics moved (not duplicated). noErrorColumns proves the 3-part [ORDER_FACT/<relationship>/<column>] refs resolve live; verify per-path totals differ (order date vs ship date) when run against Sigma.",
+  "convertOptions": {
+    "connectionId": "cb2f5180-641f-47bd-8efa-da9d590d855a",
+    "bestEffort": true
+  },
+  "asserts": {
+    "minElements": 11,
+    "minRelationships": 8,
+    "minMetrics": 21,
+    "maxMetrics": 21,
+    "noErrorColumns": true
+  }
+}

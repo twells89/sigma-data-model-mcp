@@ -707,7 +707,10 @@ async function driveSnow(page, fx, opts) {
     const nf = document.getElementById('snowNumberFormats'); if (nf) nf.checked = !!o.inferNumberFormats;
     set('snowColumnTypes', o.columnTypes ? JSON.stringify(o.columnTypes) : '');
     try {
-      runSnowConversion(o.bestEffort ? { bestEffort: true } : undefined);
+      // As a user does it: a normal Convert, then "Convert anyway (best effort)" for the
+      // selected view (best effort is scoped to the selected view and runSnowConversion is async).
+      await runSnowConversion();
+      if (o.bestEffort) await runSnowConversion({ bestEffort: true });
     } catch (e) { return { ok: false, error: 'run: ' + e.message }; }
     return { ok: true };
   }, text, opts.connectionId || '<CONNECTION_ID>', opts);

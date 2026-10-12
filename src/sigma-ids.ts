@@ -44,7 +44,7 @@ const NS_MODULUS = 62 ** 4;    // 14,776,336 namespace buckets
 const NS_BLOCK = 1_000_000;    // ids per invocation (a model mints ~thousands)
 
 /** Small words that Sigma keeps lowercase in display names (unless first word) */
-const SIGMA_LOWERCASE_WORDS = new Set([
+export const SIGMA_LOWERCASE_WORDS = new Set([
   'a','an','the','and','but','or','for','nor','so','yet',
   'at','by','in','of','on','to','up','as','into','via','per'
 ]);

@@ -1,0 +1,575 @@
+name: RETAIL_ANALYTICS_SV
+description: Retail analytics semantic view with role-playing store and date dimensions
+tables:
+  - name: CUSTOMER_DIM
+    description: Customer dimension with demographics and lifetime metrics
+    base_table:
+      database: CSA
+      schema: TJ
+      table: CUSTOMER_DIM
+    primary_key:
+      columns:
+        - CUSTOMER_KEY
+    dimensions:
+      - name: ACQUISITION_CHANNEL
+        expr: ACQUISITION_CHANNEL
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+      - name: CUSTOMER_ID
+        expr: CUSTOMER_ID
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: CUSTOMER_KEY
+        expr: customer_dim.CUSTOMER_KEY
+        data_type: "NUMBER(10,0)"
+        access_modifier: public_access
+      - name: CUSTOMER_SEGMENT
+        expr: CUSTOMER_SEGMENT
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+      - name: CUST_CITY
+        expr: customer_dim.CITY
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: CUST_REGION
+        expr: customer_dim.REGION
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: CUST_STATE
+        expr: customer_dim.STATE
+        data_type: VARCHAR(2)
+        access_modifier: public_access
+      - name: EMAIL
+        expr: EMAIL
+        data_type: VARCHAR(100)
+        access_modifier: public_access
+      - name: FIRST_NAME
+        expr: FIRST_NAME
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: FIRST_ORDER_DATE
+        expr: FIRST_ORDER_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: LAST_NAME
+        expr: LAST_NAME
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: LOYALTY_TIER
+        expr: LOYALTY_TIER
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: PHONE
+        expr: PHONE
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: ZIP_CODE
+        expr: ZIP_CODE
+        data_type: VARCHAR(10)
+        access_modifier: public_access
+    facts:
+      - name: IS_ACTIVE
+        expr: IS_ACTIVE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: IS_EMAIL_OPT_IN
+        expr: IS_EMAIL_OPT_IN
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: LIFETIME_ORDER_COUNT
+        expr: LIFETIME_ORDER_COUNT
+        data_type: "NUMBER(5,0)"
+        access_modifier: public_access
+      - name: LIFETIME_REVENUE
+        expr: LIFETIME_REVENUE
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+  - name: DATE_DIM
+    description: "Date dimension for order, ship, and return dates"
+    base_table:
+      database: CSA
+      schema: TJ
+      table: DATE_DIM
+    primary_key:
+      columns:
+        - DATE_KEY
+    dimensions:
+      - name: DATE_KEY
+        expr: date_dim.DATE_KEY
+        data_type: "NUMBER(8,0)"
+        access_modifier: public_access
+      - name: DAY_OF_WEEK
+        expr: DAY_OF_WEEK
+        data_type: VARCHAR(10)
+        access_modifier: public_access
+      - name: FISCAL_PERIOD
+        expr: FISCAL_PERIOD
+        data_type: VARCHAR(10)
+        access_modifier: public_access
+      - name: FULL_DATE
+        expr: FULL_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: MONTH_NAME
+        expr: MONTH_NAME
+        data_type: VARCHAR(10)
+        access_modifier: public_access
+    facts:
+      - name: DAY_OF_MONTH
+        expr: DAY_OF_MONTH
+        data_type: "NUMBER(2,0)"
+        access_modifier: public_access
+      - name: IS_HOLIDAY
+        expr: IS_HOLIDAY
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: IS_WEEKEND
+        expr: IS_WEEKEND
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: MONTH_NUMBER
+        expr: MONTH_NUMBER
+        data_type: "NUMBER(2,0)"
+        access_modifier: public_access
+      - name: QUARTER
+        expr: QUARTER
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: WEEK_OF_YEAR
+        expr: WEEK_OF_YEAR
+        data_type: "NUMBER(2,0)"
+        access_modifier: public_access
+      - name: YEAR
+        expr: YEAR
+        data_type: "NUMBER(4,0)"
+        access_modifier: public_access
+  - name: ORDER_FACT
+    description: Central fact table for retail orders at order-line grain
+    base_table:
+      database: CSA
+      schema: TJ
+      table: ORDER_FACT
+    primary_key:
+      columns:
+        - ORDER_ID
+        - ORDER_LINE
+    dimensions:
+      - name: ORDER_CHANNEL
+        expr: ORDER_CHANNEL
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: ORDER_ID
+        expr: ORDER_ID
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: ORDER_LINE
+        expr: ORDER_LINE
+        data_type: "NUMBER(4,0)"
+        access_modifier: public_access
+      - name: ORDER_STATUS
+        expr: ORDER_STATUS
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: SHIP_METHOD
+        expr: SHIP_METHOD
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+    facts:
+      - name: DAYS_TO_SHIP
+        expr: DAYS_TO_SHIP
+        data_type: "NUMBER(4,0)"
+        access_modifier: public_access
+      - name: DISCOUNT_AMOUNT
+        expr: DISCOUNT_AMOUNT
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: GROSS_PROFIT
+        expr: GROSS_PROFIT
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+      - name: GROSS_REVENUE
+        expr: GROSS_REVENUE
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+      - name: IS_CANCELLED
+        expr: IS_CANCELLED
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: IS_FIRST_ORDER
+        expr: IS_FIRST_ORDER
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: IS_RETURNED
+        expr: IS_RETURNED
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: NET_PROFIT
+        expr: NET_PROFIT
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+      - name: NET_REVENUE
+        expr: NET_REVENUE
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+      - name: QUANTITY_ORDERED
+        expr: QUANTITY_ORDERED
+        data_type: "NUMBER(6,0)"
+        access_modifier: public_access
+      - name: QUANTITY_RETURNED
+        expr: QUANTITY_RETURNED
+        data_type: "NUMBER(6,0)"
+        access_modifier: public_access
+      - name: SHIPPING_AMOUNT
+        expr: SHIPPING_AMOUNT
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: TAX_AMOUNT
+        expr: TAX_AMOUNT
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: UNIT_COST
+        expr: UNIT_COST
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: UNIT_PRICE
+        expr: UNIT_PRICE
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+    metrics:
+      - name: AVG_DAYS_TO_SHIP
+        expr: AVG(order_fact.days_to_ship)
+        access_modifier: public_access
+      - name: ORDER_LINE_COUNT
+        expr: COUNT(*)
+        access_modifier: public_access
+      - name: ORDER_LINE_COUNT_BY_ORDER_DATE
+        expr: COUNT(*)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_ORDER_DATE
+      - name: ORDER_LINE_COUNT_BY_ORDER_STORE
+        expr: COUNT(*)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_ORDER_STORE
+      - name: ORDER_LINE_COUNT_BY_RETURN_DATE
+        expr: COUNT(*)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_RETURN_DATE
+      - name: ORDER_LINE_COUNT_BY_SHIP_DATE
+        expr: COUNT(*)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_SHIP_DATE
+      - name: ORDER_LINE_COUNT_BY_SHIP_STORE
+        expr: COUNT(*)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_SHIP_STORE
+      - name: TOTAL_DISCOUNT
+        expr: SUM(order_fact.discount_amount)
+        access_modifier: public_access
+      - name: TOTAL_GROSS_PROFIT
+        expr: SUM(order_fact.gross_profit)
+        access_modifier: public_access
+      - name: TOTAL_GROSS_REVENUE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+      - name: TOTAL_GROSS_REVENUE_BY_ORDER_DATE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_ORDER_DATE
+      - name: TOTAL_GROSS_REVENUE_BY_ORDER_STORE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_ORDER_STORE
+      - name: TOTAL_GROSS_REVENUE_BY_RETURN_DATE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_RETURN_DATE
+      - name: TOTAL_GROSS_REVENUE_BY_SHIP_DATE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_SHIP_DATE
+      - name: TOTAL_GROSS_REVENUE_BY_SHIP_STORE
+        expr: SUM(order_fact.gross_revenue)
+        access_modifier: public_access
+        using_relationships:
+          - ORDER_TO_SHIP_STORE
+      - name: TOTAL_NET_PROFIT
+        expr: SUM(order_fact.net_profit)
+        access_modifier: public_access
+      - name: TOTAL_NET_REVENUE
+        expr: SUM(order_fact.net_revenue)
+        access_modifier: public_access
+      - name: TOTAL_QUANTITY_ORDERED
+        expr: SUM(order_fact.quantity_ordered)
+        access_modifier: public_access
+      - name: TOTAL_QUANTITY_RETURNED
+        expr: SUM(order_fact.quantity_returned)
+        access_modifier: public_access
+      - name: TOTAL_SHIPPING
+        expr: SUM(order_fact.shipping_amount)
+        access_modifier: public_access
+      - name: TOTAL_TAX
+        expr: SUM(order_fact.tax_amount)
+        access_modifier: public_access
+  - name: PRODUCT_DIM
+    description: Product dimension with catalog attributes
+    base_table:
+      database: CSA
+      schema: TJ
+      table: PRODUCT_DIM
+    primary_key:
+      columns:
+        - PRODUCT_KEY
+    dimensions:
+      - name: BRAND
+        expr: BRAND
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: CATEGORY
+        expr: CATEGORY
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: DISCONTINUE_DATE
+        expr: DISCONTINUE_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: LAUNCH_DATE
+        expr: LAUNCH_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: PRODUCT_ID
+        expr: PRODUCT_ID
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: PRODUCT_KEY
+        expr: product_dim.PRODUCT_KEY
+        data_type: "NUMBER(8,0)"
+        access_modifier: public_access
+      - name: PRODUCT_NAME
+        expr: PRODUCT_NAME
+        data_type: VARCHAR(150)
+        access_modifier: public_access
+      - name: SUBCATEGORY
+        expr: SUBCATEGORY
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+    facts:
+      - name: IS_PRIVATE_LABEL
+        expr: IS_PRIVATE_LABEL
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: IS_SEASONAL
+        expr: IS_SEASONAL
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: PROD_IS_ACTIVE
+        expr: product_dim.IS_ACTIVE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: PROD_UNIT_COST
+        expr: product_dim.UNIT_COST
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: PROD_UNIT_PRICE
+        expr: product_dim.UNIT_PRICE
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+      - name: WEIGHT_LBS
+        expr: WEIGHT_LBS
+        data_type: "NUMBER(6,2)"
+        access_modifier: public_access
+  - name: PROMO_DIM
+    description: Promotion dimension with discount and campaign details
+    base_table:
+      database: CSA
+      schema: TJ
+      table: PROMO_DIM
+    primary_key:
+      columns:
+        - PROMO_KEY
+    dimensions:
+      - name: CHANNEL
+        expr: CHANNEL
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+      - name: END_DATE
+        expr: promo_dim.END_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: PROMO_ID
+        expr: PROMO_ID
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: PROMO_KEY
+        expr: promo_dim.PROMO_KEY
+        data_type: "NUMBER(6,0)"
+        access_modifier: public_access
+      - name: PROMO_NAME
+        expr: PROMO_NAME
+        data_type: VARCHAR(100)
+        access_modifier: public_access
+      - name: PROMO_TYPE
+        expr: PROMO_TYPE
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+      - name: START_DATE
+        expr: promo_dim.START_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: TARGET_SEGMENT
+        expr: TARGET_SEGMENT
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+    facts:
+      - name: DISCOUNT_PCT
+        expr: DISCOUNT_PCT
+        data_type: "NUMBER(5,2)"
+        access_modifier: public_access
+      - name: IS_STACKABLE
+        expr: IS_STACKABLE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: MIN_ORDER_AMOUNT
+        expr: MIN_ORDER_AMOUNT
+        data_type: "NUMBER(8,2)"
+        access_modifier: public_access
+      - name: PROMO_COST
+        expr: PROMO_COST
+        data_type: "NUMBER(10,2)"
+        access_modifier: public_access
+  - name: STORE_DIM
+    description: Store dimension for order placement and fulfillment locations
+    base_table:
+      database: CSA
+      schema: TJ
+      table: STORE_DIM
+    primary_key:
+      columns:
+        - STORE_KEY
+    dimensions:
+      - name: CLOSE_DATE
+        expr: CLOSE_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: DISTRICT
+        expr: DISTRICT
+        data_type: VARCHAR(30)
+        access_modifier: public_access
+      - name: MANAGER_NAME
+        expr: MANAGER_NAME
+        data_type: VARCHAR(100)
+        access_modifier: public_access
+      - name: OPEN_DATE
+        expr: OPEN_DATE
+        data_type: DATE
+        access_modifier: public_access
+      - name: STORE_CITY
+        expr: store_dim.CITY
+        data_type: VARCHAR(50)
+        access_modifier: public_access
+      - name: STORE_ID
+        expr: STORE_ID
+        data_type: VARCHAR(10)
+        access_modifier: public_access
+      - name: STORE_KEY
+        expr: store_dim.STORE_KEY
+        data_type: "NUMBER(6,0)"
+        access_modifier: public_access
+      - name: STORE_NAME
+        expr: STORE_NAME
+        data_type: VARCHAR(100)
+        access_modifier: public_access
+      - name: STORE_PHONE
+        expr: STORE_PHONE
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: STORE_REGION
+        expr: store_dim.REGION
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+      - name: STORE_STATE
+        expr: store_dim.STATE
+        data_type: VARCHAR(2)
+        access_modifier: public_access
+      - name: STORE_TYPE
+        expr: STORE_TYPE
+        data_type: VARCHAR(20)
+        access_modifier: public_access
+    facts:
+      - name: ANNUAL_LEASE_COST
+        expr: ANNUAL_LEASE_COST
+        data_type: "NUMBER(12,2)"
+        access_modifier: public_access
+      - name: HAS_CAFE
+        expr: HAS_CAFE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: HAS_CURBSIDE
+        expr: HAS_CURBSIDE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+      - name: SQUARE_FOOTAGE
+        expr: SQUARE_FOOTAGE
+        data_type: "NUMBER(8,0)"
+        access_modifier: public_access
+      - name: STORE_IS_ACTIVE
+        expr: store_dim.IS_ACTIVE
+        data_type: "NUMBER(1,0)"
+        access_modifier: public_access
+relationships:
+  - name: ORDER_TO_CUSTOMER
+    left_table: ORDER_FACT
+    right_table: CUSTOMER_DIM
+    relationship_columns:
+      - left_column: CUSTOMER_KEY
+        right_column: CUSTOMER_KEY
+  - name: ORDER_TO_ORDER_DATE
+    left_table: ORDER_FACT
+    right_table: DATE_DIM
+    relationship_columns:
+      - left_column: ORDER_DATE_KEY
+        right_column: DATE_KEY
+  - name: ORDER_TO_ORDER_STORE
+    left_table: ORDER_FACT
+    right_table: STORE_DIM
+    relationship_columns:
+      - left_column: ORDER_STORE_KEY
+        right_column: STORE_KEY
+  - name: ORDER_TO_PRODUCT
+    left_table: ORDER_FACT
+    right_table: PRODUCT_DIM
+    relationship_columns:
+      - left_column: PRODUCT_KEY
+        right_column: PRODUCT_KEY
+  - name: ORDER_TO_PROMO
+    left_table: ORDER_FACT
+    right_table: PROMO_DIM
+    relationship_columns:
+      - left_column: PROMO_KEY
+        right_column: PROMO_KEY
+  - name: ORDER_TO_RETURN_DATE
+    left_table: ORDER_FACT
+    right_table: DATE_DIM
+    relationship_columns:
+      - left_column: RETURN_DATE_KEY
+        right_column: DATE_KEY
+  - name: ORDER_TO_SHIP_DATE
+    left_table: ORDER_FACT
+    right_table: DATE_DIM
+    relationship_columns:
+      - left_column: SHIP_DATE_KEY
+        right_column: DATE_KEY
+  - name: ORDER_TO_SHIP_STORE
+    left_table: ORDER_FACT
+    right_table: STORE_DIM
+    relationship_columns:
+      - left_column: SHIP_STORE_KEY
+        right_column: STORE_KEY

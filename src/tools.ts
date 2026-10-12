@@ -103,6 +103,13 @@ Columns that read through a relationship (cross-table references) are placed on 
 "<table> (joined)" element, the only place Sigma resolves them (CROSS_TABLE_REFERENCES_MOVED
 finding); cross_table_references: 'engine' keeps the raw engine output.
 
+Metrics pinned with USING (<relationship>) are refused (METRIC_JOIN_PATH_SELECTOR). With best_effort: true each
+pinned metric is moved to a derived "<TABLE> (via <relationship>)" element that joins ONLY through the pinned
+relationship(s), so its numbers follow Snowflake's USING path (USING_METRICS_PATH_BOUND finding; the overridden
+METRIC_JOIN_PATH_SELECTOR findings stay reported). Slice those metrics by that element's columns. using_paths: 'engine'
+keeps the raw engine output (a plain metric on the table, identical to the unpinned one). A YAML relationship with
+join_type: inner is flagged JOIN_TYPE_INNER (Sigma relationships keep fact rows without a match).
+
 database / schema are needed ONLY when the view has unqualified table names;
 the result's \`needs\` says what to supply. Optionally pass column_types
 (e.g. {"DB.SCHEMA.TABLE": {"COL": "TIMESTAMP_TZ"}}) so time-zone-dependent
@@ -125,9 +132,10 @@ result is still a refusal: see refusedViews); \`allRefused\` is true when none c
       synonyms_in_description: z.boolean().optional().describe('Append "Also known as: ..." synonyms to element/column/metric descriptions (default true; Sigma has no synonyms field). Pass false to drop them.'),
       infer_number_formats: z.boolean().optional().describe('Add number formats (currency, integer, percent) to metrics and calculated columns, but only where the evidence supports it: column type (YAML data_type or column_types), sample_values, word-level name tokens, propagated through the formula (e.g. Avg of a 0-1 rate is a percent, Avg of an unlabelled "discount" gets no format). Items left unformatted are listed in FORMATS_NOT_INFERRED; add sample_values / data_type / column_types to the source for better results. Default false.'),
       cross_table_references: z.enum(['derived', 'engine']).optional().describe("'derived' (default): columns/metrics that read through a relationship (e.g. a dimension defined on another table) are placed on a derived '<table> (joined)' element, the only place Sigma resolves them; a CROSS_TABLE_REFERENCES_MOVED finding lists them. 'engine': raw semantic-tools output (those columns stay on the owning element and Sigma will reject them)."),
+      using_paths: z.enum(['bound', 'engine']).optional().describe("Only acts with best_effort. 'bound' (default): each metric pinned with USING (relationship) moves to a derived '<TABLE> (via <relationship>)' element that joins only through the pinned relationship, so its numbers follow Snowflake's USING path (USING_METRICS_PATH_BOUND finding); slice it by that element's columns. 'engine': raw semantic-tools output (the pinned metric stays a plain metric on the table, identical to the unpinned one)."),
       auto_metrics: z.boolean().optional().describe('DEPRECATED and ignored: metrics now come only from the semantic view'),
     },
-    async ({ source, yaml_content, connection_id, database, schema, column_types, best_effort, synonyms_in_description, infer_number_formats, cross_table_references, auto_metrics }) => {
+    async ({ source, yaml_content, connection_id, database, schema, column_types, best_effort, synonyms_in_description, infer_number_formats, cross_table_references, using_paths, auto_metrics }) => {
       try {
         const given = [source, yaml_content].filter(v => typeof v === 'string' && v.trim() !== '');
         if (given.length !== 1) {
@@ -142,6 +150,7 @@ result is still a refusal: see refusedViews); \`allRefused\` is true when none c
           synonymsInDescription: synonyms_in_description,
           inferNumberFormats: infer_number_formats,
           crossTableReferences: cross_table_references,
+          usingPaths: using_paths,
           autoMetrics: auto_metrics,
         });
         const single = result.results.length === 1;

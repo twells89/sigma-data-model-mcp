@@ -12,6 +12,8 @@
  */
 import { toDisplayName } from '@semantic-tools/sigma-data-model';
 
+import { relDisplaySegment } from './relDisplay.js';
+
 type Json = Record<string, any>;
 
 export interface CrossTableFinding {
@@ -78,7 +80,7 @@ export function applyCrossTableReferences(
     }
     const display = displayOf(col);
     if (display === undefined) return { why: `target column \`${m[3]}\` has no resolvable display name` };
-    return { text: `[${m[1]}/${rel.name}/${display}]` };
+    return { text: `[${m[1]}/${rel.name}/${relDisplaySegment(display, typeof col.name === 'string')}]` };
   };
 
   // Fixpoint: blocking an item can change what moves, which can change what other refs may target.

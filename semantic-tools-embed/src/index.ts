@@ -34,7 +34,8 @@ import { parse as parseYaml } from 'yaml';
 
 import { EMBED_VERSION } from './version.js';
 import { applyCrossTableReferences } from './crossTable.js';
-import { unrecognizedYamlKeyFinding } from './yamlKeys.js';
+import { applyUsingPaths } from './usingPaths.js';
+import { joinTypeInnerFindings, unrecognizedYamlKeyFinding } from './yamlKeys.js';
 import { inferFormats, type ColFact, type SourceFacts } from './formats.js';
 
 declare const __SEMANTIC_TOOLS_COMMIT__: string;
@@ -46,7 +47,8 @@ export const ENGINE = {
 } as const;
 
 /** Exposed for tests: the 'derived' post-processor over a spec JSON text. */
-export { applyCrossTableReferences, mkElementId };
+export { applyCrossTableReferences, applyUsingPaths, mkElementId };
+export { relDisplaySegment } from './relDisplay.js';
 /** Exposed for tests: the evidence-based number-format inference and its building blocks. */
 export { classifyBase, inferFormats, parseFormula, unitOfFormula, typeKind, nameTokens, sampleStats } from './formats.js';
 
@@ -151,6 +153,13 @@ export interface ConvertSemanticViewOptions {
    * 'engine': raw engine output, byte-identical to core convert().
    */
   crossTableReferences?: 'derived' | 'engine';
+  /**
+   * Only acts with `bestEffort`. 'bound' (default): each metric pinned with `USING (relationship, ...)` (which the engine
+   * refuses, METRIC_JOIN_PATH_SELECTOR, and under bestEffort emits as a plain metric identical to the unpinned one) moves to a
+   * derived `<FACT> (via <relationship>)` element that joins ONLY through the pinned relationship(s), so its numbers follow
+   * Snowflake's USING path. 'engine': raw engine output (the plain metric stays on the fact).
+   */
+  usingPaths?: 'bound' | 'engine';
 }
 
 export interface EmbedFinding {
@@ -693,6 +702,31 @@ export function convertSemanticView(source: string, opts: ConvertSemanticViewOpt
         extra = [...extra, ...moved.findings];
       }
 
+      // Best effort overrode USING-pinned metrics: bind each to a path-specific derived element (after crossTable: it reads the final elements).
+      if (opts.bestEffort === true && opts.usingPaths !== 'engine') {
+        const pinned = result.overriddenErrors
+          .filter(f => f.code === 'METRIC_JOIN_PATH_SELECTOR' && f.object.kind === 'metric')
+          .map(f => ({
+            owner: f.object.owner,
+            name: f.object.name,
+            using: ((f as { details?: { relationships?: string[] } }).details?.relationships ?? []).slice(),
+          }));
+        if (pinned.length > 0) {
+          const bound = applyUsingPaths(spec, {
+            viewName: result.viewName,
+            pinned,
+            relationships: ir.relationships.map(r => ({
+              name: r.name?.name ?? `${r.sourceAlias.name}_TO_${r.targetAlias.name}`,
+              sourceAlias: r.sourceAlias.name,
+              targetAlias: r.targetAlias.name,
+              sourceColumns: r.sourceColumns.map(c => c.name),
+            })),
+          });
+          spec = bound.spec;
+          extra = [...extra, ...bound.findings];
+        }
+      }
+
       const okResult = mkResult({
         viewName: result.viewName,
         ok: true,
@@ -715,6 +749,7 @@ export function convertSemanticView(source: string, opts: ConvertSemanticViewOpt
     results.forEach((r, i) => {
       const f = unrecognizedYamlKeyFinding(statements[i]!, r.viewName);
       if (f !== undefined) r.findings.push(f);
+      r.findings.push(...joinTypeInnerFindings(statements[i]!));
     });
   }
 
