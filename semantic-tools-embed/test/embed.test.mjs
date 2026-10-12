@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 import * as S from '../../vendor/semantic-tools/semantic-tools-embed.mjs';
 
@@ -1156,6 +1157,19 @@ test('usingPaths: DDL and YAML of the same view bind the same metrics to the sam
   assert.deepEqual(shape(svRun(SV_DDL)), shape(svRun(SV_YAML)));
 });
 
+test('usingPaths: a view-level YAML metric without an owner is still path-bound', () => {
+  const doc = parseYaml(SV_YAML);
+  const fact = doc.tables.find(t => t.name === 'ORDER_FACT');
+  const index = fact.metrics.findIndex(m => m.name === 'ORDER_LINE_COUNT_BY_SHIP_DATE');
+  doc.metrics = fact.metrics.splice(index, 1);
+  doc.metrics[0].expr = 'COUNT(order_fact.order_key)';
+  const r = svRun(stringifyYaml(doc));
+  const metric = viaOf(r).flatMap(e => e.metrics ?? []).find(m => m.name === 'Order Line Count By Ship Date');
+  assert.ok(metric);
+  assert.equal(r.overriddenErrors.find(f => f.object.name === 'ORDER_LINE_COUNT_BY_SHIP_DATE').object.owner, undefined);
+  assert.ok(!r.findings.some(f => f.code === 'USING_PATH_UNRESOLVED'));
+});
+
 test('usingPaths: a bestEffort run with no USING metrics is untouched (default option on)', () => {
   const r = S.convertSemanticView(ddl('03-non-additive-metric'), { ...BASE, bestEffort: true }).results[0];
   const off = S.convertSemanticView(ddl('03-non-additive-metric'), { ...BASE, bestEffort: true, usingPaths: 'engine' }).results[0];
@@ -1232,6 +1246,15 @@ test('usingPaths unit: a mapped relationship builds the via-element', () => {
   assert.deepEqual(e[0].metrics.map(m => m.id), ['f__m__b']);
   assert.deepEqual(e[1].metrics, [{ id: 'f__m__a', formula: 'Sum([Amt])', name: 'A' }]);
   assert.ok(e[1].columns.some(c => c.formula === '[F/F To D/Nm]' && c.name === 'Nm'));
+});
+
+test('usingPaths unit: a view-level metric without an owner is located on its converted element', () => {
+  const input = UIN(['F_TO_D']);
+  delete input.pinned[0].owner;
+  const out = S.applyUsingPaths(USING_SPEC(), input);
+  const e = JSON.parse(out.spec).pages[0].elements;
+  assert.deepEqual(out.findings.map(f => f.code), ['USING_METRICS_PATH_BOUND']);
+  assert.deepEqual(e[1].metrics.map(m => m.id), ['f__m__a']);
 });
 
 test('usingPaths unit: an unmapped USING relationship leaves the metric in place and warns USING_PATH_UNRESOLVED', () => {

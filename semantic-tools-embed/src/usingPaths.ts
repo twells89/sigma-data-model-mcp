@@ -25,8 +25,8 @@ import { relDisplaySegment } from './relDisplay.js';
 type Json = Record<string, any>;
 
 export interface UsingPin {
-  /** Table alias that owns the metric (the fact), as written in the source. */
-  owner: string;
+  /** Table alias that owns the metric (the fact), when the metric is table-scoped in the source. */
+  owner?: string;
   /** Metric name as written in the source. */
   name: string;
   /** USING relationship names as parsed. */
@@ -84,13 +84,14 @@ export function applyUsingPaths(specText: string, input: UsingPathsInput): { spe
   const findings: UsingPathsFinding[] = [];
 
   const unresolved = (pin: UsingPin, why: string): void => {
+    const owner = pin.owner === undefined ? '' : ` on \`${pin.owner}\``;
     findings.push({
       code: 'USING_PATH_UNRESOLVED',
       severity: 'warning',
-      message: `Metric \`${pin.name}\` on \`${pin.owner}\` is pinned with USING (${pin.using.join(', ')}) but ${why}; it was left on its table, where it behaves exactly like an unpinned metric (Snowflake would follow only the pinned relationship path).`,
+      message: `Metric \`${pin.name}\`${owner} is pinned with USING (${pin.using.join(', ')}) but ${why}; it was left on its table, where it behaves exactly like an unpinned metric (Snowflake would follow only the pinned relationship path).`,
       remediation: 'Rebuild this metric in Sigma on a derived element over the table that joins only through the pinned relationship.',
       line: 1,
-      object: { kind: 'metric', name: pin.name, owner: pin.owner },
+      object: { kind: 'metric', name: pin.name, ...(pin.owner !== undefined && { owner: pin.owner }) },
       source: 'embed',
     });
   };
@@ -122,18 +123,28 @@ export function applyUsingPaths(specText: string, input: UsingPathsInput): { spe
   // 1. Resolve every pin to (fact element, metric object, spec relationships).
   const groups = new Map<string, Group>();
   for (const pin of input.pinned) {
-    const fact = byId.get(mkElementId(pin.owner));
+    const candidates = pin.owner === undefined
+      ? elements.filter(e => e.metrics?.some((m: Json) => m.id === mkMetricId(e.id, pin.name)))
+      : [byId.get(mkElementId(pin.owner))].filter((e): e is Json => e !== undefined);
+    if (candidates.length !== 1) {
+      unresolved(pin, candidates.length === 0 ? 'its converted metric was not found' : 'its converted metric is ambiguous');
+      continue;
+    }
+    const fact = candidates[0]!;
     const metric = fact?.metrics?.find((m: Json) => m.id === mkMetricId(fact.id, pin.name));
-    if (!fact || !metric) { unresolved(pin, `its metric is no longer on \`${mkElementId(pin.owner)}\``); continue; }
+    if (!metric) { unresolved(pin, `its metric is no longer on \`${fact.id}\``); continue; }
     if (pin.using.length === 0) { unresolved(pin, 'no USING relationship was reported'); continue; }
     const rels: Group['rels'] = [];
     let bad: string | undefined;
     for (const name of pin.using) {
-      const candidates = input.relationships.filter(r => ci(r.name) === ci(name) && ci(r.sourceAlias) === ci(pin.owner));
-      if (candidates.length !== 1) { bad = `relationship \`${name}\` ${candidates.length === 0 ? 'was not found on that table' : 'is ambiguous'}`; break; }
-      const m = mapRelationship(candidates[0]!);
+      const matching = input.relationships.filter(r =>
+        ci(r.name) === ci(name)
+        && (pin.owner === undefined ? mkElementId(r.sourceAlias) === fact.id : ci(r.sourceAlias) === ci(pin.owner)),
+      );
+      if (matching.length !== 1) { bad = `relationship \`${name}\` ${matching.length === 0 ? 'was not found on that table' : 'is ambiguous'}`; break; }
+      const m = mapRelationship(matching[0]!);
       if ('why' in m) { bad = m.why; break; }
-      if (!rels.some(x => x.rel.id === m.rel.id)) rels.push({ rel: m.rel, snowflake: candidates[0]!.name });
+      if (!rels.some(x => x.rel.id === m.rel.id)) rels.push({ rel: m.rel, snowflake: matching[0]!.name });
     }
     if (bad !== undefined) { unresolved(pin, bad); continue; }
     rels.sort((a, b) => (a.rel.id < b.rel.id ? -1 : a.rel.id > b.rel.id ? 1 : 0));

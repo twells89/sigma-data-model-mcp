@@ -11900,13 +11900,14 @@ function applyUsingPaths(specText, input) {
   const byId = new Map(elements.map((e) => [e.id, e]));
   const findings = [];
   const unresolved = (pin, why) => {
+    const owner = pin.owner === void 0 ? "" : ` on \`${pin.owner}\``;
     findings.push({
       code: "USING_PATH_UNRESOLVED",
       severity: "warning",
-      message: `Metric \`${pin.name}\` on \`${pin.owner}\` is pinned with USING (${pin.using.join(", ")}) but ${why}; it was left on its table, where it behaves exactly like an unpinned metric (Snowflake would follow only the pinned relationship path).`,
+      message: `Metric \`${pin.name}\`${owner} is pinned with USING (${pin.using.join(", ")}) but ${why}; it was left on its table, where it behaves exactly like an unpinned metric (Snowflake would follow only the pinned relationship path).`,
       remediation: "Rebuild this metric in Sigma on a derived element over the table that joins only through the pinned relationship.",
       line: 1,
-      object: { kind: "metric", name: pin.name, owner: pin.owner },
+      object: { kind: "metric", name: pin.name, ...pin.owner !== void 0 && { owner: pin.owner } },
       source: "embed"
     });
   };
@@ -11934,10 +11935,15 @@ function applyUsingPaths(specText, input) {
   };
   const groups = /* @__PURE__ */ new Map();
   for (const pin of input.pinned) {
-    const fact = byId.get(mkElementId(pin.owner));
+    const candidates = pin.owner === void 0 ? elements.filter((e) => e.metrics?.some((m) => m.id === mkMetricId(e.id, pin.name))) : [byId.get(mkElementId(pin.owner))].filter((e) => e !== void 0);
+    if (candidates.length !== 1) {
+      unresolved(pin, candidates.length === 0 ? "its converted metric was not found" : "its converted metric is ambiguous");
+      continue;
+    }
+    const fact = candidates[0];
     const metric = fact?.metrics?.find((m) => m.id === mkMetricId(fact.id, pin.name));
-    if (!fact || !metric) {
-      unresolved(pin, `its metric is no longer on \`${mkElementId(pin.owner)}\``);
+    if (!metric) {
+      unresolved(pin, `its metric is no longer on \`${fact.id}\``);
       continue;
     }
     if (pin.using.length === 0) {
@@ -11947,17 +11953,17 @@ function applyUsingPaths(specText, input) {
     const rels = [];
     let bad2;
     for (const name of pin.using) {
-      const candidates = input.relationships.filter((r) => ci(r.name) === ci(name) && ci(r.sourceAlias) === ci(pin.owner));
-      if (candidates.length !== 1) {
-        bad2 = `relationship \`${name}\` ${candidates.length === 0 ? "was not found on that table" : "is ambiguous"}`;
+      const matching = input.relationships.filter((r) => ci(r.name) === ci(name) && (pin.owner === void 0 ? mkElementId(r.sourceAlias) === fact.id : ci(r.sourceAlias) === ci(pin.owner)));
+      if (matching.length !== 1) {
+        bad2 = `relationship \`${name}\` ${matching.length === 0 ? "was not found on that table" : "is ambiguous"}`;
         break;
       }
-      const m = mapRelationship(candidates[0]);
+      const m = mapRelationship(matching[0]);
       if ("why" in m) {
         bad2 = m.why;
         break;
       }
-      if (!rels.some((x) => x.rel.id === m.rel.id)) rels.push({ rel: m.rel, snowflake: candidates[0].name });
+      if (!rels.some((x) => x.rel.id === m.rel.id)) rels.push({ rel: m.rel, snowflake: matching[0].name });
     }
     if (bad2 !== void 0) {
       unresolved(pin, bad2);
@@ -13254,7 +13260,7 @@ function convertSemanticView(source, opts) {
         extra = [...extra, ...moved.findings];
       }
       if (opts.bestEffort === true && opts.usingPaths !== "engine") {
-        const pinned = result.overriddenErrors.filter((f) => f.code === "METRIC_JOIN_PATH_SELECTOR" && f.object.kind === "metric" && f.object.owner !== void 0).map((f) => ({
+        const pinned = result.overriddenErrors.filter((f) => f.code === "METRIC_JOIN_PATH_SELECTOR" && f.object.kind === "metric").map((f) => ({
           owner: f.object.owner,
           name: f.object.name,
           using: (f.details?.relationships ?? []).slice()

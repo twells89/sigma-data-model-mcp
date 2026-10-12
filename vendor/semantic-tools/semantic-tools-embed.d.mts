@@ -102,7 +102,7 @@ export declare function inferFormats(
 ): { spec: string; findings: EmbedFinding[]; items: { owner: string; name: string; unit: Unit; format?: Record<string, unknown>; legacy?: Record<string, unknown> | null; why: string }[] };
 export interface UsingPathsInput {
   viewName: string;
-  pinned: { owner: string; name: string; using: string[] }[];
+  pinned: { owner?: string; name: string; using: string[] }[];
   relationships: { name: string; sourceAlias: string; targetAlias: string; sourceColumns: string[] }[];
 }
 export declare function applyUsingPaths(specText: string, input: UsingPathsInput): { spec: string; findings: EmbedFinding[] };

@@ -6,9 +6,9 @@
     "esbuild": "0.27.7",
     "yaml": "2.9.0"
   },
-  "sourceSha256": "2b9c605508d59e7cce8c539b1e6a5e233379acd666afad8ac56bbad76a32685b",
+  "sourceSha256": "87eea708c02ea16a4ce24c860f95000a16edbc41e0cc48c80ebd73d2d72b227f",
   "sha256": {
-    "semantic-tools-embed.mjs": "6743ef7b4b9f2c5ee988a9787aa59b4cd75b3b7196e06078f2a81930b8a10ce7",
-    "semantic-tools-embed.iife.min.js": "e912b54781e0493cf8aa02fee4ee6ac0728aca5a01c53b388cc918dc4e88f31a"
+    "semantic-tools-embed.mjs": "38f3556f4f0517fff26f096c1c88fd2c39bf0536c362e57abcdae1d2fd472c2f",
+    "semantic-tools-embed.iife.min.js": "748034e19b25800189571b16bfddeba68bf3fc87d0e3ed1039f384a8fe6c50b5"
   }
 }

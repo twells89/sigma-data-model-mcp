@@ -705,9 +705,9 @@ export function convertSemanticView(source: string, opts: ConvertSemanticViewOpt
       // Best effort overrode USING-pinned metrics: bind each to a path-specific derived element (after crossTable: it reads the final elements).
       if (opts.bestEffort === true && opts.usingPaths !== 'engine') {
         const pinned = result.overriddenErrors
-          .filter(f => f.code === 'METRIC_JOIN_PATH_SELECTOR' && f.object.kind === 'metric' && f.object.owner !== undefined)
+          .filter(f => f.code === 'METRIC_JOIN_PATH_SELECTOR' && f.object.kind === 'metric')
           .map(f => ({
-            owner: f.object.owner as string,
+            owner: f.object.owner,
             name: f.object.name,
             using: ((f as { details?: { relationships?: string[] } }).details?.relationships ?? []).slice(),
           }));
