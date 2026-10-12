@@ -435,7 +435,6 @@ test('crossTableReferences: target column reuses its explicit name when set', ()
   assert.equal(j.columns.find(c => c.id === 'o__cn').formula, '[O/O To C/Client]');
 });
 
-test('ENGINE.embedVersion is 1.2.2', () => assert.equal(S.ENGINE.embedVersion, '1.2.2'));
 
 const metricSynth = (colName) => {
   const s = synth();
@@ -1053,3 +1052,325 @@ test('DDL: overriddenErrors keep their real line (only unknown lines are strippe
   const loose = S.convertSemanticView(ddl('03-non-additive-metric'), { ...BASE, bestEffort: true }).results[0];
   assert.ok(loose.overriddenErrors.every(e => typeof e.line === 'number' && e.line > 1), JSON.stringify(loose.overriddenErrors.map(e => e.line)));
 });
+
+// ── usingPaths: USING-pinned metrics bound to path-specific derived elements (best effort only) ──
+
+const FIXD = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const SV_DDL = readFileSync(join(FIXD, 'RETAIL_ANALYTICS_SV.sql'), 'utf8');
+const SV_YAML = readFileSync(join(FIXD, 'RETAIL_ANALYTICS_SV.yaml'), 'utf8');
+const SV = { connectionId: BASE.connectionId, database: 'CSA', schema: 'TJ', columnTypes: {} };
+const svRun = (src, extra = {}) => S.convertSemanticView(src, { ...SV, bestEffort: true, ...extra }).results[0];
+const VIA_NAMES = [
+  'ORDER_FACT (via Order To Order Date)',
+  'ORDER_FACT (via Order To Order Store)',
+  'ORDER_FACT (via Order To Return Date)',
+  'ORDER_FACT (via Order To Ship Date)',
+  'ORDER_FACT (via Order To Ship Store)',
+];
+const PINNED_IDS = [
+  'total_gross_revenue_by_order_store', 'total_gross_revenue_by_ship_store', 'order_line_count_by_order_store',
+  'order_line_count_by_ship_store', 'total_gross_revenue_by_order_date', 'total_gross_revenue_by_ship_date',
+  'total_gross_revenue_by_return_date', 'order_line_count_by_order_date', 'order_line_count_by_ship_date',
+  'order_line_count_by_return_date',
+].map(s => `order_fact__m__${s}`);
+const viaOf = r => els(r).filter(e => /__via__/.test(e.id));
+
+for (const [label, src] of [['DDL', SV_DDL], ['YAML', SV_YAML]]) {
+  test(`usingPaths ${label}: best effort puts the 10 USING metrics on 5 path-bound via-elements`, () => {
+    const r = svRun(src);
+    assert.equal(r.ok, true);
+    const via = viaOf(r);
+    assert.deepEqual(via.map(e => e.name).sort(), VIA_NAMES);
+    const moved = via.flatMap(e => (e.metrics ?? []).map(m => m.id)).sort();
+    assert.deepEqual(moved, [...PINNED_IDS].sort());
+    const base = els(r).find(e => e.id === 'order_fact');
+    assert.equal(base.metrics.length, 11, 'unpinned metrics stay');
+    assert.ok(!base.metrics.some(m => PINNED_IDS.includes(m.id)));
+    for (const e of via) assert.deepEqual(e.source, { kind: 'table', elementId: 'order_fact' });
+  });
+
+  test(`usingPaths ${label}: metric refs resolve to local columns, no 3-segment metric refs, ids unique, description names the Snowflake path`, () => {
+    const r = svRun(src);
+    const all = els(r);
+    for (const e of viaOf(r)) {
+      const names = new Set(e.columns.map(c => c.name));
+      for (const m of e.metrics) {
+        assert.ok(!/\[[^\]/]+\/[^\]/]+\/[^\]]+\]/.test(m.formula), `${m.id} has a 3-segment ref`);
+        for (const ref of m.formula.matchAll(/\[([^\]]+)\]/g)) assert.ok(names.has(ref[1]), `${m.id}: [${ref[1]}] is not a local column`);
+      }
+      assert.match(e.description, /^ORDER_FACT joined only through /);
+      assert.match(e.description, /follow Snowflake's USING \(ORDER_TO_[A-Z_]+\) path/);
+    }
+    const ids = all.map(e => e.id);
+    assert.equal(new Set(ids).size, ids.length, 'element ids unique');
+    const viaIds = viaOf(r).flatMap(e => [...e.columns, ...e.metrics].map(x => x.id));
+    assert.equal(new Set(viaIds).size, viaIds.length, 'via column/metric ids unique across via-elements');
+    const baseIds = new Set(all.filter(e => !/__via__/.test(e.id)).flatMap(e => [...(e.columns ?? []), ...(e.metrics ?? [])].map(x => x.id)));
+    assert.ok(viaIds.every(i => !baseIds.has(i)), 'via ids never collide with base ids');
+  });
+
+  test(`usingPaths ${label}: ship-date element joins only through Order To Ship Date (3-part refs by relationship name + target display name)`, () => {
+    const r = svRun(src);
+    const ship = els(r).find(e => e.name === 'ORDER_FACT (via Order To Ship Date)');
+    assert.match(ship.id, /^order_fact__via__order_fact__to__date_dim(__\d)?$/);
+    if (label === 'DDL') assert.equal(ship.id, 'order_fact__via__order_fact__to__date_dim__2');
+    const month = ship.columns.find(c => c.formula === '[ORDER_FACT/Order To Ship Date/Month Name]');
+    assert.ok(month, 'ship path Month Name');
+    assert.equal(month.name, 'Month Name');
+    assert.ok(!ship.columns.some(c => /Order To (Order|Return) Date/.test(c.formula)));
+    assert.ok(ship.columns.some(c => c.formula === '[ORDER_FACT/Gross Revenue]' && c.name === 'Gross Revenue'));
+    assert.deepEqual(ship.metrics.map(m => m.formula).sort(), ['Count()', 'Sum([Gross Revenue])']);
+    assert.deepEqual(ship.metrics.map(m => m.id).sort(), ['order_fact__m__order_line_count_by_ship_date', 'order_fact__m__total_gross_revenue_by_ship_date']);
+    assert.deepEqual(ship.order, ship.columns.map(c => c.id));
+  });
+
+  test(`usingPaths ${label}: USING_METRICS_PATH_BOUND info lists the move; METRIC_JOIN_PATH_SELECTOR stays reported`, () => {
+    const r = svRun(src);
+    const f = r.findings.filter(x => x.code === 'USING_METRICS_PATH_BOUND');
+    assert.equal(f.length, 1);
+    assert.equal(f[0].severity, 'info');
+    assert.equal(f[0].source, 'embed');
+    assert.match(f[0].message, /ORDER_LINE_COUNT_BY_SHIP_DATE/);
+    assert.match(f[0].message, /ORDER_FACT \(via Order To Ship Date\)/);
+    assert.equal(r.findings.filter(x => x.code === 'METRIC_JOIN_PATH_SELECTOR').length, 10);
+    assert.equal(r.overriddenErrors.length, 10);
+    assert.equal(r.findings.filter(x => x.code === 'USING_PATH_UNRESOLVED').length, 0);
+  });
+
+  test(`usingPaths ${label}: usingPaths:'engine' is the previous output byte-for-byte; strict mode is unchanged`, () => {
+    const eng = svRun(src, { usingPaths: 'engine' });
+    const fmt = src === SV_DDL ? 'snowflake-semantic-view' : 'snowflake-semantic-view-yaml';
+    const raw = S.rawConvert(src, fmt, { connectionId: SV.connectionId, database: 'CSA', schema: 'TJ', columnTypes: {}, bestEffort: true });
+    assert.equal(eng.spec, raw.spec);
+    assert.equal(viaOf(eng).length, 0);
+    assert.ok(!eng.findings.some(f => f.code === 'USING_METRICS_PATH_BOUND'));
+    const strict = S.convertSemanticView(src, SV).results[0];
+    assert.equal(strict.ok, false);
+    assert.equal(strict.spec, undefined);
+    assert.ok(!strict.findings.some(f => f.code === 'USING_METRICS_PATH_BOUND'));
+  });
+}
+
+test('usingPaths: DDL and YAML of the same view bind the same metrics to the same paths (ids follow each source\'s relationship order)', () => {
+  const shape = r => viaOf(r).map(e => ({ name: e.name, description: e.description, cols: e.columns.map(c => `${c.name}=${c.formula}`).sort(), metrics: e.metrics.map(m => `${m.id}=${m.formula}=${m.name}`).sort() })).sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(shape(svRun(SV_DDL)), shape(svRun(SV_YAML)));
+});
+
+test('usingPaths: a bestEffort run with no USING metrics is untouched (default option on)', () => {
+  const r = S.convertSemanticView(ddl('03-non-additive-metric'), { ...BASE, bestEffort: true }).results[0];
+  const off = S.convertSemanticView(ddl('03-non-additive-metric'), { ...BASE, bestEffort: true, usingPaths: 'engine' }).results[0];
+  assert.equal(r.spec, off.spec);
+  assert.ok(!r.findings.some(f => f.code === 'USING_METRICS_PATH_BOUND' || f.code === 'USING_PATH_UNRESOLVED'));
+});
+
+const MULTI_DDL = SV_DDL
+  .replace('ORDER_FACT.SHIP_METHOD as SHIP_METHOD,', 'ORDER_FACT.SHIP_METHOD as SHIP_METHOD,\n\t\tORDER_FACT.CUST_REGION_X as CUSTOMER_DIM.CUST_REGION,')
+  .replace('\t\tORDER_FACT.ORDER_LINE_COUNT_BY_RETURN_DATE using',
+    '\t\tORDER_FACT.LINES_SHIP_AND_ORDER_DATE using (ORDER_TO_SHIP_DATE, ORDER_TO_ORDER_DATE) as COUNT(*),\n\t\tORDER_FACT.ORDER_LINE_COUNT_BY_RETURN_DATE using');
+
+test('usingPaths: a multi-relationship USING set gets one element with sorted ids, joined names, and suffixed colliding target columns', () => {
+  const r = svRun(MULTI_DDL);
+  const e = els(r).find(x => x.name === 'ORDER_FACT (via Order To Order Date + Order To Ship Date)');
+  assert.ok(e, 'multi element present');
+  assert.equal(e.id, 'order_fact__via__order_fact__to__date_dim__order_fact__to__date_dim__2');
+  assert.deepEqual(e.metrics.map(m => m.id), ['order_fact__m__lines_ship_and_order_date']);
+  assert.match(e.description, /USING \(ORDER_TO_ORDER_DATE, ORDER_TO_SHIP_DATE\)/);
+  assert.ok(e.columns.some(c => c.formula === '[ORDER_FACT/Order To Order Date/Month Name]' && c.name === 'Month Name'));
+  assert.ok(e.columns.some(c => c.formula === '[ORDER_FACT/Order To Ship Date/Month Name]' && c.name === 'Month Name (Order To Ship Date)'));
+  const names = e.columns.map(c => c.name);
+  assert.equal(new Set(names.map(n => n.toLowerCase())).size, names.length, 'column names unique');
+  assert.equal(viaOf(r).length, 6);
+});
+
+test('usingPaths composes with crossTableReferences: via-elements source the base, skip moved columns, base keeps joined', () => {
+  const r = svRun(MULTI_DDL);
+  const all = els(r);
+  const ids = all.map(e => e.id);
+  assert.ok(ids.includes('order_fact__joined'));
+  assert.equal(new Set(ids).size, ids.length);
+  const base = all.find(e => e.id === 'order_fact');
+  assert.ok(!base.columns.some(c => c.id === 'order_fact__cust_region_x'), 'moved column left the base');
+  for (const e of viaOf(r)) {
+    assert.equal(e.source.elementId, 'order_fact');
+    assert.ok(!e.columns.some(c => /Cust Region X/.test(c.formula)), 'no passthrough of a column the base no longer has');
+    const baseNames = new Set(base.columns.map(c => c.name ?? /\/([^/\]]+)\]$/.exec(c.formula)[1]));
+    for (const c of e.columns) {
+      const m = /^\[ORDER_FACT\/([^/\]]+)\]$/.exec(c.formula);
+      if (m) assert.ok(baseNames.has(m[1]), `${m[1]} exists on base`);
+    }
+  }
+  assert.ok(r.findings.some(f => f.code === 'CROSS_TABLE_REFERENCES_MOVED'));
+  assert.ok(r.findings.some(f => f.code === 'USING_METRICS_PATH_BOUND'));
+  // elements stay adjacent: base, its joined, then its via-elements
+  const i = ids.indexOf('order_fact');
+  assert.equal(ids[i + 1], 'order_fact__joined');
+  assert.match(ids[i + 2], /__via__/);
+});
+
+const USING_SPEC = () => JSON.stringify({
+  schemaVersion: 1,
+  pages: [{ id: 'p', name: 'P', elements: [
+    { id: 'f', kind: 'table', source: { kind: 'warehouse-table', path: ['D', 'S', 'F'] },
+      columns: [{ id: 'f__k', formula: '[F/K]' }, { id: 'f__amt', formula: '[F/Amt]' }],
+      metrics: [{ id: 'f__m__a', formula: 'Sum([Amt])', name: 'A' }, { id: 'f__m__b', formula: 'Count()', name: 'B' }],
+      relationships: [{ id: 'f__to__d', targetElementId: 'd', keys: [{ sourceColumnId: 'f__k', targetColumnId: 'd__k' }], name: 'F To D' }] },
+    { id: 'd', kind: 'table', source: { kind: 'warehouse-table', path: ['D', 'S', 'D'] },
+      columns: [{ id: 'd__k', formula: '[D/K]' }, { id: 'd__nm', formula: '[D/Nm]' }] },
+  ] }],
+});
+const UIN = (using, metricName = 'A') => ({
+  viewName: 'V',
+  pinned: [{ owner: 'F', name: metricName, using }],
+  relationships: [{ name: 'F_TO_D', sourceAlias: 'F', targetAlias: 'D', sourceColumns: ['K'] }],
+});
+
+test('usingPaths unit: a mapped relationship builds the via-element', () => {
+  const out = S.applyUsingPaths(USING_SPEC(), UIN(['F_TO_D']));
+  const e = JSON.parse(out.spec).pages[0].elements;
+  assert.deepEqual(e.map(x => x.id), ['f', 'f__via__f__to__d', 'd']);
+  assert.deepEqual(out.findings.map(f => f.code), ['USING_METRICS_PATH_BOUND']);
+  assert.deepEqual(e[0].metrics.map(m => m.id), ['f__m__b']);
+  assert.deepEqual(e[1].metrics, [{ id: 'f__m__a', formula: 'Sum([Amt])', name: 'A' }]);
+  assert.ok(e[1].columns.some(c => c.formula === '[F/F To D/Nm]' && c.name === 'Nm'));
+});
+
+test('usingPaths unit: an unmapped USING relationship leaves the metric in place and warns USING_PATH_UNRESOLVED', () => {
+  const spec = USING_SPEC();
+  const out = S.applyUsingPaths(spec, UIN(['NO_SUCH_REL']));
+  assert.equal(out.spec, spec);
+  assert.equal(out.findings.length, 1);
+  assert.equal(out.findings[0].code, 'USING_PATH_UNRESOLVED');
+  assert.equal(out.findings[0].severity, 'warning');
+  assert.equal(out.findings[0].source, 'embed');
+  assert.match(out.findings[0].message, /NO_SUCH_REL/);
+  assert.deepEqual(out.findings[0].object, { kind: 'metric', name: 'A', owner: 'F' });
+});
+
+test('usingPaths unit: relationship not emitted into the spec (keys differ) is unmapped, never guessed', () => {
+  const spec = USING_SPEC();
+  const input = UIN(['F_TO_D']);
+  input.relationships[0].sourceColumns = ['OTHER'];
+  const out = S.applyUsingPaths(spec, input);
+  assert.equal(out.spec, spec);
+  assert.equal(out.findings[0].code, 'USING_PATH_UNRESOLVED');
+});
+
+test('usingPaths unit: one unmapped metric does not stop a mapped one; unresolvable local refs leave the metric', () => {
+  const spec = JSON.parse(USING_SPEC());
+  spec.pages[0].elements[0].metrics.push({ id: 'f__m__c', formula: 'Sum([Missing Col])', name: 'C' });
+  const input = { ...UIN(['F_TO_D']), pinned: [{ owner: 'F', name: 'A', using: ['F_TO_D'] }, { owner: 'F', name: 'C', using: ['F_TO_D'] }, { owner: 'F', name: 'B', using: ['GONE'] }] };
+  const out = S.applyUsingPaths(JSON.stringify(spec), input);
+  const e = JSON.parse(out.spec).pages[0].elements;
+  assert.deepEqual(e[1].metrics.map(m => m.id), ['f__m__a']);
+  assert.deepEqual(e[0].metrics.map(m => m.id).sort(), ['f__m__b', 'f__m__c']);
+  assert.deepEqual(out.findings.filter(f => f.code === 'USING_PATH_UNRESOLVED').map(f => f.object.name).sort(), ['B', 'C']);
+});
+
+test('usingPaths unit: relationship names match case-insensitively (Snowflake identifiers)', () => {
+  const out = S.applyUsingPaths(USING_SPEC(), UIN(['f_to_d']));
+  assert.deepEqual(out.findings.map(f => f.code), ['USING_METRICS_PATH_BOUND']);
+});
+
+test('ENGINE.embedVersion is 1.3.1 (rel-ref minor-word casing)', () => assert.equal(S.ENGINE.embedVersion, '1.3.1'));
+
+// ── YAML keys from real SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW exports ──
+
+const EXPORT_YAML = `name: V
+tables:
+  - name: ORDERS
+    base_table: { database: D, schema: S, table: ORDERS }
+    dimensions:
+      - { name: ID, expr: ID, unique: true }
+    time_dimensions:
+      - { name: DT, expr: DT, unique: false }
+    facts:
+      - { name: AMT, expr: AMT, unique: false }
+  - name: CUSTOMERS
+    base_table: { database: D, schema: S, table: CUSTOMERS }
+    dimensions:
+      - { name: CID, expr: CID, unique: true }
+relationships:
+  - name: ORDERS_TO_CUSTOMERS
+    left_table: ORDERS
+    right_table: CUSTOMERS
+    relationship_columns: [ { left_column: CID, right_column: CID } ]
+    relationship_type: many_to_one
+    join_type: left_outer
+`;
+
+test('UNRECOGNIZED_YAML_KEY: export-only keys (relationship_type, unique, join_type left_outer) are benign and change nothing', () => {
+  const r = yamlRun(EXPORT_YAML);
+  assert.equal(r.ok, true);
+  assert.deepEqual(unrec(r).map(f => f.message), []);
+  assert.ok(!r.findings.some(f => f.code === 'JOIN_TYPE_INNER'));
+  const stripped = EXPORT_YAML.replace(/, unique: (true|false)/g, '').replace(/    relationship_type.*\n/, '').replace(/    join_type.*\n/, '');
+  assert.equal(yamlRun(stripped).spec, r.spec);
+});
+
+test('UNRECOGNIZED_YAML_KEY: a typo next to benign export keys is still reported', () => {
+  const r = yamlRun(EXPORT_YAML.replace('unique: true }', 'uniqe: true }'));
+  assert.match(unrec(r)[0].message, /uniqe/);
+  assert.doesNotMatch(unrec(r)[0].message, /relationship_type/);
+});
+
+test('JOIN_TYPE_INNER: an inner join warns per relationship with the Sigma left-join difference; left_outer / absent do not', () => {
+  const r = yamlRun(EXPORT_YAML.replace('join_type: left_outer', 'join_type: inner'));
+  assert.equal(r.ok, true);
+  assert.deepEqual(unrec(r).map(f => f.message), []);
+  const f = r.findings.filter(x => x.code === 'JOIN_TYPE_INNER');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].severity, 'warning');
+  assert.equal(f[0].source, 'embed');
+  assert.match(f[0].message, /Relationship ORDERS_TO_CUSTOMERS is an INNER join in Snowflake; Sigma relationships keep fact rows without a match, so counts can be higher in Sigma for rows whose key has no match\./);
+  assert.equal(f[0].line, undefined);
+  assert.deepEqual(f[0].object, { kind: 'relationship', name: 'ORDERS_TO_CUSTOMERS' });
+  assert.ok(!yamlRun(EXPORT_YAML.replace(/    join_type.*\n/, '')).findings.some(x => x.code === 'JOIN_TYPE_INNER'));
+  assert.ok(!S.convertSemanticView(SV_DDL, { ...SV, bestEffort: true }).results[0].findings.some(x => x.code === 'JOIN_TYPE_INNER'));
+});
+
+test('JOIN_TYPE_INNER: the value is case-insensitive', () => {
+  const r = yamlRun(EXPORT_YAML.replace('join_type: left_outer', 'join_type: INNER'));
+  assert.equal(r.findings.filter(x => x.code === 'JOIN_TYPE_INNER').length, 1);
+});
+
+test("usingPaths with crossTableReferences:'engine': a fact column that still holds an engine cross-table ref is not passed through", () => {
+  const r = svRun(MULTI_DDL, { crossTableReferences: 'engine' });
+  const base = els(r).find(e => e.id === 'order_fact');
+  assert.ok(base.columns.some(c => /order_fact__to__customer_dim/.test(c.formula)), 'engine leaves the cross-table ref on the base');
+  assert.equal(viaOf(r).length, 6);
+  for (const e of viaOf(r)) {
+    assert.ok(!e.columns.some(c => /order_fact__to__/.test(c.formula)), 'no engine relationship id in a via formula');
+    assert.ok(!e.columns.some(c => c.name === 'Cust Region X'));
+  }
+});
+
+// ── relDisplaySegment: canonical (minor-word-lowercase) display for refs THROUGH a relationship ──
+
+test('relDisplaySegment lowercases minor words after the first, keeps explicit names and the first word', () => {
+  assert.equal(S.relDisplaySegment('Day Of Month', false), 'Day of Month');
+  assert.equal(S.relDisplaySegment('Week Of Year', false), 'Week of Year');
+  assert.equal(S.relDisplaySegment('Days To Ship', false), 'Days to Ship');
+  assert.equal(S.relDisplaySegment('Of Counsel', false), 'Of Counsel');
+  assert.equal(S.relDisplaySegment('Day Of Month', true), 'Day Of Month');
+  assert.equal(S.relDisplaySegment('Market Segment', false), 'Market Segment');
+});
+
+for (const [label, src] of [['DDL', SV_DDL], ['YAML', SV_YAML]]) {
+  test(`RETAIL_ANALYTICS_SV ${label}: every 3-segment ref to an unnamed target column uses minor-word-lowercase display`, () => {
+    const r = svRun(src);
+    const all = els(r);
+    const refs = [];
+    for (const e of all) for (const c of [...(e.columns ?? []), ...(e.metrics ?? [])]) {
+      for (const m of String(c.formula ?? '').matchAll(/\[([^\[\]/]+)\/([^\[\]/]+)\/([^\[\]/]+)\]/g)) refs.push(m[3]);
+    }
+    assert.ok(refs.length > 0);
+    for (const d of refs) assert.equal(d, S.relDisplaySegment(d, false), `${d} not canonical`);
+    assert.ok(refs.includes('Day of Month') && refs.includes('Week of Year'), JSON.stringify([...new Set(refs)]));
+    assert.ok(!refs.some(d => /\b(Of|To)\b/.test(d.replace(/^\S+ /, ''))), 'no capitalized minor word remains');
+    // local column names (metric refs) are unchanged
+    for (const e of viaOf(r)) {
+      const names = new Set(e.columns.map(c => c.name));
+      for (const m of e.metrics) for (const ref of m.formula.matchAll(/\[([^\]]+)\]/g)) assert.ok(names.has(ref[1]));
+    }
+  });
+}

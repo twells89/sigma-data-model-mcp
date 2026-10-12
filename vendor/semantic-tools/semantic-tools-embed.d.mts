@@ -43,6 +43,8 @@ export interface ConvertSemanticViewOptions {
   inferNumberFormats?: boolean;
   /** 'derived' (default): cross-table columns/metrics move to a derived `<element>__joined` element (Sigma only resolves them there). 'engine': raw engine output. */
   crossTableReferences?: 'derived' | 'engine';
+  /** Only with bestEffort. 'bound' (default): USING-pinned metrics move to `<FACT> (via <relationship>)` derived elements joined only through the pinned relationship(s). 'engine': raw engine output. */
+  usingPaths?: 'bound' | 'engine';
 }
 
 export interface ViewResult {
@@ -98,4 +100,10 @@ export declare function inferFormats(
   opts: { facts: SourceFacts; columnTypes?: Record<string, Record<string, string>>; elementIdOf: (alias: string) => string },
   viewName: string,
 ): { spec: string; findings: EmbedFinding[]; items: { owner: string; name: string; unit: Unit; format?: Record<string, unknown>; legacy?: Record<string, unknown> | null; why: string }[] };
+export interface UsingPathsInput {
+  viewName: string;
+  pinned: { owner: string; name: string; using: string[] }[];
+  relationships: { name: string; sourceAlias: string; targetAlias: string; sourceColumns: string[] }[];
+}
+export declare function applyUsingPaths(specText: string, input: UsingPathsInput): { spec: string; findings: EmbedFinding[] };
 export declare function applyCrossTableReferences(specText: string, viewName: string): { spec: string; findings: EmbedFinding[] };

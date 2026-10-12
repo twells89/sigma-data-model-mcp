@@ -97,3 +97,43 @@ export function unrecognizedYamlKeyFinding(yamlText: string, viewName: string): 
     source: 'embed',
   };
 }
+
+export interface JoinTypeFinding {
+  code: 'JOIN_TYPE_INNER';
+  severity: 'warning';
+  message: string;
+  remediation: string;
+  line: number;
+  object: { kind: 'relationship'; name: string };
+  source: 'embed';
+}
+
+/**
+ * One JOIN_TYPE_INNER warning per relationship declared `join_type: inner` (SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW output).
+ * `join_type` itself is a benign key (not read upstream); `left_outer` and absent carry no difference. Sigma
+ * relationships are left joins: fact rows without a match are kept.
+ */
+export function joinTypeInnerFindings(yamlText: string): JoinTypeFinding[] {
+  let doc: unknown;
+  try {
+    doc = parseYaml(yamlText);
+  } catch {
+    return [];
+  }
+  if (!isRec(doc)) return [];
+  const out: JoinTypeFinding[] = [];
+  recs(doc.relationships).forEach((r, i) => {
+    if (typeof r.join_type !== 'string' || r.join_type.trim().toLowerCase() !== 'inner') return;
+    const name = label(r, i);
+    out.push({
+      code: 'JOIN_TYPE_INNER',
+      severity: 'warning',
+      message: `Relationship ${name} is an INNER join in Snowflake; Sigma relationships keep fact rows without a match, so counts can be higher in Sigma for rows whose key has no match.`,
+      remediation: 'If the difference matters, filter out rows with no match in Sigma (for example, require the joined key to be non-null) or check the key coverage in the warehouse.',
+      line: 1,
+      object: { kind: 'relationship', name },
+      source: 'embed',
+    });
+  });
+  return out;
+}

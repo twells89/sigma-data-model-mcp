@@ -228,6 +228,26 @@ test('tool: cross_table_references enum is plumbed (default derived, engine = ra
   assert.equal(bad.isError, true);
 });
 
+const SV_DDL = readFileSync(join(ROOT, 'semantic-tools-embed/test/fixtures/RETAIL_ANALYTICS_SV.sql'), 'utf8');
+const viaEls = (model: any): any[] => model.pages[0].elements.filter((e: any) => /__via__/.test(e.id));
+
+test('using_paths: adapter + tool plumb usingPaths (bound default with best effort, engine = plain metrics, strict = refused)', async () => {
+  const bound = convertSnowflakeSemanticView(SV_DDL, { connectionId: 'c1', database: 'CSA', schema: 'TJ', bestEffort: true });
+  assert.equal(viaEls(bound.model).length, 5);
+  assert.ok(bound.findings.some(f => f.code === 'USING_METRICS_PATH_BOUND' && f.source === 'embed'));
+  assert.ok(bound.warnings.some(w => w.startsWith('USING_METRICS_PATH_BOUND: ')));
+  assert.equal(bound.stats.metrics, 21, 'metrics are moved, not duplicated');
+  const eng = convertSnowflakeSemanticView(SV_DDL, { connectionId: 'c1', database: 'CSA', schema: 'TJ', bestEffort: true, usingPaths: 'engine' });
+  assert.equal(viaEls(eng.model).length, 0);
+  assert.equal(convertSnowflakeSemanticView(SV_DDL, { connectionId: 'c1', database: 'CSA', schema: 'TJ' }).refused, true);
+  const t = await callTool({ source: SV_DDL, connection_id: 'c1', database: 'CSA', schema: 'TJ', best_effort: true });
+  assert.equal(viaEls(t.json.sigmaDataModel).length, 5);
+  const te = await callTool({ source: SV_DDL, connection_id: 'c1', database: 'CSA', schema: 'TJ', best_effort: true, using_paths: 'engine' });
+  assert.equal(viaEls(te.json.sigmaDataModel).length, 0);
+  const bad = await callTool({ source: SV_DDL, connection_id: 'c1', database: 'CSA', schema: 'TJ', best_effort: true, using_paths: 'nope' });
+  assert.equal(bad.isError, true);
+});
+
 test('tool: neither source nor yaml_content (or both, or blank) is an error', async () => {
   for (const args of [{}, { source: '   ' }, { source: PLUGS, yaml_content: PLUGS }]) {
     const r = await callTool(args);

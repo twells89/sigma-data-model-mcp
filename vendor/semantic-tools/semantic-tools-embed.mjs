@@ -3983,12 +3983,12 @@ function visit_(key, node, visitor, path) {
     if (isCollection(node)) {
       path = Object.freeze(path.concat(node));
       for (let i = 0; i < node.items.length; ++i) {
-        const ci = visit_(i, node.items[i], visitor, path);
-        if (typeof ci === "number")
-          i = ci - 1;
-        else if (ci === BREAK)
+        const ci2 = visit_(i, node.items[i], visitor, path);
+        if (typeof ci2 === "number")
+          i = ci2 - 1;
+        else if (ci2 === BREAK)
           return BREAK;
-        else if (ci === REMOVE) {
+        else if (ci2 === REMOVE) {
           node.items.splice(i, 1);
           i -= 1;
         }
@@ -4031,12 +4031,12 @@ async function visitAsync_(key, node, visitor, path) {
     if (isCollection(node)) {
       path = Object.freeze(path.concat(node));
       for (let i = 0; i < node.items.length; ++i) {
-        const ci = await visitAsync_(i, node.items[i], visitor, path);
-        if (typeof ci === "number")
-          i = ci - 1;
-        else if (ci === BREAK)
+        const ci2 = await visitAsync_(i, node.items[i], visitor, path);
+        if (typeof ci2 === "number")
+          i = ci2 - 1;
+        else if (ci2 === BREAK)
           return BREAK;
-        else if (ci === REMOVE) {
+        else if (ci2 === REMOVE) {
           node.items.splice(i, 1);
           i -= 1;
         }
@@ -7129,16 +7129,16 @@ var prettifyError = (src, lc) => (error) => {
   error.linePos = error.pos.map((pos) => lc.linePos(pos));
   const { line, col } = error.linePos[0];
   error.message += ` at line ${line}, column ${col}`;
-  let ci = col - 1;
+  let ci2 = col - 1;
   let lineStr = src.substring(lc.lineStarts[line - 1], lc.lineStarts[line]).replace(/[\n\r]+$/, "");
-  if (ci >= 60 && lineStr.length > 80) {
-    const trimStart = Math.min(ci - 39, lineStr.length - 79);
+  if (ci2 >= 60 && lineStr.length > 80) {
+    const trimStart = Math.min(ci2 - 39, lineStr.length - 79);
     lineStr = "\u2026" + lineStr.substring(trimStart);
-    ci -= trimStart - 1;
+    ci2 -= trimStart - 1;
   }
   if (lineStr.length > 80)
     lineStr = lineStr.substring(0, 79) + "\u2026";
-  if (line > 1 && /^ *$/.test(lineStr.substring(0, ci))) {
+  if (line > 1 && /^ *$/.test(lineStr.substring(0, ci2))) {
     let prev = src.substring(lc.lineStarts[line - 2], lc.lineStarts[line - 1]);
     if (prev.length > 80)
       prev = prev.substring(0, 79) + "\u2026\n";
@@ -7148,9 +7148,9 @@ var prettifyError = (src, lc) => (error) => {
     let count = 1;
     const end = error.linePos[1];
     if (end?.line === line && end.col > col) {
-      count = Math.max(1, Math.min(end.col - col, 80 - ci));
+      count = Math.max(1, Math.min(end.col - col, 80 - ci2));
     }
-    const pointer = " ".repeat(ci) + "^".repeat(count);
+    const pointer = " ".repeat(ci2) + "^".repeat(count);
     error.message += `:
 
 ${lineStr}
@@ -8591,12 +8591,12 @@ function _visit(path, item, visitor) {
     const token = item[field];
     if (token && "items" in token) {
       for (let i = 0; i < token.items.length; ++i) {
-        const ci = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
-        if (typeof ci === "number")
-          i = ci - 1;
-        else if (ci === BREAK2)
+        const ci2 = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
+        if (typeof ci2 === "number")
+          i = ci2 - 1;
+        else if (ci2 === BREAK2)
           return BREAK2;
-        else if (ci === REMOVE2) {
+        else if (ci2 === REMOVE2) {
           token.items.splice(i, 1);
           i -= 1;
         }
@@ -11505,6 +11505,116 @@ var SNOWFLAKE_TO_SIGMA_TRANSLATOR = {
   datePartArgIndex: (name) => SNOWFLAKE_FUNCTIONS.get(name)?.datePartArg
 };
 
+// src/sigma-ids.ts
+var NS_MODULUS = 62 ** 4;
+var SIGMA_LOWERCASE_WORDS = /* @__PURE__ */ new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "but",
+  "or",
+  "for",
+  "nor",
+  "so",
+  "yet",
+  "at",
+  "by",
+  "in",
+  "of",
+  "on",
+  "to",
+  "up",
+  "as",
+  "into",
+  "via",
+  "per"
+]);
+function formatFromMask(mask) {
+  if (!mask || typeof mask !== "string") return null;
+  const s = mask.trim();
+  if (!s || /general|date|time|@|yy|dd/i.test(s)) return null;
+  const decM = s.match(/\.([0#]+)/);
+  const decimals = decM ? decM[1].length : 0;
+  const isPercent = /%/.test(s);
+  const isCurrency = /[$£€¥]/.test(s);
+  if (isPercent) return { kind: "number", formatString: `,.${decimals}%` };
+  if (isCurrency) return { kind: "number", formatString: `$,.${decimals}f`, currencySymbol: "$" };
+  if (/[0#]/.test(s)) return { kind: "number", formatString: `,.${decimals}f` };
+  return null;
+}
+function inferSigmaFormat(formula, displayName, sourceMask) {
+  const fromMask = formatFromMask(sourceMask);
+  if (fromMask) return fromMask;
+  if (!formula) return null;
+  const f = formula.trim();
+  const n = (displayName || "").toLowerCase();
+  const alreadyPctScale = /\*\s*100\b/.test(f);
+  if (alreadyPctScale && /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
+    return { kind: "number", formatString: ",.2f", suffix: "%" };
+  }
+  const currencyWord = /\b(revenue|sales|profit|cost|spend|amount|discounts?|price|value|aov|arpu)\b/;
+  const ratio = f.match(/^([A-Za-z]+)\s*\(([^)]*)\)\s*\/\s*([A-Za-z]+)\s*\(([^)]*)\)$/);
+  if (ratio) {
+    const [, numFn, numArg, denFn, denArg] = ratio;
+    const isCount = (fn) => /^Count/i.test(fn);
+    const numIsCurrency = currencyWord.test(numArg.toLowerCase());
+    const nameSaysPct = /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n);
+    if (nameSaysPct || isCount(numFn) && isCount(denFn)) {
+      return { kind: "number", formatString: ",.2%" };
+    }
+    if (numIsCurrency) {
+      return { kind: "number", formatString: "$,.2f", currencySymbol: "$" };
+    }
+    return { kind: "number", formatString: ",.2f" };
+  }
+  if (/\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
+    return { kind: "number", formatString: ",.2%" };
+  }
+  if (currencyWord.test(n)) {
+    return { kind: "number", formatString: "$,.2f", currencySymbol: "$" };
+  }
+  if (/^Count(?:Distinct|If|DistinctIf)?\s*\(/.test(f)) {
+    return { kind: "number", formatString: ",.0f" };
+  }
+  return null;
+}
+var DATA_MODEL_SCHEMA_SUMMARY = `
+Sigma Data Model JSON top-level structure:
+{
+  "name": "Model Name",
+  "pages": [{ "id": "pageId", "name": "Page 1", "elements": [...] }]
+}
+
+Element types: warehouse-table, custom-sql (kind:"sql"), join, union, control.
+Columns: { "id": "inode-xxx/COL", "formula": "[TABLE/Display Name]" }
+Calculated columns: { "id": "shortId", "formula": "[Price] - [Cost]", "name": "Profit" }
+Metrics: { "id": "shortId", "formula": "Sum([Revenue])", "name": "Total Revenue" }
+Relationships: { "id": "shortId", "targetElementId": "...", "keys": [{ "sourceColumnId": "...", "targetColumnId": "..." }] }
+
+Cross-element Reference (accessing related dimension columns via relationships):
+  [SOURCE_TABLE/REL_NAME/Column Display Name]
+  REL_NAME is the relationship's "name" field (= target table name uppercase by convention).
+  Example: DateDiff("day", [ORDER_FACT/PROMO_DIM/Start Date], [ORDER_FACT/PROMO_DIM/End Date])
+  \u26A0 The dash-link form [SRC/FK_COL - link/Field] does NOT work via the API \u2014 use REL_NAME.
+
+Conditional Aggregate Syntax:
+  CountIf(condition) \u2014 condition only, NO field argument
+  SumIf(field, condition) \u2014 FIELD FIRST, condition second
+  AvgIf/MaxIf/MinIf/CountDistinctIf \u2014 all FIELD FIRST
+  For booleans: always use [Column] = True, never bare [Column]
+
+Groupings (for LOD / different aggregation levels):
+  "groupings": [{ "id": "gId", "groupBy": ["colId1"], "calculations": ["calcId1"] }]
+  Array order = nesting hierarchy. Use child elements for LOD patterns.
+`.trim();
+
+// semantic-tools-embed/src/relDisplay.ts
+function relDisplaySegment(display, explicitName) {
+  if (explicitName) return display;
+  return display.split(" ").map((w, i) => i > 0 && SIGMA_LOWERCASE_WORDS.has(w.toLowerCase()) ? w.toLowerCase() : w).join(" ");
+}
+
 // semantic-tools-embed/src/crossTable.ts
 var REF3 = /\[([^\[\]/]+)\/([^\[\]/]+)\/([^\[\]/]+)\]/g;
 var PASSTHROUGH = /^\[([^\[\]/]+)\/([^\[\]]+)\]$/;
@@ -11542,7 +11652,7 @@ function applyCrossTableReferences(specText, viewName) {
     }
     const display = displayOf(col);
     if (display === void 0) return { why: `target column \`${m[3]}\` has no resolvable display name` };
-    return { text: `[${m[1]}/${rel.name}/${display}]` };
+    return { text: `[${m[1]}/${rel.name}/${relDisplaySegment(display, typeof col.name === "string")}]` };
   };
   for (let pass = 0; pass < 20; pass++) {
     const next = /* @__PURE__ */ new Map();
@@ -11644,7 +11754,7 @@ function applyCrossTableReferences(specText, viewName) {
         ...c.format !== void 0 && { format: c.format }
       });
     }
-    const slug2 = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+    const slug3 = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "x";
     const helpers = [];
     const nameTaken = (n) => [...dCols, ...helpers].some((c) => (displayOf(c) ?? "").toLowerCase() === n.toLowerCase());
     const refName = (all, m) => {
@@ -11659,9 +11769,9 @@ function applyCrossTableReferences(specText, viewName) {
         name = `${display} (${rel.name})`;
         for (let n = 2; nameTaken(name); n++) name = `${display} (${rel.name}) ${n}`;
       }
-      let hid = `${id}__xref__${slug2(rel.name)}__${slug2(display)}`;
+      let hid = `${id}__xref__${slug3(rel.name)}__${slug3(display)}`;
       const ids = new Set([...dCols, ...helpers].map((c) => c.id));
-      for (let n = 2; ids.has(hid); n++) hid = `${id}__xref__${slug2(rel.name)}__${slug2(display)}_${n}`;
+      for (let n = 2; ids.has(hid); n++) hid = `${id}__xref__${slug3(rel.name)}__${slug3(display)}_${n}`;
       helpers.push({ id: hid, formula: r.text, name });
       return name;
     };
@@ -11773,9 +11883,211 @@ function applyCrossTableReferences(specText, viewName) {
   return { spec: JSON.stringify(spec, null, 2), findings };
 }
 
+// semantic-tools-embed/src/usingPaths.ts
+var REF32 = /\[([^\[\]/]+)\/([^\[\]/]+)\/([^\[\]/]+)\]/;
+var PASSTHROUGH2 = /^\[([^\[\]/]+)\/([^\[\]]+)\]$/;
+var MAX_LISTED = 12;
+var slug2 = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+var ci = (x) => x.toLowerCase();
+function displayOf2(col) {
+  if (typeof col.name === "string" && col.name !== "") return col.name;
+  const m = typeof col.formula === "string" ? PASSTHROUGH2.exec(col.formula) : null;
+  return m ? m[2] : void 0;
+}
+function applyUsingPaths(specText, input) {
+  const spec = JSON.parse(specText);
+  const elements = spec.pages?.[0]?.elements ?? [];
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const findings = [];
+  const unresolved = (pin, why) => {
+    findings.push({
+      code: "USING_PATH_UNRESOLVED",
+      severity: "warning",
+      message: `Metric \`${pin.name}\` on \`${pin.owner}\` is pinned with USING (${pin.using.join(", ")}) but ${why}; it was left on its table, where it behaves exactly like an unpinned metric (Snowflake would follow only the pinned relationship path).`,
+      remediation: "Rebuild this metric in Sigma on a derived element over the table that joins only through the pinned relationship.",
+      line: 1,
+      object: { kind: "metric", name: pin.name, owner: pin.owner },
+      source: "embed"
+    });
+  };
+  const mapRelationship = (ir) => {
+    const srcId = mkElementId(ir.sourceAlias);
+    const tgtId = mkElementId(ir.targetAlias);
+    const src = byId.get(srcId);
+    if (!src) return { why: `table \`${ir.sourceAlias}\` is not in the converted model` };
+    const wantKeys = ir.sourceColumns.map((c) => mkColumnId(srcId, c));
+    const hits = (src.relationships ?? []).filter((r) => {
+      const t = byId.get(r.targetElementId);
+      const targetOk = t !== void 0 && (t.id === tgtId || t.source?.kind === "table" && t.source.elementId === tgtId);
+      const keys = Array.isArray(r.keys) ? r.keys : [];
+      return targetOk && keys.length === wantKeys.length && keys.every((k, i) => k.sourceColumnId === wantKeys[i]);
+    });
+    const base = toDisplayName(ir.name);
+    const named = hits.filter((r) => r.name === base || typeof r.name === "string" && r.name.startsWith(`${base} `) && /^\d+$/.test(r.name.slice(base.length + 1)));
+    const pool = named.length > 0 ? named : [];
+    if (pool.length === 0) return { why: `relationship \`${ir.name}\` was not emitted into the model` };
+    const exact = pool.filter((r) => r.name === base);
+    const one = pool.length === 1 ? pool[0] : exact.length === 1 ? exact[0] : void 0;
+    if (one === void 0) return { why: `relationship \`${ir.name}\` matches several emitted relationships` };
+    if (typeof one.name !== "string" || one.name === "") return { why: `relationship \`${ir.name}\` has no name in the model` };
+    return { rel: one, src };
+  };
+  const groups = /* @__PURE__ */ new Map();
+  for (const pin of input.pinned) {
+    const fact = byId.get(mkElementId(pin.owner));
+    const metric = fact?.metrics?.find((m) => m.id === mkMetricId(fact.id, pin.name));
+    if (!fact || !metric) {
+      unresolved(pin, `its metric is no longer on \`${mkElementId(pin.owner)}\``);
+      continue;
+    }
+    if (pin.using.length === 0) {
+      unresolved(pin, "no USING relationship was reported");
+      continue;
+    }
+    const rels = [];
+    let bad2;
+    for (const name of pin.using) {
+      const candidates = input.relationships.filter((r) => ci(r.name) === ci(name) && ci(r.sourceAlias) === ci(pin.owner));
+      if (candidates.length !== 1) {
+        bad2 = `relationship \`${name}\` ${candidates.length === 0 ? "was not found on that table" : "is ambiguous"}`;
+        break;
+      }
+      const m = mapRelationship(candidates[0]);
+      if ("why" in m) {
+        bad2 = m.why;
+        break;
+      }
+      if (!rels.some((x) => x.rel.id === m.rel.id)) rels.push({ rel: m.rel, snowflake: candidates[0].name });
+    }
+    if (bad2 !== void 0) {
+      unresolved(pin, bad2);
+      continue;
+    }
+    rels.sort((a, b) => a.rel.id < b.rel.id ? -1 : a.rel.id > b.rel.id ? 1 : 0);
+    const key = `${fact.id}\0${rels.map((r) => r.rel.id).join("\0")}`;
+    const g = groups.get(key) ?? { fact, rels, pins: [] };
+    g.pins.push({ pin, metric });
+    groups.set(key, g);
+  }
+  if (groups.size === 0) return { spec: specText, findings };
+  const used = new Set(elements.map((e) => e.id));
+  const built = [];
+  for (const key of [...groups.keys()].sort()) {
+    const g = groups.get(key);
+    const fact = g.fact;
+    const tableName = (fact.columns ?? []).map((c) => PASSTHROUGH2.exec(c.formula ?? "")?.[1]).find(Boolean);
+    if (tableName === void 0) {
+      for (const p of g.pins) unresolved(p.pin, `\`${fact.id}\` has no passthrough column to build the path-bound element from`);
+      continue;
+    }
+    const path = fact.source?.path;
+    const lastSeg = Array.isArray(path) && path.length > 0 ? String(path[path.length - 1]) : void 0;
+    const baseName = typeof fact.name === "string" && fact.name !== "" ? fact.name : lastSeg ?? toDisplayName(fact.id);
+    const relNames = g.rels.map((r) => String(r.rel.name));
+    let id = `${fact.id}__via__${g.rels.map((r) => r.rel.id).join("__")}`;
+    for (let n = 2; used.has(id); n++) id = `${fact.id}__via__${g.rels.map((r) => r.rel.id).join("__")}_${n}`;
+    used.add(id);
+    const cols = [];
+    const names = /* @__PURE__ */ new Set();
+    const colIds = /* @__PURE__ */ new Set();
+    const add = (display, formula, from, suffix) => {
+      let name = display;
+      if (names.has(ci(name))) {
+        name = `${display} (${suffix})`;
+        for (let n = 2; names.has(ci(name)); n++) name = `${display} (${suffix}) ${n}`;
+      }
+      names.add(ci(name));
+      let cid = `${id}__${slug2(name)}`;
+      for (let n = 2; colIds.has(cid); n++) cid = `${id}__${slug2(name)}_${n}`;
+      colIds.add(cid);
+      cols.push({
+        id: cid,
+        formula,
+        name,
+        ...from.description !== void 0 && { description: from.description },
+        ...from.format !== void 0 && { format: from.format }
+      });
+    };
+    for (const c of fact.columns ?? []) {
+      const display = displayOf2(c);
+      if (display === void 0 || REF32.test(String(c.formula ?? ""))) continue;
+      add(display, `[${tableName}/${display}]`, c, "");
+    }
+    for (const { rel } of g.rels) {
+      const target = byId.get(rel.targetElementId);
+      for (const c of target?.columns ?? []) {
+        const display = displayOf2(c);
+        if (display === void 0 || REF32.test(String(c.formula ?? ""))) continue;
+        add(display, `[${tableName}/${rel.name}/${relDisplaySegment(display, typeof c.name === "string" && c.name !== "")}]`, c, String(rel.name));
+      }
+    }
+    let candidates = g.pins.slice();
+    for (; ; ) {
+      const metricNames = new Set(candidates.map((p) => String(p.metric.name ?? "")));
+      const keep = candidates.filter((p) => {
+        const f = String(p.metric.formula ?? "");
+        const refs = [...f.matchAll(/\[([^\]]*)\]/g)].map((m) => m[1]);
+        const bad2 = refs.find((r) => r.includes("/") || !cols.some((c) => c.name === r) && !metricNames.has(r));
+        if (bad2 === void 0) return true;
+        unresolved(p.pin, `its formula references \`[${bad2}]\`, which is not a column of the path-bound element`);
+        return false;
+      });
+      if (keep.length === candidates.length) break;
+      candidates = keep;
+    }
+    if (candidates.length === 0) continue;
+    const moved = new Set(candidates.map((p) => p.metric));
+    const derived = {
+      id,
+      kind: "table",
+      name: `${baseName} (via ${relNames.join(" + ")})`,
+      description: `${baseName} joined only through ${relNames.join(" + ")}. Metrics here follow Snowflake's USING (${g.rels.map((r) => r.snowflake).join(", ")}) path \u2014 slice them by this element's columns.`,
+      source: { kind: "table", elementId: fact.id },
+      columns: cols,
+      metrics: candidates.map((p) => p.metric),
+      order: cols.map((c) => c.id)
+    };
+    built.push({ fact, derived, moved, group: g });
+  }
+  if (built.length === 0) return { spec: specText, findings };
+  const removed = new Set(built.flatMap((b) => [...b.moved]));
+  const insertAfter = /* @__PURE__ */ new Map();
+  for (const b of built) {
+    const idx = elements.indexOf(b.fact);
+    let at = idx;
+    while (at + 1 < elements.length && String(elements[at + 1].id).startsWith(`${b.fact.id}__joined`)) at++;
+    const anchor = elements[at].id;
+    insertAfter.set(anchor, [...insertAfter.get(anchor) ?? [], b.derived]);
+  }
+  const out = [];
+  for (const e of elements) {
+    if (Array.isArray(e.metrics) && e.metrics.some((m) => removed.has(m))) {
+      const rest = e.metrics.filter((m) => !removed.has(m));
+      const copy = { ...e };
+      if (rest.length > 0) copy.metrics = rest;
+      else delete copy.metrics;
+      out.push(copy);
+    } else out.push(e);
+    out.push(...insertAfter.get(e.id) ?? []);
+  }
+  spec.pages[0].elements = out;
+  const lines = built.flatMap((b) => b.group.pins.filter((p) => b.moved.has(p.metric)).map((p) => `${p.pin.name} -> "${b.derived.name}"`));
+  const listed = lines.slice(0, MAX_LISTED).join("; ") + (lines.length > MAX_LISTED ? `; and ${lines.length - MAX_LISTED} more` : "");
+  findings.push({
+    code: "USING_METRICS_PATH_BOUND",
+    severity: "info",
+    message: `${lines.length} metric(s) pinned with USING were moved to path-bound derived elements that join only through the pinned relationship(s), so their numbers follow Snowflake's USING path instead of being plain metrics identical to the unpinned ones: ${listed}.`,
+    remediation: "Slice each of these metrics by the columns of the element it lives on; columns from a different element do not follow the pinned path.",
+    line: 1,
+    object: { kind: "view", name: input.viewName },
+    source: "embed"
+  });
+  return { spec: JSON.stringify(spec, null, 2), findings };
+}
+
 // semantic-tools-embed/src/yamlKnownKeys.json
 var yamlKnownKeys_default = {
-  _comment: "Keys the pinned upstream YAML reader (packages/snowflake-semantic-view/src/readYaml.ts) READS, per object level. scripts/yaml-key-drift.mjs derives the same sets from readYaml.ts and fails the build/check when they differ, so this table cannot rot when the PIN moves. `benign` = keys upstream does NOT read but which carry no conversion-relevant information (Sigma infers column types/granularity from the warehouse); NOT drift-checked, maintained by hand. Anything in neither list is reported as UNRECOGNIZED_YAML_KEY.",
+  _comment: "Keys the pinned upstream YAML reader (packages/snowflake-semantic-view/src/readYaml.ts) READS, per object level. scripts/yaml-key-drift.mjs derives the same sets from readYaml.ts and fails the build/check when they differ, so this table cannot rot when the PIN moves. `benign` = keys upstream does NOT read but which carry no conversion-relevant information (Sigma infers column types/granularity from the warehouse; `unique` and `relationship_type` are what SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW adds and the engine re-derives cardinality from the keys; `join_type: inner` is reported separately as JOIN_TYPE_INNER); NOT drift-checked, maintained by hand. Anything in neither list is reported as UNRECOGNIZED_YAML_KEY.",
   read: {
     root: ["name", "tables", "variables", "metrics", "relationships", "description", "tags", "max_staleness", "custom_instructions", "module_custom_instructions", "verified_queries"],
     table: ["name", "base_table", "primary_key", "unique_keys", "synonyms", "description", "tags", "facts", "dimensions", "time_dimensions", "metrics"],
@@ -11789,7 +12101,8 @@ var yamlKnownKeys_default = {
     right_range: ["start_column", "end_column"]
   },
   benign: {
-    object: ["data_type", "time_granularity"]
+    object: ["data_type", "time_granularity", "unique"],
+    relationship: ["relationship_type", "join_type"]
   }
 };
 
@@ -11857,87 +12170,30 @@ function unrecognizedYamlKeyFinding(yamlText, viewName) {
     source: "embed"
   };
 }
-
-// src/sigma-ids.ts
-var NS_MODULUS = 62 ** 4;
-function formatFromMask(mask) {
-  if (!mask || typeof mask !== "string") return null;
-  const s = mask.trim();
-  if (!s || /general|date|time|@|yy|dd/i.test(s)) return null;
-  const decM = s.match(/\.([0#]+)/);
-  const decimals = decM ? decM[1].length : 0;
-  const isPercent = /%/.test(s);
-  const isCurrency = /[$£€¥]/.test(s);
-  if (isPercent) return { kind: "number", formatString: `,.${decimals}%` };
-  if (isCurrency) return { kind: "number", formatString: `$,.${decimals}f`, currencySymbol: "$" };
-  if (/[0#]/.test(s)) return { kind: "number", formatString: `,.${decimals}f` };
-  return null;
+function joinTypeInnerFindings(yamlText) {
+  let doc;
+  try {
+    doc = parse(yamlText);
+  } catch {
+    return [];
+  }
+  if (!isRec(doc)) return [];
+  const out = [];
+  recs(doc.relationships).forEach((r, i) => {
+    if (typeof r.join_type !== "string" || r.join_type.trim().toLowerCase() !== "inner") return;
+    const name = label(r, i);
+    out.push({
+      code: "JOIN_TYPE_INNER",
+      severity: "warning",
+      message: `Relationship ${name} is an INNER join in Snowflake; Sigma relationships keep fact rows without a match, so counts can be higher in Sigma for rows whose key has no match.`,
+      remediation: "If the difference matters, filter out rows with no match in Sigma (for example, require the joined key to be non-null) or check the key coverage in the warehouse.",
+      line: 1,
+      object: { kind: "relationship", name },
+      source: "embed"
+    });
+  });
+  return out;
 }
-function inferSigmaFormat(formula, displayName, sourceMask) {
-  const fromMask = formatFromMask(sourceMask);
-  if (fromMask) return fromMask;
-  if (!formula) return null;
-  const f = formula.trim();
-  const n = (displayName || "").toLowerCase();
-  const alreadyPctScale = /\*\s*100\b/.test(f);
-  if (alreadyPctScale && /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
-    return { kind: "number", formatString: ",.2f", suffix: "%" };
-  }
-  const currencyWord = /\b(revenue|sales|profit|cost|spend|amount|discounts?|price|value|aov|arpu)\b/;
-  const ratio = f.match(/^([A-Za-z]+)\s*\(([^)]*)\)\s*\/\s*([A-Za-z]+)\s*\(([^)]*)\)$/);
-  if (ratio) {
-    const [, numFn, numArg, denFn, denArg] = ratio;
-    const isCount = (fn) => /^Count/i.test(fn);
-    const numIsCurrency = currencyWord.test(numArg.toLowerCase());
-    const nameSaysPct = /\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n);
-    if (nameSaysPct || isCount(numFn) && isCount(denFn)) {
-      return { kind: "number", formatString: ",.2%" };
-    }
-    if (numIsCurrency) {
-      return { kind: "number", formatString: "$,.2f", currencySymbol: "$" };
-    }
-    return { kind: "number", formatString: ",.2f" };
-  }
-  if (/\b(rate|margin|pct|percent|ratio|share|mix)\b|%/.test(n)) {
-    return { kind: "number", formatString: ",.2%" };
-  }
-  if (currencyWord.test(n)) {
-    return { kind: "number", formatString: "$,.2f", currencySymbol: "$" };
-  }
-  if (/^Count(?:Distinct|If|DistinctIf)?\s*\(/.test(f)) {
-    return { kind: "number", formatString: ",.0f" };
-  }
-  return null;
-}
-var DATA_MODEL_SCHEMA_SUMMARY = `
-Sigma Data Model JSON top-level structure:
-{
-  "name": "Model Name",
-  "pages": [{ "id": "pageId", "name": "Page 1", "elements": [...] }]
-}
-
-Element types: warehouse-table, custom-sql (kind:"sql"), join, union, control.
-Columns: { "id": "inode-xxx/COL", "formula": "[TABLE/Display Name]" }
-Calculated columns: { "id": "shortId", "formula": "[Price] - [Cost]", "name": "Profit" }
-Metrics: { "id": "shortId", "formula": "Sum([Revenue])", "name": "Total Revenue" }
-Relationships: { "id": "shortId", "targetElementId": "...", "keys": [{ "sourceColumnId": "...", "targetColumnId": "..." }] }
-
-Cross-element Reference (accessing related dimension columns via relationships):
-  [SOURCE_TABLE/REL_NAME/Column Display Name]
-  REL_NAME is the relationship's "name" field (= target table name uppercase by convention).
-  Example: DateDiff("day", [ORDER_FACT/PROMO_DIM/Start Date], [ORDER_FACT/PROMO_DIM/End Date])
-  \u26A0 The dash-link form [SRC/FK_COL - link/Field] does NOT work via the API \u2014 use REL_NAME.
-
-Conditional Aggregate Syntax:
-  CountIf(condition) \u2014 condition only, NO field argument
-  SumIf(field, condition) \u2014 FIELD FIRST, condition second
-  AvgIf/MaxIf/MinIf/CountDistinctIf \u2014 all FIELD FIRST
-  For booleans: always use [Column] = True, never bare [Column]
-
-Groupings (for LOD / different aggregation levels):
-  "groupings": [{ "id": "gId", "groupBy": ["colId1"], "calculations": ["calcId1"] }]
-  Array order = nesting hierarchy. Use child elements for LOD patterns.
-`.trim();
 
 // semantic-tools-embed/src/formats.ts
 var mk = (u, why, v) => ({ u, why, ...v !== void 0 && { v } });
@@ -12376,7 +12632,7 @@ function formatFor(u) {
   }
 }
 var LABEL = { currency: "currency", integer: "integer", fraction: "percent", percentpoints: "percent points" };
-var PASSTHROUGH2 = /^\[[^\[\]/]+\/[^\[\]]+\]$/;
+var PASSTHROUGH3 = /^\[[^\[\]/]+\/[^\[\]]+\]$/;
 var PASSTHROUGH22 = /^\[[^\[\]/]+\/[^\[\]/]+\]$/;
 var PASSTHROUGH_PARTS = /^\[([^\[\]/]+)\/([^\[\]]+)\]$/;
 function pretty(formula) {
@@ -12493,7 +12749,7 @@ function inferFormats(specText, opts, viewName) {
   const notInferred = [];
   const visit3 = (info, o, isMetric) => {
     if (o.format !== void 0 || typeof o.formula !== "string") return;
-    if (!isMetric && PASSTHROUGH2.test(o.formula)) return;
+    if (!isMetric && PASSTHROUGH3.test(o.formula)) return;
     const r = unitOf(info, o);
     const fmt = formatFor(r.u);
     const display = String(o.name ?? o.id);
@@ -12538,7 +12794,7 @@ function inferFormats(specText, opts, viewName) {
 // semantic-tools-embed/src/index.ts
 var ENGINE = {
   semanticToolsCommit: false ? "dev" : "360eb6af316deed841d78d879583c966239bf8be",
-  embedVersion: false ? EMBED_VERSION : "1.2.2"
+  embedVersion: false ? EMBED_VERSION : "1.3.1"
 };
 function detectFormat(source) {
   const head = source.slice(0, 2e3);
@@ -12814,12 +13070,12 @@ function applySynonyms(specText, syn) {
       const el = elements[idx];
       const cols = el.columns ?? [];
       const display = toDisplayName(name);
-      let ci = cols.findIndex((c) => c.id === mkColumnId(el.id, name));
-      if (ci < 0) ci = cols.findIndex((c) => c.name === display);
-      if (ci < 0) continue;
-      const d = buildDesc(cols[ci].description, syns);
+      let ci2 = cols.findIndex((c) => c.id === mkColumnId(el.id, name));
+      if (ci2 < 0) ci2 = cols.findIndex((c) => c.name === display);
+      if (ci2 < 0) continue;
+      const d = buildDesc(cols[ci2].description, syns);
       if (d === void 0) continue;
-      cols[ci] = withDescription(cols[ci], d);
+      cols[ci2] = withDescription(cols[ci2], d);
       applied.add(key);
     }
   }
@@ -12997,6 +13253,27 @@ function convertSemanticView(source, opts) {
         spec = moved.spec;
         extra = [...extra, ...moved.findings];
       }
+      if (opts.bestEffort === true && opts.usingPaths !== "engine") {
+        const pinned = result.overriddenErrors.filter((f) => f.code === "METRIC_JOIN_PATH_SELECTOR" && f.object.kind === "metric" && f.object.owner !== void 0).map((f) => ({
+          owner: f.object.owner,
+          name: f.object.name,
+          using: (f.details?.relationships ?? []).slice()
+        }));
+        if (pinned.length > 0) {
+          const bound = applyUsingPaths(spec, {
+            viewName: result.viewName,
+            pinned,
+            relationships: ir.relationships.map((r) => ({
+              name: r.name?.name ?? `${r.sourceAlias.name}_TO_${r.targetAlias.name}`,
+              sourceAlias: r.sourceAlias.name,
+              targetAlias: r.targetAlias.name,
+              sourceColumns: r.sourceColumns.map((c) => c.name)
+            }))
+          });
+          spec = bound.spec;
+          extra = [...extra, ...bound.findings];
+        }
+      }
       const okResult = mkResult({
         viewName: result.viewName,
         ok: true,
@@ -13017,6 +13294,7 @@ function convertSemanticView(source, opts) {
     results.forEach((r, i) => {
       const f = unrecognizedYamlKeyFinding(statements[i], r.viewName);
       if (f !== void 0) r.findings.push(f);
+      r.findings.push(...joinTypeInnerFindings(statements[i]));
     });
   }
   for (const r of results) {
@@ -13037,6 +13315,7 @@ function convertSemanticView(source, opts) {
 export {
   ENGINE,
   applyCrossTableReferences,
+  applyUsingPaths,
   classifyBase,
   convertSemanticView,
   detectFormat,
@@ -13046,6 +13325,7 @@ export {
   nameTokens,
   parseFormula,
   rawConvert,
+  relDisplaySegment,
   sampleStats,
   typeKind,
   unitOfFormula
