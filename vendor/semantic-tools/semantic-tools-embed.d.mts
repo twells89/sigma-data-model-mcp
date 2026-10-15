@@ -45,6 +45,8 @@ export interface ConvertSemanticViewOptions {
   crossTableReferences?: 'derived' | 'engine';
   /** Only with bestEffort. 'bound' (default): USING-pinned metrics move to `<FACT> (via <relationship>)` derived elements joined only through the pinned relationship(s). 'engine': raw engine output. */
   usingPaths?: 'bound' | 'engine';
+  /** Default true. false turns off the MULTI_FACT_SHARED_DIMENSIONS warning. Never changes the spec. */
+  multiFactWarning?: boolean;
 }
 
 export interface ViewResult {

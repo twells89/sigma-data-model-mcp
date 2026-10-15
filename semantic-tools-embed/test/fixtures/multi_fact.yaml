@@ -1,0 +1,118 @@
+name: UTILIZATION_SV
+tables:
+  - name: ADMISSIONS
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: ADMISSIONS
+    primary_key:
+      columns:
+        - ADMISSION_ID
+    metrics:
+      - name: ADMITS
+        expr: SUM(PAID_ADMIT_CNT)
+  - name: MEMBER_MONTHS
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: MEMBER_MONTHS
+    primary_key:
+      columns:
+        - MEMBER_MONTH_ID
+    metrics:
+      - name: MEMBER_MONTHS_TOTAL
+        expr: SUM(MM)
+  - name: DIM_AGE_BAND
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: DIM_AGE_BAND
+    primary_key:
+      columns:
+        - AGE_BAND_KEY
+    dimensions:
+      - name: AGE_BAND
+        expr: AGE_BAND
+        data_type: VARCHAR(50)
+  - name: DIM_REGION
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: DIM_REGION
+    primary_key:
+      columns:
+        - REGION_KEY
+    dimensions:
+      - name: REGION_NAME
+        expr: REGION_NAME
+        data_type: VARCHAR(50)
+  - name: DIM_PLAN
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: DIM_PLAN
+    primary_key:
+      columns:
+        - PLAN_KEY
+    dimensions:
+      - name: PLAN_NAME
+        expr: PLAN_NAME
+        data_type: VARCHAR(50)
+  - name: DIM_FACILITY
+    base_table:
+      database: ANALYTICS
+      schema: CLAIMS
+      table: DIM_FACILITY
+    primary_key:
+      columns:
+        - FACILITY_KEY
+    dimensions:
+      - name: FACILITY_NAME
+        expr: FACILITY_NAME
+        data_type: VARCHAR(50)
+relationships:
+  - name: ADM_TO_AGE_BAND
+    left_table: ADMISSIONS
+    right_table: DIM_AGE_BAND
+    relationship_columns:
+      - left_column: AGE_BAND_KEY
+        right_column: AGE_BAND_KEY
+  - name: ADM_TO_REGION
+    left_table: ADMISSIONS
+    right_table: DIM_REGION
+    relationship_columns:
+      - left_column: REGION_KEY
+        right_column: REGION_KEY
+  - name: ADM_TO_PLAN
+    left_table: ADMISSIONS
+    right_table: DIM_PLAN
+    relationship_columns:
+      - left_column: PLAN_KEY
+        right_column: PLAN_KEY
+  - name: ADM_TO_FACILITY
+    left_table: ADMISSIONS
+    right_table: DIM_FACILITY
+    relationship_columns:
+      - left_column: FACILITY_KEY
+        right_column: FACILITY_KEY
+  - name: MM_TO_AGE_BAND
+    left_table: MEMBER_MONTHS
+    right_table: DIM_AGE_BAND
+    relationship_columns:
+      - left_column: AGE_BAND_KEY
+        right_column: AGE_BAND_KEY
+  - name: MM_TO_REGION
+    left_table: MEMBER_MONTHS
+    right_table: DIM_REGION
+    relationship_columns:
+      - left_column: REGION_KEY
+        right_column: REGION_KEY
+  - name: MM_TO_PLAN
+    left_table: MEMBER_MONTHS
+    right_table: DIM_PLAN
+    relationship_columns:
+      - left_column: PLAN_KEY
+        right_column: PLAN_KEY
+metrics:
+  - name: ADMITS_PTMPY
+    expr: SUM(ADMISSIONS.PAID_ADMIT_CNT) / NULLIF(SUM(MEMBER_MONTHS.MM), 0) * 12000

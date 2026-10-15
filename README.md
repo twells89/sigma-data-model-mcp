@@ -99,6 +99,7 @@ Converts a Snowflake semantic view — native YAML or `CREATE SEMANTIC VIEW` DDL
 - `column_types` — `{"DB.SCHEMA.TABLE": {"COL": "TIMESTAMP_TZ"}}`, enables time-zone checks
 - `best_effort` — emit refused constructs anyway; differences are reported
 - `synonyms_in_description`, `infer_number_formats` — optional enrichments
+- `multi_fact_warning` — default true; one `MULTI_FACT_SHARED_DIMENSIONS` warning when independent fact tables (no relationship between them) share dimensions: Snowflake can combine their metrics per dimension, a Sigma element reaches only one fact (cross-fact metrics are dropped), so aggregate each fact to the shared dimension first and join those results, never the raw facts. `false` turns it off; the model is unchanged either way
 - `auto_metrics` — deprecated and ignored
 
 **Returns:** `{ sigmaDataModel, refused, allRefused, refusedViews, bestEffortWouldConvert, needs, findings, stats, warnings, results, engine }`. `sigmaDataModel` is present only for single-view input. With several views (e.g. several `CREATE SEMANTIC VIEW` statements) every converted model is in `results[].sigmaDataModel`, `results[].stats` holds each view's counts, and top-level `stats` is the sum over the converted views. `refused` is true when **any** view was refused (see `refusedViews`); `allRefused` is true when none converted.

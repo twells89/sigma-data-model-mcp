@@ -11953,7 +11953,9 @@ function applyUsingPaths(specText, input) {
     const rels = [];
     let bad2;
     for (const name of pin.using) {
-      const matching = input.relationships.filter((r) => ci(r.name) === ci(name) && (pin.owner === void 0 ? mkElementId(r.sourceAlias) === fact.id : ci(r.sourceAlias) === ci(pin.owner)));
+      const matching = input.relationships.filter(
+        (r) => ci(r.name) === ci(name) && (pin.owner === void 0 ? mkElementId(r.sourceAlias) === fact.id : ci(r.sourceAlias) === ci(pin.owner))
+      );
       if (matching.length !== 1) {
         bad2 = `relationship \`${name}\` ${matching.length === 0 ? "was not found on that table" : "is ambiguous"}`;
         break;
@@ -12089,6 +12091,118 @@ function applyUsingPaths(specText, input) {
     source: "embed"
   });
   return { spec: JSON.stringify(spec, null, 2), findings };
+}
+
+// semantic-tools-embed/src/multiFact.ts
+var MAX_LISTED2 = 5;
+var NOT_REACHABLE = /\b([A-Za-z0-9_$]+)\.[A-Za-z0-9_$"]+ is not reachable from the emitted element/;
+var lastSegment = (e) => {
+  const p = e.source?.path;
+  return typeof e.name === "string" && e.name !== "" ? e.name : Array.isArray(p) && p.length > 0 ? String(p[p.length - 1]) : String(e.id);
+};
+function applyMultiFact(specText, viewName, engineFindings = []) {
+  const none = { findings: [] };
+  let spec;
+  try {
+    spec = JSON.parse(specText);
+  } catch {
+    return none;
+  }
+  const elements = spec.pages?.[0]?.elements ?? [];
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const baseOf = (id) => {
+    let cur = byId.get(id);
+    for (let i = 0; cur !== void 0 && i < 50; i++) {
+      const s = cur.source;
+      if (s?.kind === "table" && typeof s.elementId === "string" && byId.has(s.elementId)) cur = byId.get(s.elementId);
+      else break;
+    }
+    return cur?.id ?? id;
+  };
+  const adj = /* @__PURE__ */ new Map();
+  const hasIncoming = /* @__PURE__ */ new Set();
+  for (const e of elements) {
+    const from = baseOf(e.id);
+    for (const r of e.relationships ?? []) {
+      if (typeof r.targetElementId !== "string") continue;
+      const to = baseOf(r.targetElementId);
+      if (to === from) continue;
+      if (!adj.has(from)) adj.set(from, /* @__PURE__ */ new Set());
+      adj.get(from).add(to);
+      hasIncoming.add(to);
+    }
+  }
+  const roots = [...adj.keys()].filter((id) => !hasIncoming.has(id));
+  if (roots.length < 2) return none;
+  const reach = (start) => {
+    const seen = /* @__PURE__ */ new Set();
+    const stack = [...adj.get(start) ?? []];
+    while (stack.length > 0) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const n of adj.get(id) ?? []) stack.push(n);
+    }
+    return seen;
+  };
+  const reachOf = new Map(roots.map((r) => [r, reach(r)]));
+  const nameOf = (id) => lastSegment(byId.get(id) ?? { id });
+  const pairs2 = [];
+  for (let i = 0; i < roots.length; i++) {
+    for (let j = i + 1; j < roots.length; j++) {
+      const a = roots[i];
+      const b = roots[j];
+      const ra = reachOf.get(a);
+      const rb = reachOf.get(b);
+      const shared = [...ra].filter((x) => rb.has(x)).map(nameOf);
+      if (shared.length > 0) pairs2.push({ a, b, shared });
+    }
+  }
+  if (pairs2.length === 0) return none;
+  const listPair = (p) => {
+    const shown = p.shared.slice(0, MAX_LISTED2).join(", ");
+    const more = p.shared.length > MAX_LISTED2 ? `, and ${p.shared.length - MAX_LISTED2} more` : "";
+    return `${nameOf(p.a)} and ${nameOf(p.b)} share ${p.shared.length} dimension${p.shared.length === 1 ? "" : "s"} (${shown}${more}) but are not related to each other`;
+  };
+  const rootKey = /* @__PURE__ */ new Map();
+  for (const r of roots) {
+    const el = byId.get(r);
+    rootKey.set(String(r).toLowerCase(), r);
+    rootKey.set(lastSegment(el).toLowerCase(), r);
+  }
+  const dropped = [];
+  for (const f of engineFindings) {
+    if (f.code !== "EXPRESSION_NOT_REPRESENTABLE" || f.object.kind !== "metric") continue;
+    const m = NOT_REACHABLE.exec(f.message);
+    const ownerRoot = f.object.owner !== void 0 ? rootKey.get(f.object.owner.toLowerCase()) : void 0;
+    let cross = false;
+    if (m) {
+      const other = rootKey.get(m[1].toLowerCase());
+      cross = other !== void 0 && other !== ownerRoot;
+    } else if (ownerRoot === void 0) {
+      const expr = /`([^`]*)`/.exec(f.message)?.[1] ?? "";
+      const hit = /* @__PURE__ */ new Set();
+      for (const t of expr.matchAll(/([A-Za-z0-9_$]+)\./g)) {
+        const root = rootKey.get(t[1].toLowerCase());
+        if (root !== void 0) hit.add(root);
+      }
+      cross = hit.size >= 2;
+    }
+    if (cross && !dropped.includes(f.object.name)) dropped.push(f.object.name);
+  }
+  const message = `${pairs2.map(listPair).join("; ")}. Snowflake can combine their metrics per shared dimension; a Sigma element can only reach one of them. Build cross-fact metrics (a measure on one fact divided by a measure on another) by aggregating each fact to the shared dimension first, then joining those results; never join the raw facts on a dimension key (that double counts).` + (dropped.length > 0 ? ` Dropped cross-fact metrics: ${dropped.join(", ")}.` : "");
+  return {
+    findings: [
+      {
+        code: "MULTI_FACT_SHARED_DIMENSIONS",
+        severity: "warning",
+        message,
+        remediation: "Aggregate each fact to the shared dimension (grouped element or custom SQL), then join the aggregates on that dimension; do not join the raw fact tables.",
+        object: { kind: "view", name: viewName },
+        source: "embed"
+      }
+    ]
+  };
 }
 
 // semantic-tools-embed/src/yamlKnownKeys.json
@@ -12800,7 +12914,7 @@ function inferFormats(specText, opts, viewName) {
 // semantic-tools-embed/src/index.ts
 var ENGINE = {
   semanticToolsCommit: false ? "dev" : "360eb6af316deed841d78d879583c966239bf8be",
-  embedVersion: false ? EMBED_VERSION : "1.3.1"
+  embedVersion: false ? EMBED_VERSION : "1.4.0"
 };
 function detectFormat(source) {
   const head = source.slice(0, 2e3);
@@ -13280,6 +13394,9 @@ function convertSemanticView(source, opts) {
           extra = [...extra, ...bound.findings];
         }
       }
+      if (opts.multiFactWarning !== false) {
+        extra = [...extra, ...applyMultiFact(spec, result.viewName, toEmbedFindings(warnings)).findings];
+      }
       const okResult = mkResult({
         viewName: result.viewName,
         ok: true,
@@ -13321,6 +13438,7 @@ function convertSemanticView(source, opts) {
 export {
   ENGINE,
   applyCrossTableReferences,
+  applyMultiFact,
   applyUsingPaths,
   classifyBase,
   convertSemanticView,

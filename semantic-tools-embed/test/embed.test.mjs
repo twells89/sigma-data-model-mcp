@@ -1294,7 +1294,7 @@ test('usingPaths unit: relationship names match case-insensitively (Snowflake id
   assert.deepEqual(out.findings.map(f => f.code), ['USING_METRICS_PATH_BOUND']);
 });
 
-test('ENGINE.embedVersion is 1.3.1 (rel-ref minor-word casing)', () => assert.equal(S.ENGINE.embedVersion, '1.3.1'));
+test('ENGINE.embedVersion is 1.4.0 (multi-fact shared-dimension warning)', () => assert.equal(S.ENGINE.embedVersion, '1.4.0'));
 
 // ── YAML keys from real SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW exports ──
 
@@ -1397,3 +1397,129 @@ for (const [label, src] of [['DDL', SV_DDL], ['YAML', SV_YAML]]) {
     }
   });
 }
+
+// ── MULTI_FACT_SHARED_DIMENSIONS (chasm-trap shape: independent facts sharing dimensions) ──
+
+const FIXDIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const MULTI_SQL = readFileSync(join(FIXDIR, 'multi_fact.sql'), 'utf8');
+const MULTI_YAML = readFileSync(join(FIXDIR, 'multi_fact.yaml'), 'utf8');
+const MF = 'MULTI_FACT_SHARED_DIMENSIONS';
+const mfOf = r => r.findings.filter(f => f.code === MF);
+
+/** Synthetic DDL builder: tables = [alias], rels = [[from, to]] (all keyed on <to>_key), no metrics needed beyond one per table. */
+function synthDdlMF(tables, rels) {
+  const t = tables.map(a => `    ${a} AS ANALYTICS.SYN.${a.toUpperCase()}\n      PRIMARY KEY (${a}_key)`).join(',\n');
+  const r = rels.map(([f, to]) => `    ${f}_to_${to} AS ${f} (${to}_key) REFERENCES ${to} (${to}_key)`).join(',\n');
+  return `CREATE OR REPLACE SEMANTIC VIEW ANALYTICS.SYN.V\n  TABLES (\n${t}\n  )\n  RELATIONSHIPS (\n${r}\n  )\n  DIMENSIONS (\n${tables.map(a => `    ${a}.${a}_name AS ${a}_name`).join(',\n')}\n  );`;
+}
+const synthMF = (tables, rels, opts = {}) => S.convertSemanticView(synthDdlMF(tables, rels), { ...BASE, ...opts }).results[0];
+
+test('multi-fact DDL: warning names both facts, shared count 3, dropped cross-fact metric; other metrics still emitted', () => {
+  const r = S.convertSemanticView(MULTI_SQL, BASE).results[0];
+  assert.equal(r.ok, true);
+  const [f, ...rest] = mfOf(r);
+  assert.equal(rest.length, 0, 'one warning per view');
+  assert.equal(f.severity, 'warning');
+  assert.equal(f.source, 'embed');
+  assert.equal(f.line, undefined);
+  assert.match(f.message, /ADMISSIONS and MEMBER_MONTHS share 3 dimensions \(/);
+  for (const d of ['DIM_AGE_BAND', 'DIM_REGION', 'DIM_PLAN']) assert.ok(f.message.includes(d), d);
+  assert.ok(!f.message.includes('DIM_FACILITY'), 'fact-only dimension is not shared');
+  assert.match(f.message, /never join the raw facts on a dimension key/);
+  assert.match(f.message, /Dropped cross-fact metrics: ADMITS_PTMPY\./);
+  assert.ok(f.remediation);
+  const names = JSON.parse(r.spec).pages[0].elements.flatMap(e => (e.metrics ?? []).map(m => m.name));
+  assert.ok(names.includes('Admits') && names.includes('Member Months Total'));
+  assert.ok(!names.some(n => /ptmpy/i.test(n)), 'cross-fact metric stays dropped');
+});
+
+test('multi-fact YAML: same warning and dropped-metric clause', () => {
+  const r = S.convertSemanticView(MULTI_YAML, BASE).results[0];
+  assert.equal(r.ok, true);
+  const [f] = mfOf(r);
+  assert.ok(f, 'warning present');
+  assert.equal(mfOf(r).length, 1);
+  assert.match(f.message, /ADMISSIONS and MEMBER_MONTHS share 3 dimensions/);
+  assert.match(f.message, /Dropped cross-fact metrics: ADMITS_PTMPY\./);
+  assert.equal(f.line, undefined);
+});
+
+test('multi-fact: table-owned cross-fact metric ("is not reachable from the emitted element") is named in the clause too', () => {
+  const owned = MULTI_SQL.replace('    admits_ptmpy AS', '    admissions.admits_ptmpy AS');
+  const r = S.convertSemanticView(owned, BASE).results[0];
+  assert.match(r.findings.find(f => f.code === 'EXPRESSION_NOT_REPRESENTABLE').message, /not reachable from the emitted element/);
+  assert.match(mfOf(r)[0].message, /Dropped cross-fact metrics: ADMITS_PTMPY\./);
+});
+
+test('multi-fact: no dropped-metric clause when the view declares no cross-fact metric (the silent case)', () => {
+  const noCross = MULTI_SQL.replace(/,\n    admits_ptmpy AS[^\n]*\n/, '\n');
+  const r = S.convertSemanticView(noCross, BASE).results[0];
+  assert.equal(count(r, 'EXPRESSION_NOT_REPRESENTABLE'), 0);
+  assert.equal(mfOf(r).length, 1);
+  assert.ok(!mfOf(r)[0].message.includes('Dropped cross-fact'));
+});
+
+test('multi-fact: long shared list is truncated to 5 names plus "and N more"', () => {
+  const dims = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'];
+  const r = synthMF(['fa', 'fb', ...dims], [...dims.map(d => ['fa', d]), ...dims.map(d => ['fb', d])]);
+  const m = mfOf(r)[0].message;
+  assert.match(m, /FA and FB share 7 dimensions \([^)]*, and 2 more\)/);
+  assert.equal(/\(([^)]*)\)/.exec(m)[1].split(', ').length, 6); // 5 names + "and 2 more"
+});
+
+test('multi-fact: opt-out with multiFactWarning:false', () => {
+  assert.equal(mfOf(S.convertSemanticView(MULTI_SQL, { ...BASE, multiFactWarning: false }).results[0]).length, 0);
+  assert.equal(mfOf(S.convertSemanticView(MULTI_SQL, { ...BASE, multiFactWarning: true }).results[0]).length, 1);
+});
+
+test('multi-fact: spec is byte-identical with and without the module (it only adds a finding)', () => {
+  for (const src of [MULTI_SQL, MULTI_YAML]) {
+    const on = S.convertSemanticView(src, BASE).results[0];
+    const off = S.convertSemanticView(src, { ...BASE, multiFactWarning: false }).results[0];
+    assert.equal(on.spec, off.spec);
+    assert.deepEqual(on.findings.filter(f => f.code !== MF), off.findings);
+  }
+});
+
+test('multi-fact: snowflaked dimensions (one fact -> CUSTOMER -> REGION, plus STORE -> REGION) do not fire', () => {
+  const r = synthMF(['sales', 'customer', 'store', 'region'], [['sales', 'customer'], ['sales', 'store'], ['customer', 'region'], ['store', 'region']]);
+  assert.equal(r.ok, true);
+  assert.equal(mfOf(r).length, 0);
+});
+
+test('multi-fact: three facts where A -> B are related; only the independent pair warns', () => {
+  // A relates to B (so B is not a root); C is independent and shares dim_x with both -> exactly one pair (A, C).
+  const r = synthMF(['fa', 'fb', 'fc', 'dx'], [['fa', 'fb'], ['fb', 'dx'], ['fc', 'dx']]);
+  const [f] = mfOf(r);
+  assert.equal(mfOf(r).length, 1);
+  assert.match(f.message, /FA and FC share 1 dimension \(DX\)/);
+  assert.ok(!/FB and/.test(f.message) && !/and FB/.test(f.message), 'related fact B is not paired');
+});
+
+test('multi-fact: three independent facts list every sharing pair, none for a pair with no shared dimension', () => {
+  const r = synthMF(['fa', 'fb', 'fc', 'x', 'y'], [['fa', 'x'], ['fb', 'x'], ['fb', 'y'], ['fc', 'y']]);
+  const m = mfOf(r)[0].message;
+  assert.match(m, /FA and FB share 1 dimension \(X\)/);
+  assert.match(m, /FB and FC share 1 dimension \(Y\)/);
+  assert.ok(!/FA and FC/.test(m));
+});
+
+test('multi-fact: independent facts with NO shared dimension do not fire', () => {
+  assert.equal(mfOf(synthMF(['fa', 'fb', 'x', 'y'], [['fa', 'x'], ['fb', 'y']])).length, 0);
+});
+
+test('multi-fact: existing fixtures and goldens never fire (single-fact stars, snowflaked, RETAIL_ANALYTICS_SV, PLUGS, TPCH)', () => {
+  const fired = [];
+  const sources = readdirSync(join(FIX, 'fixtures')).filter(f => f.endsWith('.sql')).map(f => [f, readFileSync(join(FIX, 'fixtures', f), 'utf8')]);
+  for (const f of readdirSync(FIXDIR)) {
+    if (f.startsWith('multi_fact')) continue;
+    sources.push([f, readFileSync(join(FIXDIR, f), 'utf8')]);
+  }
+  assert.ok(sources.length >= 20);
+  for (const [name, src] of sources) {
+    for (const opts of [BASE, { ...BASE, bestEffort: true }]) {
+      for (const r of S.convertSemanticView(src, opts).results) if (mfOf(r).length > 0) fired.push(name);
+    }
+  }
+  assert.deepEqual(fired, []);
+});

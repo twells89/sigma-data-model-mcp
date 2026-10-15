@@ -110,6 +110,8 @@ METRIC_JOIN_PATH_SELECTOR findings stay reported). Slice those metrics by that e
 keeps the raw engine output (a plain metric on the table, identical to the unpinned one). A YAML relationship with
 join_type: inner is flagged JOIN_TYPE_INNER (Sigma relationships keep fact rows without a match).
 
+When two or more independent fact tables (no relationship between them) share dimension tables, one MULTI_FACT_SHARED_DIMENSIONS warning says so and names any dropped cross-fact metrics: Snowflake can combine their metrics per shared dimension but a Sigma element reaches only one fact, so aggregate each fact to the shared dimension first and join those results, never the raw facts (multi_fact_warning: false turns it off).
+
 database / schema are needed ONLY when the view has unqualified table names;
 the result's \`needs\` says what to supply. Optionally pass column_types
 (e.g. {"DB.SCHEMA.TABLE": {"COL": "TIMESTAMP_TZ"}}) so time-zone-dependent
@@ -133,9 +135,10 @@ result is still a refusal: see refusedViews); \`allRefused\` is true when none c
       infer_number_formats: z.boolean().optional().describe('Add number formats (currency, integer, percent) to metrics and calculated columns, but only where the evidence supports it: column type (YAML data_type or column_types), sample_values, word-level name tokens, propagated through the formula (e.g. Avg of a 0-1 rate is a percent, Avg of an unlabelled "discount" gets no format). Items left unformatted are listed in FORMATS_NOT_INFERRED; add sample_values / data_type / column_types to the source for better results. Default false.'),
       cross_table_references: z.enum(['derived', 'engine']).optional().describe("'derived' (default): columns/metrics that read through a relationship (e.g. a dimension defined on another table) are placed on a derived '<table> (joined)' element, the only place Sigma resolves them; a CROSS_TABLE_REFERENCES_MOVED finding lists them. 'engine': raw semantic-tools output (those columns stay on the owning element and Sigma will reject them)."),
       using_paths: z.enum(['bound', 'engine']).optional().describe("Only acts with best_effort. 'bound' (default): each metric pinned with USING (relationship) moves to a derived '<TABLE> (via <relationship>)' element that joins only through the pinned relationship, so its numbers follow Snowflake's USING path (USING_METRICS_PATH_BOUND finding); slice it by that element's columns. 'engine': raw semantic-tools output (the pinned metric stays a plain metric on the table, identical to the unpinned one)."),
+      multi_fact_warning: z.boolean().optional().describe('Default true. false turns off the MULTI_FACT_SHARED_DIMENSIONS warning (independent fact tables that share dimensions); the model is unchanged either way.'),
       auto_metrics: z.boolean().optional().describe('DEPRECATED and ignored: metrics now come only from the semantic view'),
     },
-    async ({ source, yaml_content, connection_id, database, schema, column_types, best_effort, synonyms_in_description, infer_number_formats, cross_table_references, using_paths, auto_metrics }) => {
+    async ({ source, yaml_content, connection_id, database, schema, column_types, best_effort, synonyms_in_description, infer_number_formats, cross_table_references, using_paths, multi_fact_warning, auto_metrics }) => {
       try {
         const given = [source, yaml_content].filter(v => typeof v === 'string' && v.trim() !== '');
         if (given.length !== 1) {
@@ -151,6 +154,7 @@ result is still a refusal: see refusedViews); \`allRefused\` is true when none c
           inferNumberFormats: infer_number_formats,
           crossTableReferences: cross_table_references,
           usingPaths: using_paths,
+          multiFactWarning: multi_fact_warning,
           autoMetrics: auto_metrics,
         });
         const single = result.results.length === 1;
