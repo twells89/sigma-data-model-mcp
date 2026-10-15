@@ -35,6 +35,7 @@ import { parse as parseYaml } from 'yaml';
 import { EMBED_VERSION } from './version.js';
 import { applyCrossTableReferences } from './crossTable.js';
 import { applyUsingPaths } from './usingPaths.js';
+import { applyMultiFact } from './multiFact.js';
 import { joinTypeInnerFindings, unrecognizedYamlKeyFinding } from './yamlKeys.js';
 import { inferFormats, type ColFact, type SourceFacts } from './formats.js';
 
@@ -47,7 +48,7 @@ export const ENGINE = {
 } as const;
 
 /** Exposed for tests: the 'derived' post-processor over a spec JSON text. */
-export { applyCrossTableReferences, applyUsingPaths, mkElementId };
+export { applyCrossTableReferences, applyUsingPaths, applyMultiFact, mkElementId };
 export { relDisplaySegment } from './relDisplay.js';
 /** Exposed for tests: the evidence-based number-format inference and its building blocks. */
 export { classifyBase, inferFormats, parseFormula, unitOfFormula, typeKind, nameTokens, sampleStats } from './formats.js';
@@ -160,6 +161,11 @@ export interface ConvertSemanticViewOptions {
    * Snowflake's USING path. 'engine': raw engine output (the plain metric stays on the fact).
    */
   usingPaths?: 'bound' | 'engine';
+  /**
+   * Default true. Adds one MULTI_FACT_SHARED_DIMENSIONS warning when independent fact tables (no relationship path between
+   * them) reach the same dimensions. Never changes the spec. false = off.
+   */
+  multiFactWarning?: boolean;
 }
 
 export interface EmbedFinding {
@@ -725,6 +731,11 @@ export function convertSemanticView(source: string, opts: ConvertSemanticViewOpt
           spec = bound.spec;
           extra = [...extra, ...bound.findings];
         }
+      }
+
+      // Chasm-trap shape: independent facts sharing dimensions (adds a finding only; the spec is untouched).
+      if (opts.multiFactWarning !== false) {
+        extra = [...extra, ...applyMultiFact(spec, result.viewName, toEmbedFindings(warnings)).findings];
       }
 
       const okResult = mkResult({

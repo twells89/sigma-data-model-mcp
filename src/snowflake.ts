@@ -43,6 +43,8 @@ export interface SnowflakeConvertOptions {
    * joins only through the pinned relationship(s). 'engine': raw semantic-tools output.
    */
   usingPaths?: 'bound' | 'engine';
+  /** Default true. false turns off the MULTI_FACT_SHARED_DIMENSIONS warning (independent facts sharing dimensions). Never changes the model. */
+  multiFactWarning?: boolean;
   /** @deprecated Accepted and ignored: metrics now come only from the view's own definitions. */
   autoMetrics?: boolean;
 }
@@ -127,6 +129,7 @@ export function convertSnowflakeSemanticView(
     ...(options.inferNumberFormats && { inferNumberFormats: true }),
     crossTableReferences: options.crossTableReferences === 'engine' ? 'engine' : 'derived',
     usingPaths: options.usingPaths === 'engine' ? 'engine' : 'bound',
+    multiFactWarning: options.multiFactWarning !== false,
   });
 
   const multi = run.results.length > 1;
